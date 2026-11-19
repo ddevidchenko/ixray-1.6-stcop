@@ -3,6 +3,8 @@ set(NETSERV_SRC_FILES)
 
 # Files import
 file(GLOB_RECURSE NETSERV_SOURCE_ALL_FILES CONFIGURE_DEPENDS "*.cpp" "*.h")
+file(GLOB_RECURSE NETSERV_MULTIPLAYER_FILES CONFIGURE_DEPENDS "Multiplayer/*.cpp" "Multiplayer/*.h")
+list(REMOVE_ITEM NETSERV_SOURCE_ALL_FILES ${NETSERV_MULTIPLAYER_FILES})
 
 # Source groups
 source_group("kernel" FILES ${NETSERV_SOURCE_ALL_FILES})
@@ -53,7 +55,8 @@ target_validate_pch(xrNetServer ${CMAKE_CURRENT_SOURCE_DIR})
 
 # Steam Sockets
 if(IXRAY_MP)
-    target_link_libraries(xrNetServer PUBLIC Steam::Sockets)
+    add_subdirectory(Multiplayer)
+    target_link_libraries(xrNetServer PUBLIC Steam::Sockets PRIVATE xrNetServerMultiplayer)
 endif()
 
 # MySQL Connector

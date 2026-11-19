@@ -118,6 +118,9 @@ endif()
 
 # Test 
 if (IXRAY_TESTS)
+	if (TARGET xrNetServerMultiplayer)
+		enable_testing()
+	endif()
 	add_subdirectory("src/test")
 endif()
 

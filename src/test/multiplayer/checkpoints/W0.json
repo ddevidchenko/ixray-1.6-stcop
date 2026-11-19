@@ -1,0 +1,27 @@
+{
+    "id": "W0",
+    "Portable": {
+        "workItems": ["MP-010"],
+        "configuration": "RelWithDebInfo",
+        "sourceDirectory": "src/test/multiplayer/portable",
+        "generator": "Visual Studio 17 2022",
+        "architecture": "x64",
+        "target": "TestMultiplayerUnit",
+        "test": "Multiplayer.Sequence",
+        "testSuccessMessage": "Sequence comparisons passed",
+        "deliberateFailureTest": "Multiplayer.Sequence.DeliberateFailure",
+        "deliberateFailureMessage": "deliberate failure: expected IsSequenceNewer to return false",
+        "configureTimeoutSeconds": 180,
+        "buildTimeoutSeconds": 300,
+        "testTimeoutSeconds": 30
+    },
+    "BaselineBuild": {
+        "workItems": ["MP-001"],
+        "configuration": "RelWithDebInfo",
+        "configurePreset": "Server-x64-Windows",
+        "buildPreset": "Server-x64-Windows-RelWithDebInfo",
+        "targets": ["xrEngine", "xrServerCLI"],
+        "configureTimeoutSeconds": 1200,
+        "buildTimeoutSeconds": 3600
+    }
+}

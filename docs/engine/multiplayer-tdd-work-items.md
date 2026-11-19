@@ -1,6 +1,6 @@
 # Multiplayer TDD work items
 
-Status: proposed backlog, 19 November 2026. All work items are open. No test targets, test results, or engine changes are created by this document.
+Status: implementation started 19 November 2026. MP-010 has macOS evidence. The W0 bootstrap supports portable tests and the MP-001 build check. Windows results are pending.
 
 Implements the [modern multiplayer plan](multiplayer-modernization-plan.md): 32 total human/bot combatants, simple DM, direct IP over GameNetworkingSockets first, human-like bots, authoritative simulation, prediction, lag compensation, and immediate local effects. Windows x64 is the initial runtime target; macOS remains usable for source work and portable tests. Hitscan, ballistics, and hybrid gunplay remain alternatives until the comparison gate.
 
@@ -81,6 +81,7 @@ MP-013 must document the actual commands for GNS peers and multi-process scenari
 - **Kind / runs / depends:** CHAR + SPIKE; `W`; none.
 - **Observe first:** configure the existing server preset; build client/CLI server; attempt two independent clients joining an installed MP map, firing, dying, respawning, leaving, and reconnecting. Capture actual mode/port syntax, effective physics/network rates, `SV_Client` responsibilities, and service dependencies. Separate build failures from runtime/gameplay failures.
 - **Deliver / seam:** a minimal W0 PowerShell bootstrap/preflight/build/launch/collect kit and runbook using [presets](../../CMakePresets.json), [CLI entry](../../src/xrServerCLI/xrDedicatedServer.cpp), [startup](../../src/xrGame/Level_start.cpp), and [server routing](../../src/xrGame/xrServer.cpp). Supply actual commands, expected/manual observations, supported shell/tool versions, paths and a collected baseline report. Record blockers as failing reproductions; do not require the later MP-013 harness or expand this into modernization.
+- **Progress:** the [W0 bootstrap](multiplayer-checkpoints/w0.md) can prepare an isolated checkout and collect build diagnostics. Windows build unverified. Gameplay launches and observations still need the W0 runtime kit.
 - [ ] **Complete when:** Windows build/run evidence exists, success or specific blockers are documented, and the original behavior can be reproduced. A successful restored two-client match is required before the phase-1 integration gate, even if baseline discovery itself found failures.
 
 ### MP-002 — Isolate and control multiple engine processes
@@ -117,6 +118,7 @@ MP-013 must document the actual commands for GNS peers and multi-process scenari
 - **Kind / runs / depends:** TDD; `P`; none.
 - **Red:** a minimal test of a real, narrow production value/sequence utility fails behaviorally; intentionally invert its assertion to verify a nonzero process/CTest result. Confirm the standalone configure does not pull in renderer, Lua, engine DLLs, or Windows SDK libraries.
 - **Green / seam:** proposed `src/test/multiplayer/portable` CMake entry and `TestMultiplayerUnit`, CTest registration, and framework choice. Compile the same production sources in this target and the engine; do not duplicate algorithms to get a green Mac build.
+- **Progress:** Mac checks passed / Windows pending at [W0](multiplayer-checkpoints/w0.md). CTest ran the production 32-bit serial comparison in `TestMultiplayerUnit` with dependency-free assertions. The first wraparound case failed under integer ordering. The reviewed suite exposed six wrong results under that ordering and passed all 11 comparisons with modular ordering. The opt-in inverted assertion returned a nonzero CTest exit in Release. The fixtures use literal inputs and require no seed or content pack.
 - [ ] **Complete when:** a real pass and deliberate failure are demonstrated on Mac and Windows, with test discovery and commands recorded. No engine-to-core dependency reversal is introduced.
 
 ### MP-011 — Supply controllable time, randomness, and event recording

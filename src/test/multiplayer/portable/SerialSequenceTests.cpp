@@ -1,0 +1,68 @@
+#include "SerialSequence.h"
+
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+
+namespace SerialSequenceTests
+{
+struct SequenceCase
+{
+	const char* Name;
+	u32 Candidate;
+	u32 Reference;
+	bool Expected;
+};
+
+constexpr SequenceCase Cases[] = {
+	{"ordinary successor", 42u, 41u, true},
+	{"ordinary predecessor", 41u, 42u, false},
+	{"duplicate", 42u, 42u, false},
+	{"first sequence after wrap", 0u, 0xffffffffu, true},
+	{"multi-step advance across wrap", 1u, 0xfffffffeu, true},
+	{"stale sequence before wrap", 0xffffffffu, 0u, false},
+	{"advance across the sign bit", 0x80000000u, 0x7fffffffu, true},
+	{"largest allowed forward distance across wrap", 0x7ffffffdu, 0xfffffffeu, true},
+	{"half range clockwise", 0x90000000u, 0x10000000u, false},
+	{"half range counterclockwise", 0x10000000u, 0x90000000u, false},
+	{"one farther than half range", 0x80000001u, 0u, false},
+};
+
+static bool CheckIsNewer(const SequenceCase& Case)
+{
+	const bool Actual = Multiplayer::IsSequenceNewer(Case.Candidate, Case.Reference);
+	if (Actual != Case.Expected)
+	{
+		std::fprintf(stderr, "%s: expected IsSequenceNewer to return %s\n", Case.Name, Case.Expected ? "true" : "false");
+		return false;
+	}
+	return true;
+}
+}
+
+int main(int ArgumentCount, char** Arguments)
+{
+	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--verify-failure") == 0)
+	{
+		return SerialSequenceTests::CheckIsNewer({"deliberate failure", 42u, 41u, false}) ? EXIT_SUCCESS : EXIT_FAILURE;
+	}
+	if (ArgumentCount != 1)
+	{
+		std::fputs("Unexpected multiplayer test arguments\n", stderr);
+		return EXIT_FAILURE;
+	}
+
+	bool Passed = true;
+	for (const auto& Case : SerialSequenceTests::Cases)
+	{
+		if (!SerialSequenceTests::CheckIsNewer(Case))
+		{
+			Passed = false;
+		}
+	}
+	if (Passed)
+	{
+		std::puts("Sequence comparisons passed");
+	}
+	return Passed ? EXIT_SUCCESS : EXIT_FAILURE;
+}

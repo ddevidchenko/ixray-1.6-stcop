@@ -272,14 +272,7 @@ The Mac can remain the primary editing/review machine. Do not make a native Mac 
 
 ### First Windows build
 
-Use the existing server preset from the Windows checkout root with CMake 3.26+ and the Visual Studio 2022 x64 toolchain/dependencies used by this repository:
-
-```powershell
-cmake --preset Server-x64-Windows -DIXRAY_MP_SQL=OFF
-cmake --build --preset Server-x64-Windows-RelWithDebInfo --target xrEngine xrServerCLI
-```
-
-The preset writes binaries under `build/x64/Server-Windows/bin/RelWithDebInfo/`. It enables `IXRAY_MP` for both client and dedicated server; do not mix those binaries with the ordinary MP-off engine preset. SQL/FreeMP persistence is unnecessary for DM. These commands are derived from checked-in presets and were not executed in this analysis.
+Use the W0 runner from the Windows checkout. It lets CMake choose the x64 generator and builds `xrEngine` and `xrServerCLI` with `IXRAY_MP=ON` and `IXRAY_MP_SQL=OFF`. The binaries are under `build/x64/Server-Windows/bin/RelWithDebInfo/` inside the isolated validation checkout. [W0 runbook](multiplayer-checkpoints/w0.md)
 
 Initial runtime tasks:
 

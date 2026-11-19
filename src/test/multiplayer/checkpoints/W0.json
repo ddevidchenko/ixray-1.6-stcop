@@ -4,7 +4,6 @@
         "workItems": ["MP-010"],
         "configuration": "RelWithDebInfo",
         "sourceDirectory": "src/test/multiplayer/portable",
-        "generator": "Visual Studio 17 2022",
         "architecture": "x64",
         "target": "TestMultiplayerUnit",
         "test": "Multiplayer.Sequence",
@@ -18,8 +17,6 @@
     "BaselineBuild": {
         "workItems": ["MP-001"],
         "configuration": "RelWithDebInfo",
-        "configurePreset": "Server-x64-Windows",
-        "buildPreset": "Server-x64-Windows-RelWithDebInfo",
         "targets": ["xrEngine", "xrServerCLI"],
         "configureTimeoutSeconds": 1200,
         "buildTimeoutSeconds": 3600

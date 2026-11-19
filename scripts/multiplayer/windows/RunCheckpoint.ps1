@@ -166,8 +166,11 @@ try {
             . (Join-Path $PSScriptRoot 'W0Runtime.ps1')
             $RuntimeRoot = Initialize-W0Runtime $GameDataRoot $Map $Config
         }
-        $null = Invoke-CheckpointStep 'configure' $CMake @('--preset', $EngineBuild.configurePreset, '-DIXRAY_MP_SQL=OFF') $Source $EngineBuild.configureTimeoutSeconds
-        $null = Invoke-CheckpointStep 'build' $CMake (@('--build', '--preset', $EngineBuild.buildPreset, '--target') + $EngineBuild.targets) $Source $EngineBuild.buildTimeoutSeconds
+        $Build = Join-Path $Source 'build/x64/Server-Windows'
+        $Configure = @('-S', $Source, '-B', $Build, '-A', 'x64', '-DIXRAY_MP=ON', '-DIXRAY_MP_SQL=OFF')
+        $null = Invoke-CheckpointStep 'configure' $CMake $Configure $Source $EngineBuild.configureTimeoutSeconds
+        $BuildArguments = @('--build', $Build, '--config', $EngineBuild.configuration, '--parallel', '--target') + $EngineBuild.targets
+        $null = Invoke-CheckpointStep 'build' $CMake $BuildArguments $Source $EngineBuild.buildTimeoutSeconds
         if ($Mode -eq 'BaselineRuntime') {
             $Report.status = Invoke-W0Runtime $RuntimeRoot $Map $Config $RuntimeCase
         }
@@ -177,7 +180,7 @@ try {
     }
     else {
         $Build = Join-Path $Bundle 'portable-build'
-        $Configure = @('-S', $Config.sourceDirectory, '-B', $Build, '-G', $Config.generator, '-DIXRAY_MULTIPLAYER_VERIFY_TEST_FAILURE=ON', "-DCMAKE_BUILD_TYPE=$($Config.configuration)")
+        $Configure = @('-S', $Config.sourceDirectory, '-B', $Build, '-DIXRAY_MULTIPLAYER_VERIFY_TEST_FAILURE=ON', "-DCMAKE_BUILD_TYPE=$($Config.configuration)")
         if ($Config.architecture) {
             $Configure += @('-A', $Config.architecture)
         }

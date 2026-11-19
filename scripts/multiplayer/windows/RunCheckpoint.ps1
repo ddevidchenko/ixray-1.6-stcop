@@ -6,10 +6,15 @@ param(
     [ValidatePattern('^[0-9a-fA-F]{40}$')]
     [string] $Revision,
 
-    [ValidateSet('Portable', 'BaselineBuild')]
+    [ValidateSet('Portable', 'BaselineBuild', 'BaselineRuntime')]
     [string] $Mode = 'Portable',
 
-    [string] $ResultsRoot
+    [string] $ResultsRoot,
+    [string] $GameDataRoot,
+    [ValidatePattern('^[a-z0-9_-]{1,63}$')]
+    [string] $Map,
+    [ValidateSet('Join', 'ListenerFailure')]
+    [string] $RuntimeCase = 'Join'
 )
 
 Set-StrictMode -Version Latest
@@ -154,10 +159,21 @@ try {
     $Report.configuration = $Config.configuration
     $Report.workItems = $Config.workItems
 
-    if ($Mode -eq 'BaselineBuild') {
-        $null = Invoke-CheckpointStep 'configure' $CMake @('--preset', $Config.configurePreset, '-DIXRAY_MP_SQL=OFF') $Source $Config.configureTimeoutSeconds
-        $null = Invoke-CheckpointStep 'build' $CMake (@('--build', '--preset', $Config.buildPreset, '--target') + $Config.targets) $Source $Config.buildTimeoutSeconds
-        $Report.status = 'build_passed'
+    if ($Mode -in @('BaselineBuild', 'BaselineRuntime')) {
+        $EngineBuild = $Definition.BaselineBuild
+        if ($Mode -eq 'BaselineRuntime') {
+            . (Join-Path $PSScriptRoot 'W0Evidence.ps1')
+            . (Join-Path $PSScriptRoot 'W0Runtime.ps1')
+            $RuntimeRoot = Initialize-W0Runtime $GameDataRoot $Map $Config
+        }
+        $null = Invoke-CheckpointStep 'configure' $CMake @('--preset', $EngineBuild.configurePreset, '-DIXRAY_MP_SQL=OFF') $Source $EngineBuild.configureTimeoutSeconds
+        $null = Invoke-CheckpointStep 'build' $CMake (@('--build', '--preset', $EngineBuild.buildPreset, '--target') + $EngineBuild.targets) $Source $EngineBuild.buildTimeoutSeconds
+        if ($Mode -eq 'BaselineRuntime') {
+            $Report.status = Invoke-W0Runtime $RuntimeRoot $Map $Config $RuntimeCase
+        }
+        else {
+            $Report.status = 'build_passed'
+        }
     }
     else {
         $Build = Join-Path $Bundle 'portable-build'

@@ -62,6 +62,52 @@ catch {
     Assert-Result ($_.Exception.Message -ceq 'other exited with code 2 before unreached stage.') 'A child exit identifies its role and code.'
 }
 
+# Supply keyboard decisions and skip real polling sleeps in these fixtures.
+function Start-Sleep { param([int] $Milliseconds) }
+
+function Invoke-ObservationFixture {
+    param([object[]] $Keys, [int] $DurationSeconds, [object[]] $Children)
+
+    $Report = @{ runtime = @{ timedOut = $false; observation = $null } }
+    $Config = @{
+        durationSeconds = $DurationSeconds
+        checklist = @(
+            @{ id = 'fire'; instruction = 'Confirm a shot.' }
+            @{ id = 'reconnect'; instruction = 'Reconnect to port {port}.' }
+        )
+    }
+    $Queue = [System.Collections.Generic.Queue[string]]::new([string[]] $Keys)
+    $Status = $null
+    $ErrorText = $null
+    try {
+        $Status = Invoke-W0Observation $Config 45678 $Children { $Queue.Dequeue() }
+    }
+    catch { $ErrorText = $_.Exception.Message }
+    [pscustomobject] @{ status = $Status; error = $ErrorText; result = $Report.runtime.observation; timedOut = $Report.runtime.timedOut }
+}
+
+$Complete = Invoke-ObservationFixture @('', 'X', 'Y', 'Y') 30 @($Child)
+Assert-Result ($Complete.status -ceq 'runtime_observation_passed') 'Every confirmed checklist item is needed for an observation pass.'
+Assert-Result ($null -ne $Complete.result -and $Complete.result.finishReason -ceq 'completed' -and
+    ($Complete.result.checklist.status -join ',') -ceq 'observed,observed' -and
+    $Complete.result.checklist[0].recordedUtc -and $Complete.result.finishedUtc -and
+    $Complete.result.checklist[1].instruction -ceq 'Reconnect to port 45678.') 'The report retains the decisions and the tested port.'
+
+$Failed = Invoke-ObservationFixture @('N', 'Y') 30 @($Child)
+Assert-Result ($Failed.status -ceq 'runtime_observation_failed' -and $Failed.result.checklist[0].status -ceq 'failed') 'A failed gameplay action stays failed after later success.'
+$StoppedAfterFailure = Invoke-ObservationFixture @('N', 'Q') 30 @($Child)
+Assert-Result ($StoppedAfterFailure.status -ceq 'runtime_observation_failed' -and $StoppedAfterFailure.result.finishReason -ceq 'operator_stopped') 'Ending after a failure preserves the failure and stop reason.'
+$Skipped = Invoke-ObservationFixture @('Y', 'S') 30 @($Child)
+Assert-Result ($Skipped.status -ceq 'runtime_observation_incomplete' -and $Skipped.result.checklist[1].status -ceq 'skipped') 'A skipped action leaves the observation incomplete.'
+$Stopped = Invoke-ObservationFixture @('Y', 'Q') 30 @($Child)
+Assert-Result ($Stopped.status -ceq 'runtime_observation_incomplete' -and $Stopped.result.finishReason -ceq 'operator_stopped' -and
+    ($Stopped.result.checklist.status -join ',') -ceq 'observed,unobserved') 'Ending early retains partial results.'
+$Expired = Invoke-ObservationFixture @() 0 @($Child)
+Assert-Result ($Expired.status -ceq 'runtime_observation_incomplete' -and $Expired.result.finishReason -ceq 'deadline' -and
+    $Expired.timedOut -and ($Expired.result.checklist.status -join ',') -ceq 'unobserved,unobserved') 'The deadline leaves a distinct incomplete result without requiring a key.'
+$Exited = Invoke-ObservationFixture @('Y', 'Y') 30 @($Child, $Other)
+Assert-Result ($Exited.error -ceq 'other exited with code 2 before gameplay observation.' -and $Exited.result.finishReason -ceq 'interrupted') 'A child exit interrupts the checklist as a runtime failure.'
+
 foreach ($Failure in $Failures) { [Console]::Error.WriteLine($Failure) }
 if ($Failures.Count) { exit 1 }
 Write-Host 'W0 evidence checks passed.'

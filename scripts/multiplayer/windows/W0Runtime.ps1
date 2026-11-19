@@ -2,6 +2,7 @@ function Initialize-W0Runtime {
     param([string] $GameDataRoot, [string] $Map, $Config)
 
     if (!$IsWindows -or ![Environment]::UserInteractive) { throw 'W0 runtime requires an interactive Windows desktop.' }
+    if ($RuntimeCase -eq 'Observe' -and [Console]::IsInputRedirected) { throw 'Run W0 Observe from a PowerShell terminal with keyboard input.' }
     if (!$GameDataRoot -or !$Map) { throw 'Specify -GameDataRoot and -Map for W0 runtime.' }
     $InstallItem = Get-Item -LiteralPath $GameDataRoot
     if (!$InstallItem.PSIsContainer -or ($InstallItem.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
@@ -12,7 +13,7 @@ function Initialize-W0Runtime {
     if ($Bundle.StartsWith($InstallPrefix, [StringComparison]::OrdinalIgnoreCase)) {
         throw 'Use a results root outside the game-data installation.'
     }
-    $Report.runtime = [ordered] @{ case = $RuntimeCase; map = $Map; inputFiles = @(); port = $null; processes = @(); readyPeers = @(); stage = 'asset preflight'; timedOut = $false }
+    $Report.runtime = [ordered] @{ case = $RuntimeCase; map = $Map; inputFiles = @(); port = $null; processes = @(); readyPeers = @(); startupPassed = $false; stage = 'asset preflight'; timedOut = $false }
 
     $MapDirectory = Join-Path $Install "gamedata/levels/$Map"
     $MapFiles = @('level', 'level.ltx', 'level.geom', 'level.cform') | ForEach-Object { Join-Path $MapDirectory $_ }
@@ -101,15 +102,84 @@ function Wait-W0Evidence {
 
     $Report.runtime.stage = $Name
     $Elapsed = [Diagnostics.Stopwatch]::StartNew()
-    do {
+    while ($Elapsed.Elapsed.TotalSeconds -lt $Seconds) {
         foreach ($OwnedChild in $Children) {
             if ($OwnedChild.process.HasExited) { throw "$($OwnedChild.entry.name) exited with code $($OwnedChild.process.ExitCode) before $Name." }
         }
         if (& $Condition) { return }
         Start-Sleep -Milliseconds 200
-    } while ($Elapsed.Elapsed.TotalSeconds -lt $Seconds)
+    }
     $Report.runtime.timedOut = $true
     throw "Timed out waiting for $Name after $Seconds seconds."
+}
+
+function Invoke-W0Observation {
+    param(
+        $Config,
+        [int] $Port,
+        [object[]] $Children,
+        [scriptblock] $ReadKey = { if ([Console]::KeyAvailable) { [Console]::ReadKey($true).Key } }
+    )
+
+    $Checklist = @($Config.checklist | ForEach-Object {
+        [ordered] @{
+            id = $_.id
+            instruction = $_.instruction.Replace('{port}', [string] $Port)
+            status = 'unobserved'
+            recordedUtc = $null
+        }
+    })
+    if (!$Checklist.Count) { throw 'W0 Observe requires a gameplay checklist.' }
+
+    $Observation = [ordered] @{
+        durationSeconds = $Config.durationSeconds
+        startedUtc = [DateTimeOffset]::UtcNow.ToString('o')
+        finishedUtc = $null
+        finishReason = 'interrupted'
+        checklist = $Checklist
+    }
+    $Report.runtime.observation = $Observation
+    Write-Host "W0 gameplay observation has $($Config.durationSeconds) seconds. Return to this terminal after each step."
+    Write-Host 'Press Y for observed, N for failed, S to skip, or Q to finish early.'
+    Write-Host $Checklist[0].instruction
+
+    try {
+        Wait-W0Evidence 'gameplay observation' $Config.durationSeconds {
+            $Key = & $ReadKey
+            if ($Key -eq 'Q') {
+                $Observation.finishReason = 'operator_stopped'
+                return $true
+            }
+            $Decision = switch ($Key) {
+                'Y' { 'observed' }
+                'N' { 'failed' }
+                'S' { 'skipped' }
+            }
+            if (!$Decision) { return $false }
+
+            $Unobserved = @($Checklist | Where-Object { $_.status -eq 'unobserved' })
+            $Unobserved[0].status = $Decision
+            $Unobserved[0].recordedUtc = [DateTimeOffset]::UtcNow.ToString('o')
+            if ($Unobserved.Count -eq 1) {
+                $Observation.finishReason = 'completed'
+                return $true
+            }
+            Write-Host $Unobserved[1].instruction
+            return $false
+        } $Children
+    }
+    catch {
+        if (!$Report.runtime.timedOut) { throw }
+        $Observation.finishReason = 'deadline'
+        Write-Host 'W0 gameplay observation reached its deadline. The report includes the decisions recorded so far.'
+    }
+    finally {
+        $Observation.finishedUtc = [DateTimeOffset]::UtcNow.ToString('o')
+    }
+
+    if ($Checklist.status -contains 'failed') { return 'runtime_observation_failed' }
+    if (@($Checklist | Where-Object { $_.status -ne 'observed' }).Count) { return 'runtime_observation_incomplete' }
+    return 'runtime_observation_passed'
 }
 
 function Invoke-W0Runtime {
@@ -126,7 +196,7 @@ function Invoke-W0Runtime {
         $Reservation.Bind([Net.IPEndPoint]::new([Net.IPAddress]::IPv6Any, 0))
         $Port = $Reservation.LocalEndPoint.Port
         $Report.runtime.port = $Port
-        if ($Case -eq 'Join') { $Reservation.Dispose() }
+        if ($Case -ne 'ListenerFailure') { $Reservation.Dispose() }
 
         $Server = Start-W0Process 'server' $ServerExecutable @('-start', "server($Map/deathmatch/maxplayers=32/portsv=$Port/public=0)", "client(localhost/port=$Port/name=W0Server)") $Runtime
         $Children += $Server
@@ -163,6 +233,17 @@ function Invoke-W0Runtime {
                 $EngineLog = Get-W0EngineLog $Runtime $Child.root
                 $EngineLog -and (Test-W0WritableAliases (Get-W0Log $EngineLog) $Child.root)
             } $Children
+        }
+        $Report.runtime.startupPassed = $true
+        if ($Case -eq 'Observe') {
+            $Report.runtime.observationNotes = 'observation-notes.txt'
+            $NotesPath = Join-Path $Bundle $Report.runtime.observationNotes
+            Set-Content -LiteralPath $NotesPath -Encoding utf8 -Value @(
+                'Optional notes for the W0 gameplay observation',
+                'Record which action failed or was skipped, what each client saw, and any visible startup or service messages.'
+            )
+            Write-Host "W0 notes $NotesPath"
+            return Invoke-W0Observation $Config.observation $Port $Children
         }
         return 'runtime_smoke_passed'
     }

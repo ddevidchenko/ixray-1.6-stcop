@@ -13,7 +13,7 @@ param(
     [string] $GameDataRoot,
     [ValidatePattern('^[a-z0-9_-]{1,63}$')]
     [string] $Map,
-    [ValidateSet('Join', 'ListenerFailure')]
+    [ValidateSet('Join', 'ListenerFailure', 'Observe')]
     [string] $RuntimeCase = 'Join'
 )
 
@@ -212,9 +212,10 @@ catch {
 }
 finally {
     $Report | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $ReportPath -Encoding utf8
+    Write-Host "W0 result $($Report.status)"
     Write-Host "W0 report $ReportPath"
 }
 
-if ($Report.status -eq 'failed') {
+if ($Report.status -in @('failed', 'runtime_observation_failed', 'runtime_observation_incomplete')) {
     exit 1
 }

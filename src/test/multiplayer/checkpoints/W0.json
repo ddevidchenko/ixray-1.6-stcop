@@ -32,6 +32,16 @@
         "assetCopyTimeoutSeconds": 1800,
         "serverTimeoutSeconds": 120,
         "clientTimeoutSeconds": 180,
-        "logTimeoutSeconds": 15
+        "logTimeoutSeconds": 15,
+        "observation": {
+            "durationSeconds": 600,
+            "checklist": [
+                {"id": "fire", "instruction": "Enter play on both clients. Space requests a spawn from spectator during an active DM round. Equip a weapon on W0Client1 and confirm it fires."},
+                {"id": "death", "instruction": "Use W0Client1 to kill W0Client2. Confirm W0Client2 dies and W0Client1 receives the frag on the Tab scoreboard."},
+                {"id": "respawn", "instruction": "Respawn W0Client2 using the normal DM controls. Confirm both clients see the player return to the arena."},
+                {"id": "disconnect", "instruction": "In W0Client2's game console, enter disconnect. Confirm W0Client2 leaves the match and W0Client1 stays in it. Leave both apps open."},
+                {"id": "reconnect", "instruction": "Confirm W0Client2 re-enters DM and both clients see each other. Run the following command in W0Client2's game console.\nstart client(127.0.0.1/port={port}/name=W0Client2)"}
+            ]
+        }
     }
 }

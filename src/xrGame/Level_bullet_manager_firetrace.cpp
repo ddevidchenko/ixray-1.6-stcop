@@ -19,6 +19,7 @@
 #include "../xrCore/Collision/xr_collide_defs.h"
 #include "../xrEngine/xr_collide_form.h"
 #include "Weapon.h"
+#include "Weapons/WeaponSpreadLegacy.h"
 #include "ParticlesObject.h"
 #include "ai/monsters/basemonster/base_monster.h"
 #include "AnomalyZone.h"
@@ -350,8 +351,6 @@ void CBulletManager::DynamicObjectHit(CBulletManager::_event& E)
 	}
 }
 
-extern void random_dir	(Fvector& tgt_dir, const Fvector& src_dir, float dispersion);
-
 bool CBulletManager::ObjectHit( SBullet_Hit* hit_res, SBullet* bullet, const Fvector& end_point, 
 							    collide::rq_result& R, u16 target_material, Fvector& hit_normal )
 {
@@ -445,7 +444,7 @@ bool CBulletManager::ObjectHit( SBullet_Hit* hit_res, SBullet* bullet, const Fve
 	Fvector			new_dir;
 	new_dir.reflect	( bullet->dir,hit_normal );
 	Fvector			tgt_dir;
-	random_dir		( tgt_dir, new_dir, deg2rad( 10.0f ) );
+	WeaponSpread::ApplyLegacy(tgt_dir, new_dir, deg2rad(10.0f));
 	float ricoshet_factor = bullet->dir.dotproduct( tgt_dir );
 
 	float f			= Random.randF( 0.5f, 0.8f ); //(0.5f,1.f);

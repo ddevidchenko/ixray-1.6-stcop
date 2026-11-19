@@ -1,6 +1,6 @@
 # Multiplayer TDD work items
 
-The operator reports that W0 passed on Windows. The exact revision and result bundle are pending attachment. MP-010 and MP-011a have macOS evidence.
+The operator reports that W0 passed on Windows. The exact revision and result bundle are pending attachment. MP-010, MP-011a and MP-011b have macOS evidence.
 
 Implements the [modern multiplayer plan](multiplayer-modernization-plan.md): 32 total human/bot combatants, simple DM, direct IP over GameNetworkingSockets first, human-like bots, authoritative simulation, prediction, lag compensation, and immediate local effects. Windows x64 is the initial runtime target; macOS remains usable for source work and portable tests. Hitscan, ballistics, and hybrid gunplay remain alternatives until the comparison gate.
 
@@ -135,10 +135,11 @@ MP-013 must document the actual commands for GNS peers and multi-process scenari
 - **Mac checks passed / Windows pending:** `Multiplayer.MapSyncDeadline` failed against the extracted poll-count policy at the exact deadline, after a loading stall, after repeated polls before the deadline and on a fresh request. With explicit monotonic timestamps the boundary, polling, reply-priority, demo and fresh-request cases pass. The fixture uses literal timestamps and requires no seed or content pack. Both portable tests passed on macOS in Debug and Release. Run the focused case with `ctest --test-dir build/mp-portable -R '^Multiplayer.MapSyncDeadline$' --output-on-failure` after the standalone build above. [Tests](../../src/test/multiplayer/portable/MapSyncWaitTests.cpp).
 - [ ] **Complete when:** the [W0 portable runner](multiplayer-checkpoints/w0.md#additional-checks) collects a passing deadline suite on Windows, and a new Windows join smoke run confirms the engine adapter on the same candidate. Both can run with the next Windows checkpoint session.
 
-#### MP-011b — Isolate weapon random input and record deterministic gameplay events
+#### MP-011b — Isolate weapon spread sampling and record deterministic sample traces
 
-- Existing shot dispersion uses both the shared engine `Random` and C `rand()`. Flash effects also consume `Random`. Start by extracting the spread sampler behind an explicit random input while preserving the legacy adapter. Give authoritative weapon simulation and presentation independently owned streams when their respective call sites are wired. Seed ownership and prediction restore belong with the weapon state in MP-051.
-- Characterize zero dispersion, the sampler's logarithm input bounds and variable draw count. Exercise the production sampler with fixed inputs while interleaving cosmetic draws. Record the ordered results at the simulation boundary with a real consumer and compare the trace across repeated runs. [Legacy spread sampler](../../src/xrGame/WeaponFire.cpp), [flash sampling](../../src/xrGame/ShootingObject.cpp).
+- **Design:** the portable sampler takes explicit unit and sign draws. One engine adapter supplies the existing `Random` and C `rand()` draws and projects the resulting angles through the engine vector basis. Both bullet launch and ricochet use it. The sampler preserves draw order, including the azimuth draw for zero dispersion. If the magnitude sample is zero, a nonzero acceptance draw retries and two zero draws produce a clamped angle without evaluating the logarithm. MP-051 owns seeding and restoring authoritative weapon state. [Sampler](../../src/xrGame/Weapons/WeaponSpread.h), [engine adapter](../../src/xrGame/Weapons/WeaponSpreadLegacy.cpp).
+- **Mac checks passed / Windows pending:** `Multiplayer.WeaponSpread` failed when sign selection still called global `rand()`. The reviewed suite detected the missing injected sign draws and diverging traces from the same seed. Scripted cases cover signs, retries, clamps, and endpoint draws. With seed `0x31823d45`, the ordered angle trace repeats across calls and with cosmetic samples interleaved through a separate source. Run `ctest --test-dir build/mp-portable -R '^Multiplayer.WeaponSpread$' --output-on-failure` after the standalone build above. [Tests](../../src/test/multiplayer/portable/WeaponSpreadTests.cpp).
+- [ ] **Complete when:** the [Windows portable runner](multiplayer-checkpoints/w0.md#additional-checks) records a passing spread suite and the same candidate builds and passes the firing and death observations in the Windows two-client smoke run.
 
 ### MP-012 — Add deterministic message delivery and real GNS peer fixtures
 

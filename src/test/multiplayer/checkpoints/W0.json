@@ -1,7 +1,7 @@
 {
     "id": "W0",
     "Portable": {
-        "workItems": ["MP-010", "MP-011a"],
+        "workItems": ["MP-010", "MP-011a", "MP-011b"],
         "configuration": "RelWithDebInfo",
         "sourceDirectory": "src/test/multiplayer/portable",
         "architecture": "x64",
@@ -13,6 +13,11 @@
                 "name": "Multiplayer.MapSyncDeadline",
                 "successMessage": "Map sync deadline checks passed",
                 "step": "map-sync-deadline"
+            },
+            {
+                "name": "Multiplayer.WeaponSpread",
+                "successMessage": "Weapon spread checks passed",
+                "step": "weapon-spread"
             }
         ],
         "deliberateFailureTest": "Multiplayer.Sequence.DeliberateFailure",

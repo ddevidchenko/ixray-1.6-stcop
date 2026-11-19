@@ -15,6 +15,7 @@
 #include "Level_Bullet_Manager.h"
 #include "game_cl_single.h"
 #include "ParticlesObject.h"
+#include "Weapons/WeaponSpreadLegacy.h"
 
 #define HIT_POWER_EPSILON 0.05f
 #define WALLMARK_SIZE 0.04f
@@ -509,8 +510,6 @@ bool CShootingObject::SendHitAllowed		(CObject* pUser)
 	}
 };
 
-extern void random_dir(Fvector& tgt_dir, const Fvector& src_dir, float dispersion);
-
 void CShootingObject::FireBullet(const Fvector& pos, 
 								 const Fvector& shot_dir, 
 								 float fire_disp,
@@ -520,7 +519,7 @@ void CShootingObject::FireBullet(const Fvector& pos,
 								 bool send_hit)
 {
 	Fvector dir;
-	random_dir(dir,shot_dir,fire_disp);
+	WeaponSpread::ApplyLegacy(dir, shot_dir, fire_disp);
 	
 	bool aim_bullet;
 	if (m_bUseAimBullet)

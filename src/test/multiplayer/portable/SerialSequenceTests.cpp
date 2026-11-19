@@ -4,6 +4,11 @@
 #include <cstdlib>
 #include <cstring>
 
+namespace MapSyncWaitTests
+{
+bool Run();
+}
+
 namespace SerialSequenceTests
 {
 struct SequenceCase
@@ -45,6 +50,10 @@ int main(int ArgumentCount, char** Arguments)
 	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--verify-failure") == 0)
 	{
 		return SerialSequenceTests::CheckIsNewer({"deliberate failure", 42u, 41u, false}) ? EXIT_SUCCESS : EXIT_FAILURE;
+	}
+	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--map-sync") == 0)
+	{
+		return MapSyncWaitTests::Run() ? EXIT_SUCCESS : EXIT_FAILURE;
 	}
 	if (ArgumentCount != 1)
 	{

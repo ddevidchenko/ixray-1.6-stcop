@@ -1,13 +1,20 @@
 {
     "id": "W0",
     "Portable": {
-        "workItems": ["MP-010"],
+        "workItems": ["MP-010", "MP-011a"],
         "configuration": "RelWithDebInfo",
         "sourceDirectory": "src/test/multiplayer/portable",
         "architecture": "x64",
         "target": "TestMultiplayerUnit",
         "test": "Multiplayer.Sequence",
         "testSuccessMessage": "Sequence comparisons passed",
+        "additionalTests": [
+            {
+                "name": "Multiplayer.MapSyncDeadline",
+                "successMessage": "Map sync deadline checks passed",
+                "step": "map-sync-deadline"
+            }
+        ],
         "deliberateFailureTest": "Multiplayer.Sequence.DeliberateFailure",
         "deliberateFailureMessage": "deliberate failure: expected IsSequenceNewer to return false",
         "configureTimeoutSeconds": 180,

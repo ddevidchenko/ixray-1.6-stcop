@@ -200,16 +200,23 @@ try {
         $null = Invoke-CheckpointStep 'configure' $CMake $Configure $Source $Config.configureTimeoutSeconds
         $null = Invoke-CheckpointStep 'build' $CMake @('--build', $Build, '--config', $Config.configuration, '--target', $Config.target) $Source $Config.buildTimeoutSeconds
         $CTestArgs = @('--test-dir', $Build, '-C', $Config.configuration, '--no-tests=error', '--output-on-failure', '--verbose')
-        $TestPattern = '^' + [regex]::Escape($Config.test) + '$'
-        $FailurePattern = '^' + [regex]::Escape($Config.deliberateFailureTest) + '$'
-        $TestResults = Join-Path $Bundle 'test.xml'
-        $null = Invoke-CheckpointStep 'test' $CTest ($CTestArgs + @('-R', $TestPattern, '--output-junit', $TestResults)) $Source $Config.testTimeoutSeconds
-        $TestResult = Read-CheckpointTest $TestResults $Config.test
-        if ($TestResult.GetAttribute('status') -cne 'run' -or !$TestResult.SelectSingleNode('system-out') -or
-            ($TestResult.SelectSingleNode('system-out').InnerText -split '\r?\n') -cnotcontains $Config.testSuccessMessage) {
-            throw 'Sequence test did not report completion.'
+        $Tests = @(@{ name = $Config.test; successMessage = $Config.testSuccessMessage; step = 'test' })
+        if ($Config.PSObject.Properties['additionalTests']) {
+            $Tests += $Config.additionalTests
+        }
+        foreach ($Test in $Tests) {
+            $TestPattern = '^' + [regex]::Escape($Test.name) + '$'
+            $TestResults = Join-Path $Bundle "$($Test.step).xml"
+            $null = Invoke-CheckpointStep $Test.step $CTest ($CTestArgs + @('-R', $TestPattern, '--output-junit', $TestResults)) $Source $Config.testTimeoutSeconds
+            $TestResult = Read-CheckpointTest $TestResults $Test.name
+            $TestOutput = $TestResult.SelectSingleNode('system-out')
+            if ($TestResult.GetAttribute('status') -cne 'run' -or !$TestOutput -or
+                ($TestOutput.InnerText -split '\r?\n') -cnotcontains $Test.successMessage) {
+                throw "$($Test.name) did not report completion. See $($Test.step).xml."
+            }
         }
 
+        $FailurePattern = '^' + [regex]::Escape($Config.deliberateFailureTest) + '$'
         $FailureResults = Join-Path $Bundle 'deliberate-failure.xml'
         $null = Invoke-CheckpointStep 'deliberate-failure' $CTest ($CTestArgs + @('-R', $FailurePattern, '--output-junit', $FailureResults)) $Source $Config.testTimeoutSeconds @(8)
         $FailureResult = Read-CheckpointTest $FailureResults $Config.deliberateFailureTest

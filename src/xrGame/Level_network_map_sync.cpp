@@ -46,14 +46,15 @@ bool CLevel::synchronize_map_data()
 	Msg					("* synchronizing map data...");
 #endif // #ifndef MASTER_GOLD
 
-	map_data.CheckToSendMapSync	();
+	const auto& ReplyWait = map_data.CheckToSendMapSync();
 
 #ifdef DEBUG
 	Msg("--- Waiting for server map name...");
 #endif // #ifdef DEBUG
 	ClientReceive(); 
 
-	if ((map_data.m_wait_map_time >= 1000) && (!map_data.m_map_sync_received) && !IsDemoPlay())//about 5 seconds
+	const auto Status = ReplyWait.Poll(Multiplayer::MapSyncWait::Clock::now(), map_data.m_map_sync_received, IsDemoPlay());
+	if (Status == Multiplayer::MapSyncStatus::TimedOut)
 	{
 		Msg("Wait map data time out: reconnecting...");
 		MakeReconnect();
@@ -61,10 +62,9 @@ bool CLevel::synchronize_map_data()
 		return true;
 	}
 	
-	if (!map_data.m_map_sync_received)
+	if (Status == Multiplayer::MapSyncStatus::Waiting)
 	{
 		Sleep(5);
-		++map_data.m_wait_map_time;
 		return false;
 	}
 			
@@ -113,9 +113,9 @@ bool	CLevel::synchronize_client()
 }
 
 
-void LevelMapSyncData::CheckToSendMapSync()
+const Multiplayer::MapSyncWait& LevelMapSyncData::CheckToSendMapSync()
 {
-	if (!m_sended_map_name_request)
+	if (!MapReplyWait)
 	{
 		NET_Packet P;
 		P.w_begin	(M_SV_MAP_NAME);
@@ -123,11 +123,11 @@ void LevelMapSyncData::CheckToSendMapSync()
 		P.w_stringZ	(m_map_version);
 		P.w_u32		(m_level_geom_crc32);
 		Level().Send(P, net_flags(true, true, true, true));
-		m_sended_map_name_request = true;
 		invalid_geom_checksum = false;
 		m_map_sync_received = false;
-		m_wait_map_time = 0;
+		MapReplyWait.emplace(Multiplayer::MapSyncWait::Clock::now());
 	}
+	return *MapReplyWait;
 }
 
 void LevelMapSyncData::ReceiveServerMapSync(NET_Packet& P)

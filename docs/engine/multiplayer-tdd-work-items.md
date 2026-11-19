@@ -1,6 +1,6 @@
 # Multiplayer TDD work items
 
-Status: implementation started 19 November 2026. MP-010 has macOS evidence. W0 can collect portable, build, and multiplayer startup regression evidence. Windows results are pending.
+The operator reports that W0 passed on Windows. The exact revision and result bundle are pending attachment. MP-010 and MP-011a have macOS evidence.
 
 Implements the [modern multiplayer plan](multiplayer-modernization-plan.md): 32 total human/bot combatants, simple DM, direct IP over GameNetworkingSockets first, human-like bots, authoritative simulation, prediction, lag compensation, and immediate local effects. Windows x64 is the initial runtime target; macOS remains usable for source work and portable tests. Hitscan, ballistics, and hybrid gunplay remain alternatives until the comparison gate.
 
@@ -54,9 +54,7 @@ MP-005 is an explicit gate before larger engine networking/controller/prediction
 
 ### Test execution contract to establish
 
-The current [test entry](../../src/test/CMakeLists.txt) only adds [TestBenchmark](../../src/test/benchmark/CMakeLists.txt), which links `xrEngineCore`. It is not an existing portable MP test suite. Choose a lightweight test framework or small runner during MP-010; record and pin any added dependency rather than assuming a particular framework is installed.
-
-The following are **proposed commands/targets**, to be made real by MP-010–013, not commands that work in the checkout today:
+The standalone `TestMultiplayerUnit` target uses the same production code as the engine. The [full-engine test entry](../../src/test/CMakeLists.txt) registers it when `IXRAY_TESTS` and multiplayer are enabled. The portable executable requires only a C++ compiler and CMake.
 
 ```sh
 # Standalone portable production-code tests; no full-engine configure on Mac.
@@ -64,6 +62,8 @@ cmake -S src/test/multiplayer/portable -B build/mp-portable
 cmake --build build/mp-portable
 ctest --test-dir build/mp-portable --output-on-failure
 ```
+
+The full Windows integration command is planned for MP-013, when `TestMultiplayerEngine` is available.
 
 ```powershell
 # Windows full-engine tests, after their targets and CTest registration exist.
@@ -81,7 +81,7 @@ MP-013 must document the actual commands for GNS peers and multi-process scenari
 - **Kind / runs / depends:** CHAR + SPIKE; `W`; none.
 - **Observe first:** configure the existing server preset; build client/CLI server; attempt two independent clients joining an installed MP map, firing, dying, respawning, leaving, and reconnecting. Capture actual mode/port syntax, effective physics/network rates, `SV_Client` responsibilities, and service dependencies. Separate build failures from runtime/gameplay failures.
 - **Deliver / seam:** a minimal W0 PowerShell bootstrap/preflight/build/launch/collect kit and runbook using [presets](../../CMakePresets.json), [CLI entry](../../src/xrServerCLI/xrDedicatedServer.cpp), [startup](../../src/xrGame/Level_start.cpp), and [server routing](../../src/xrGame/xrServer.cpp). Supply actual commands, expected/manual observations, supported shell/tool versions, paths and a collected baseline report. Record blockers as failing reproductions; do not require the later MP-013 harness or expand this into modernization.
-- **Progress:** the [W0 bootstrap](multiplayer-checkpoints/w0.md) prepares an isolated checkout, stages game data, probes listener failure, and launches a server with two clients. Its timed `Observe` case records firing, death, respawn, disconnect, and reconnect. Windows execution is pending.
+- **Progress:** the [W0 bootstrap](multiplayer-checkpoints/w0.md) prepares an isolated checkout, stages game data, probes listener failure, and launches a server with two clients. Its timed `Observe` case records firing, death, respawn, disconnect, and reconnect. The operator reports a Windows W0 pass. The report and effective runtime rates are pending.
 - [ ] **Complete when:** Windows build/run evidence exists, success or specific blockers are documented, and the original behavior can be reproduced. A successful restored two-client match is required before the phase-1 integration gate, even if baseline discovery itself found failures.
 
 ### MP-002 — Isolate and control multiple engine processes
@@ -118,7 +118,7 @@ MP-013 must document the actual commands for GNS peers and multi-process scenari
 - **Kind / runs / depends:** TDD; `P`; none.
 - **Red:** a minimal test of a real, narrow production value/sequence utility fails behaviorally; intentionally invert its assertion to verify a nonzero process/CTest result. Confirm the standalone configure does not pull in renderer, Lua, engine DLLs, or Windows SDK libraries.
 - **Green / seam:** proposed `src/test/multiplayer/portable` CMake entry and `TestMultiplayerUnit`, CTest registration, and framework choice. Compile the same production sources in this target and the engine; do not duplicate algorithms to get a green Mac build.
-- **Progress:** Mac checks passed / Windows pending at [W0](multiplayer-checkpoints/w0.md). CTest ran the production 32-bit serial comparison in `TestMultiplayerUnit` with dependency-free assertions. The first wraparound case failed under integer ordering. The reviewed suite exposed six wrong results under that ordering and passed all 11 comparisons with modular ordering. The opt-in inverted assertion returned a nonzero CTest exit in Release. The fixtures use literal inputs and require no seed or content pack.
+- **Progress:** Mac checks passed. The optional [W0 Portable](multiplayer-checkpoints/w0.md#additional-checks) report is pending. CTest ran the production 32-bit serial comparison in `TestMultiplayerUnit` with dependency-free assertions. The first wraparound case failed under integer ordering. The reviewed suite exposed six wrong results under that ordering and passed all 11 comparisons with modular ordering. The opt-in inverted assertion returned a nonzero CTest exit in Release. The fixtures use literal inputs and require no seed or content pack.
 - [ ] **Complete when:** a real pass and deliberate failure are demonstrated on Mac and Windows, with test discovery and commands recorded. No engine-to-core dependency reversal is introduced.
 
 ### MP-011 — Supply controllable time, randomness, and event recording
@@ -127,6 +127,18 @@ MP-013 must document the actual commands for GNS peers and multi-process scenari
 - **Red:** advance virtual time across a tick/deadline boundary and assert exact expiry/order; same seed and inputs reproduce an event trace; changing cosmetic random calls does not change weapon simulation. No test waits on actual time.
 - **Green / seam:** narrow injectable clock/random boundaries and a test event recorder used by real production consumers. Keep independent simulation and cosmetic random streams; engine adapters remain thin.
 - [ ] **Complete when:** repeated runs reproduce the same deterministic fixtures, and the test suite detects incorrect boundary ordering without sleeps.
+
+#### MP-011a — Use a monotonic deadline for map synchronization
+
+- **Kind / runs / depends:** TDD; `P` plus a Windows startup smoke check; MP-010.
+- **Design:** start the five-second wait when the map request is sent. Evaluate it after receiving packets, so a reply processed on the same update takes precedence. Demo playback keeps waiting for the recorded reply. Each fresh request gets its own deadline. [Engine adapter](../../src/xrGame/Level_network_map_sync.cpp), [portable policy](../../src/xrGame/Multiplayer/MapSyncWait.h).
+- **Mac checks passed / Windows pending:** `Multiplayer.MapSyncDeadline` failed against the extracted poll-count policy at the exact deadline, after a loading stall, after repeated polls before the deadline and on a fresh request. With explicit monotonic timestamps the boundary, polling, reply-priority, demo and fresh-request cases pass. The fixture uses literal timestamps and requires no seed or content pack. Both portable tests passed on macOS in Debug and Release. Run the focused case with `ctest --test-dir build/mp-portable -R '^Multiplayer.MapSyncDeadline$' --output-on-failure` after the standalone build above. [Tests](../../src/test/multiplayer/portable/MapSyncWaitTests.cpp).
+- [ ] **Complete when:** the [W0 portable runner](multiplayer-checkpoints/w0.md#additional-checks) collects a passing deadline suite on Windows, and a new Windows join smoke run confirms the engine adapter on the same candidate. Both can run with the next Windows checkpoint session.
+
+#### MP-011b — Isolate weapon random input and record deterministic gameplay events
+
+- Existing shot dispersion uses both the shared engine `Random` and C `rand()`. Flash effects also consume `Random`. Start by extracting the spread sampler behind an explicit random input while preserving the legacy adapter. Give authoritative weapon simulation and presentation independently owned streams when their respective call sites are wired. Seed ownership and prediction restore belong with the weapon state in MP-051.
+- Characterize zero dispersion, the sampler's logarithm input bounds and variable draw count. Exercise the production sampler with fixed inputs while interleaving cosmetic draws. Record the ordered results at the simulation boundary with a real consumer and compare the trace across repeated runs. [Legacy spread sampler](../../src/xrGame/WeaponFire.cpp), [flash sampling](../../src/xrGame/ShootingObject.cpp).
 
 ### MP-012 — Add deterministic message delivery and real GNS peer fixtures
 

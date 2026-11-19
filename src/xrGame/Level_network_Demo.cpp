@@ -209,7 +209,7 @@ bool CLevel::LoadPacket		(NET_Packet & dest_packet, u32 global_time_delta)
 	m_reader->r		(&tmp_hdr, sizeof(DemoPacket));
 	m_prev_packet_dtime	= tmp_hdr.m_time_global_delta;
 	
-	if ( map_data.m_sended_map_name_request ? /// ???
+	if ( map_data.MapReplyWait ?
 		(tmp_hdr.m_time_global_delta <= global_time_delta) :
 		(tmp_hdr.m_time_global_delta < global_time_delta))
 	{

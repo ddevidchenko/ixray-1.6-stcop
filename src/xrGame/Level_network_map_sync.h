@@ -1,10 +1,12 @@
 #ifndef LEVEL_NETWORK_MAP_SYNC_H
 #define LEVEL_NETWORK_MAP_SYNC_H
 
+#include "Multiplayer/MapSyncWait.h"
+
+#include <optional>
 
 struct LevelMapSyncData
 {
-	bool						m_sended_map_name_request;
 	bool						m_map_sync_received;
 	bool						m_map_loaded;
 	shared_str					m_name;				//map name that currently loaded
@@ -13,7 +15,7 @@ struct LevelMapSyncData
 	u32							m_level_geom_crc32;
 	
 
-	u32							m_wait_map_time;
+	std::optional<Multiplayer::MapSyncWait> MapReplyWait;
 	
 	//next members changed by level message receiver
 	bool						invalid_geom_checksum;
@@ -21,16 +23,14 @@ struct LevelMapSyncData
 	
 	LevelMapSyncData()
 	{
-		m_sended_map_name_request = false;
 		m_map_sync_received	= false;
 		invalid_map_or_version = false;
 		m_map_loaded = false;
 		invalid_geom_checksum = false;
 		m_level_geom_crc32 = 0;
-		m_wait_map_time = 0;
 	}
 	~LevelMapSyncData() = default;
-	void	CheckToSendMapSync();
+	const Multiplayer::MapSyncWait& CheckToSendMapSync();
 	void	ReceiveServerMapSync(NET_Packet& P);
 	inline bool IsInvalidMapOrVersion()		{ return invalid_map_or_version; }
 	inline bool	IsInvalidClientChecksum()	{ return invalid_geom_checksum; }

@@ -60,6 +60,10 @@ CMake ≥ 3.26, x64, output `build/bin/<Config>/`. Details: [docs/engine/build.m
 
 `IXRAY_USE_R1` and `IXRAY_USE_R2` default on; R4 is added when `IXR_TEST_CI` is true (see `src/CMakeLists.txt`). `IXRAY_UNITYBUILD` defaults on for `xrGame` (batch 32). `IXRAY_MP` adds the dedicated renderer; `xrServer` / `xrServerCLI` / `xrGameSpy` also require `IXR_TEST_CI`. `IXRAY_EDITORS`, `IXRAY_UTILS`, `IXRAY_PLUGINS`, `IXRAY_TESTS` default off. `IXRAY_ASAN` requires a full rebuild. `IXRAY_PROFILER` (Optick) defaults on.
 
+## Windows test runbooks
+
+Check the actual build scripts, effective configuration, and operator-supplied paths before documenting a Windows run. Use the existing checkout and drives, state where results go, and verify the documented command against the runner. Follow the [runbook rules](docs/engine/multiplayer-development-workflow.md#writing-and-checking-a-runbook).
+
 ## Code rules
 
 - Types: `u32`, `xr_vector`, `xr_string`, `xr_string_view`, `xr_hash_map`, `xr_hash_set`, `xr_unique_ptr`, `shared_str`. `#pragma once`. `std::` only when no IXR alias exists, or before `Memory._initialize`.

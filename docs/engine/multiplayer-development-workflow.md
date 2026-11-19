@@ -1,6 +1,6 @@
 # Develop on macOS, validate Windows at milestones
 
-Status: agreed development preference and required Windows test-delivery contract, 19 November 2026. This changes validation scheduling and implementation deliverables, not the Windows runtime requirements. No remote access, CI run, portable MP target or checkpoint script has been configured or executed by this document.
+Status: agreed development preference and required Windows test-delivery contract, 19 November 2026. Check the backlog and individual runbooks for current implementation and validation evidence.
 
 Parent: [multiplayer plan](multiplayer-modernization-plan.md). Tasks and evidence: [TDD backlog](multiplayer-tdd-work-items.md). Technical boundaries: [implementation contracts](multiplayer-implementation-contracts.md).
 
@@ -93,6 +93,14 @@ Reuse a shared script/runner plus small checkpoint definitions; do not create un
 
 W0 needs a minimal bootstrap/preflight/build/launch/collect kit under MP-001/002. It cannot depend on a fully completed MP-013 harness that itself requires baseline evidence. MP-013 evolves that same kit into the shared asserted checkpoint runner; later checkpoints extend it rather than postpone scripts until the release phase.
 
+### Writing and checking a runbook
+
+1. **Check the real build path.** Read the project requirements, the operator’s build scripts when available, and the CMake configuration the runner uses. For a fresh build, check `-G`, the configure preset, and `CMAKE_GENERATOR` before assuming which generator CMake will select. For an existing build, read the generator and options from `CMakeCache.txt`. Name a toolchain or version requirement only when the run path requires it. State feature overrides that matter, such as `IXRAY_MP=ON` for the multiplayer validation build.
+2. **Use the existing Windows workspace.** Run from the operator’s checkout and default to an isolated subdirectory of its configured build root. Use existing drives and ordinary directories. Mapping or mounting a drive, changing a share, or relocating the checkout requires a separate request from the operator. If the documented path fails, capture the actual error and use the runner’s output-root option when an alternate directory is needed.
+3. **Put the main command first.** Give one copy/paste command or block for the main scenario. State the working directory and which machine-local values to replace. Keep diagnostics, reruns, and before-and-after commands separate. Use the runner’s actual options and state which actions the operator must perform.
+4. **Show where evidence goes.** Spell out the output root, the location of the isolated build, and the report and logs to return. Describe expected outcomes, the deadline, and how to stop the run while preserving results. Keep build, automated runtime, and manual observation outcomes distinct.
+5. **Check the example before handoff.** Compare it with the actual runner parameters, defaults, and output layout. Parse the command and exercise the available runner paths with fixtures. Record the exact revision and name the checks that ran. Call Windows build, engine, or gameplay results verified only after those checks run on Windows.
+
 ### Readiness before handoff
 
 Verify script syntax, argument/configuration handling and available runner unit tests before handoff. State any unverified Windows-specific behavior explicitly, especially on the first W0 run; do not claim a script was Windows-tested from Mac inspection alone. A test-only/fixed comparison must use the supplied runner and identical scenario inputs.
@@ -112,7 +120,7 @@ Before asking for a Windows session, supply a checkpoint request containing:
 4. Actual scenario command(s), expected assertions, deadlines and any human observations needed. Do not present a proposed command as already working.
 5. The results directory and a compact return checklist, including known pending checks.
 
-The Windows side runs the delivered checkpoint entry point to synchronize the requested revision, build, run applicable scenarios and write the result bundle. The shared entry point is required work, beginning with MP-001/002 bootstrap and extended in MP-013; no such script is claimed to exist today. The runbook explains any unavoidable manual prerequisite or gameplay action. A runbook alone does not replace scriptable setup/build/launch/collection work.
+The Windows side runs the checkpoint entry point to synchronize the requested revision, build, run applicable scenarios, and write the result bundle. MP-013 extends the shared runner started in MP-001/002. The runbook covers manual prerequisites and gameplay actions. The runner handles scriptable setup, build, launch, and collection.
 
 Use a dedicated validation checkout/worktree. Keep the user's ordinary Windows checkout and unsaved work intact. Check out the requested SHA rather than a moving branch tip; require a clean validation source tree and stop rather than overwrite local edits. Retain incremental build/dependency caches where valid, and keep large game data/generated output local to Windows.
 

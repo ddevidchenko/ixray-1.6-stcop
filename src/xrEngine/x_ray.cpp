@@ -226,12 +226,15 @@ ENGINE_API void EngineLoadStage4()
 
 	// Initialize APP
 	g_FontManager = new CFontManager();
-	bool ValidRenderDeviceInit = Device.InitRenderDevice(Engine.External.GetAPI());
-	R_ASSERT(ValidRenderDeviceInit);
+	if (!g_dedicated_server)
+	{
+		bool ValidRenderDeviceInit = Device.InitRenderDevice(Engine.External.GetAPI());
+		R_ASSERT(ValidRenderDeviceInit);
 
-	Device.Create();
-	g_FontManager->InitializeFonts();
-	pFPSCounter = new XRay::Hardware::FPSCounter();
+		Device.Create();
+		g_FontManager->InitializeFonts();
+		pFPSCounter = new XRay::Hardware::FPSCounter();
+	}
 }
 
 ENGINE_API void EngineLoadStage5()

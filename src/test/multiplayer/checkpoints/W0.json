@@ -24,7 +24,6 @@
     "BaselineRuntime": {
         "workItems": ["MP-001", "MP-002"],
         "configuration": "RelWithDebInfo",
-        "binaryDirectory": "build/x64/Server-Windows/bin/RelWithDebInfo",
         "assetDirectories": ["gamedata", "levels", "resources", "localization", "patches", "mp"],
         "assetCopyTimeoutSeconds": 1800,
         "serverTimeoutSeconds": 120,

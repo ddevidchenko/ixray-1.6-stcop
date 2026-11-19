@@ -14,7 +14,8 @@ param(
     [ValidatePattern('^[a-z0-9_-]{1,63}$')]
     [string] $Map,
     [ValidateSet('Join', 'ListenerFailure', 'Observe')]
-    [string] $RuntimeCase = 'Join'
+    [string] $RuntimeCase = 'Join',
+    [string] $WorkspaceRoot
 )
 
 Set-StrictMode -Version Latest
@@ -110,9 +111,12 @@ $Revision = $Revision.ToLowerInvariant()
 if (!$ResultsRoot) {
     $ResultsRoot = Join-Path $ControllerRoot 'build/test-results/multiplayer'
 }
-$RunId = (Get-Date -AsUTC -Format 'yyyyMMddTHHmmss') + '-' + [guid]::NewGuid().ToString('N').Substring(0, 8)
+if (!$WorkspaceRoot) {
+    $WorkspaceRoot = Join-Path $ControllerRoot 'build/w0'
+}
+$RunSuffix = [guid]::NewGuid().ToString('N').Substring(0, 8)
+$RunId = (Get-Date -AsUTC -Format 'yyyyMMddTHHmmss') + '-' + $RunSuffix
 $Bundle = (New-Item -ItemType Directory -Path (Join-Path $ResultsRoot "$Revision/$RunId/logs") -Force).Parent.FullName
-$Source = (New-Item -ItemType Directory -Path (Join-Path $Bundle 'source')).FullName
 $ReportPath = Join-Path $Bundle 'report.json'
 $Report = [ordered] @{
     checkpoint = 'W0'
@@ -120,6 +124,8 @@ $Report = [ordered] @{
     requestedRevision = $Revision
     actualRevision = $null
     configuration = $null
+    workspaceDirectory = $null
+    buildDirectory = $null
     workItems = @()
     platform = [System.Runtime.InteropServices.RuntimeInformation]::OSDescription
     architecture = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
@@ -136,6 +142,14 @@ try {
     if ($Mode -eq 'Portable') {
         $CTest = (Get-Command ctest -CommandType Application | Select-Object -First 1).Source
     }
+
+    $null = New-Item -ItemType Directory -Path $WorkspaceRoot -Force
+    $Workspace = (New-Item -ItemType Directory -Path (Join-Path $WorkspaceRoot $RunSuffix)).FullName
+    $Report.workspaceDirectory = $Workspace
+    $Source = (New-Item -ItemType Directory -Path (Join-Path $Workspace 's')).FullName
+    $Build = Join-Path $Workspace 'b'
+    $Report.buildDirectory = $Build
+    Write-Host "W0 workspace $Workspace"
 
     $GitDeadline = 900
     $null = Invoke-CheckpointStep 'init' $Git @('init', '--quiet', '--template=') $Source 30
@@ -164,22 +178,21 @@ try {
         if ($Mode -eq 'BaselineRuntime') {
             . (Join-Path $PSScriptRoot 'W0Evidence.ps1')
             . (Join-Path $PSScriptRoot 'W0Runtime.ps1')
-            $RuntimeRoot = Initialize-W0Runtime $GameDataRoot $Map $Config
+            $RuntimeRoot = Initialize-W0Runtime $GameDataRoot $Map $Config $Workspace
         }
-        $Build = Join-Path $Source 'build/x64/Server-Windows'
         $Configure = @('-S', $Source, '-B', $Build, '-A', 'x64', '-DIXRAY_MP=ON', '-DIXRAY_MP_SQL=OFF')
         $null = Invoke-CheckpointStep 'configure' $CMake $Configure $Source $EngineBuild.configureTimeoutSeconds
         $BuildArguments = @('--build', $Build, '--config', $EngineBuild.configuration, '--parallel', '--target') + $EngineBuild.targets
         $null = Invoke-CheckpointStep 'build' $CMake $BuildArguments $Source $EngineBuild.buildTimeoutSeconds
         if ($Mode -eq 'BaselineRuntime') {
-            $Report.status = Invoke-W0Runtime $RuntimeRoot $Map $Config $RuntimeCase
+            $BinaryDirectory = Join-Path $Build "bin/$($EngineBuild.configuration)"
+            $Report.status = Invoke-W0Runtime $RuntimeRoot $Map $Config $RuntimeCase $BinaryDirectory
         }
         else {
             $Report.status = 'build_passed'
         }
     }
     else {
-        $Build = Join-Path $Bundle 'portable-build'
         $Configure = @('-S', $Config.sourceDirectory, '-B', $Build, '-DIXRAY_MULTIPLAYER_VERIFY_TEST_FAILURE=ON', "-DCMAKE_BUILD_TYPE=$($Config.configuration)")
         if ($Config.architecture) {
             $Configure += @('-A', $Config.architecture)

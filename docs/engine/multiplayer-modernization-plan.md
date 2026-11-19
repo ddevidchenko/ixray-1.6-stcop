@@ -272,7 +272,7 @@ The Mac can remain the primary editing/review machine. Do not make a native Mac 
 
 ### First Windows build
 
-Use the W0 runner from the Windows checkout. It lets CMake choose the x64 generator and builds `xrEngine` and `xrServerCLI` with `IXRAY_MP=ON` and `IXRAY_MP_SQL=OFF`. The binaries are under `build/x64/Server-Windows/bin/RelWithDebInfo/` inside the isolated validation checkout. [W0 runbook](multiplayer-checkpoints/w0.md)
+Use the W0 runner from the Windows checkout. It lets CMake choose the x64 generator and builds `xrEngine` and `xrServerCLI` with `IXRAY_MP=ON` and `IXRAY_MP_SQL=OFF`. The binaries are under `bin/RelWithDebInfo/` in the `buildDirectory` recorded in the report. [W0 runbook](multiplayer-checkpoints/w0.md)
 
 Initial runtime tasks:
 

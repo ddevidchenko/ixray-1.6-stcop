@@ -1,5 +1,5 @@
 function Initialize-W0Runtime {
-    param([string] $GameDataRoot, [string] $Map, $Config)
+    param([string] $GameDataRoot, [string] $Map, $Config, [string] $Workspace)
 
     if (!$IsWindows -or ![Environment]::UserInteractive) { throw 'W0 runtime requires an interactive Windows desktop.' }
     if ($RuntimeCase -eq 'Observe' -and [Console]::IsInputRedirected) { throw 'Run W0 Observe from a PowerShell terminal with keyboard input.' }
@@ -13,6 +13,9 @@ function Initialize-W0Runtime {
     if ($Bundle.StartsWith($InstallPrefix, [StringComparison]::OrdinalIgnoreCase)) {
         throw 'Use a results root outside the game-data installation.'
     }
+    if ($Workspace.StartsWith($InstallPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Use a workspace root outside the game-data installation.'
+    }
     $Report.runtime = [ordered] @{ case = $RuntimeCase; map = $Map; inputFiles = @(); port = $null; processes = @(); readyPeers = @(); startupPassed = $false; stage = 'asset preflight'; timedOut = $false }
 
     $MapDirectory = Join-Path $Install "gamedata/levels/$Map"
@@ -23,7 +26,7 @@ function Initialize-W0Runtime {
         if (!$MapFiles.Count) { throw "Missing fixture for $Map. Supply a loose level or a map-named archive in mp/." }
     }
 
-    $Runtime = (New-Item -ItemType Directory -Path (Join-Path $Bundle 'runtime')).FullName
+    $Runtime = (New-Item -ItemType Directory -Path (Join-Path $Workspace 'runtime')).FullName
     $Robocopy = (Get-Command robocopy -CommandType Application | Select-Object -First 1).Source
     $CopyFlags = @('/XJ', '/R:0', '/W:0', '/NFL', '/NDL', '/NP')
     foreach ($Directory in $Config.assetDirectories) {
@@ -183,9 +186,8 @@ function Invoke-W0Observation {
 }
 
 function Invoke-W0Runtime {
-    param([string] $Runtime, [string] $Map, $Config, [string] $Case)
+    param([string] $Runtime, [string] $Map, $Config, [string] $Case, [string] $BinaryDirectory)
 
-    $BinaryDirectory = Join-Path $Source $Config.binaryDirectory
     $ServerExecutable = Join-Path $BinaryDirectory 'xrServerCLI.exe'
     $ClientExecutable = Join-Path $BinaryDirectory 'xrEngine.exe'
     $Children = @()

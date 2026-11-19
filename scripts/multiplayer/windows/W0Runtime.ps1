@@ -3,8 +3,15 @@ function Initialize-W0Runtime {
 
     if (!$IsWindows -or ![Environment]::UserInteractive) { throw 'W0 runtime requires an interactive Windows desktop.' }
     if (!$GameDataRoot -or !$Map) { throw 'Specify -GameDataRoot and -Map for W0 runtime.' }
-    $Install = (Get-Item -LiteralPath $GameDataRoot).FullName
-    $Runtime = (New-Item -ItemType Directory -Path (Join-Path $Bundle 'runtime')).FullName
+    $InstallItem = Get-Item -LiteralPath $GameDataRoot
+    if (!$InstallItem.PSIsContainer -or ($InstallItem.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+        throw 'Use a physical game-data directory for -GameDataRoot.'
+    }
+    $Install = $InstallItem.FullName
+    $InstallPrefix = [IO.Path]::TrimEndingDirectorySeparator($Install) + [IO.Path]::DirectorySeparatorChar
+    if ($Bundle.StartsWith($InstallPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Use a results root outside the game-data installation.'
+    }
     $Report.runtime = [ordered] @{ case = $RuntimeCase; map = $Map; inputFiles = @(); port = $null; processes = @(); readyPeers = @(); stage = 'asset preflight'; timedOut = $false }
 
     $MapDirectory = Join-Path $Install "gamedata/levels/$Map"
@@ -15,6 +22,7 @@ function Initialize-W0Runtime {
         if (!$MapFiles.Count) { throw "Missing fixture for $Map. Supply a loose level or a map-named archive in mp/." }
     }
 
+    $Runtime = (New-Item -ItemType Directory -Path (Join-Path $Bundle 'runtime')).FullName
     $Robocopy = (Get-Command robocopy -CommandType Application | Select-Object -First 1).Source
     $CopyFlags = @('/XJ', '/R:0', '/W:0', '/NFL', '/NDL', '/NP')
     foreach ($Directory in $Config.assetDirectories) {
@@ -40,7 +48,15 @@ function Initialize-W0Runtime {
 function Get-W0Log {
     param([string] $Path)
 
-    try { return [IO.File]::ReadAllText($Path) }
+    try {
+        $File = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+        try {
+            $Reader = [IO.StreamReader]::new($File)
+            try { return $Reader.ReadToEnd() }
+            finally { $Reader.Dispose() }
+        }
+        finally { $File.Dispose() }
+    }
     catch [IO.IOException] { return '' }
 }
 
@@ -52,14 +68,29 @@ function Get-W0EngineLog {
 }
 
 function Start-W0Process {
-    param([string] $Name, [string] $Program, [string[]] $Arguments, [string] $Runtime)
+    param([string] $Name, [string] $Program, [string[]] $Arguments, [string] $Runtime, [string[]] $UserSettings)
 
     $Root = "w0-$Name"
     $Stdout = "logs/$Name.stdout.log"
     $Stderr = "logs/$Name.stderr.log"
     $Command = @('-overlaypath', $Root, '-nosound') + $Arguments
     $null = New-Item -ItemType Directory -Path (Join-Path $Runtime $Root)
-    $Process = Start-Process -FilePath $Program -WorkingDirectory $Runtime -ArgumentList $Command -NoNewWindow -PassThru -RedirectStandardOutput (Join-Path $Bundle $Stdout) -RedirectStandardError (Join-Path $Bundle $Stderr)
+    if ($UserSettings) {
+        Set-Content -LiteralPath (Join-Path $Runtime "$Root/user.ltx") -Value $UserSettings -Encoding ascii
+    }
+    $InputFile = Join-Path $Runtime "$Root/stdin.txt"
+    $null = New-Item -ItemType File -Path $InputFile
+    $Launch = @{
+        FilePath = $Program
+        WorkingDirectory = $Runtime
+        ArgumentList = $Command
+        NoNewWindow = $true
+        PassThru = $true
+        RedirectStandardInput = $InputFile
+        RedirectStandardOutput = Join-Path $Bundle $Stdout
+        RedirectStandardError = Join-Path $Bundle $Stderr
+    }
+    $Process = Start-Process @Launch
     $Entry = [ordered] @{ name = $Name; pid = $Process.Id; arguments = $Command; stdout = $Stdout; stderr = $Stderr; engineLog = $null; exitCode = $null; stoppedByRunner = $false }
     $Report.runtime.processes += $Entry
     return [pscustomobject] @{ process = $Process; entry = $Entry; root = $Root }
@@ -103,7 +134,10 @@ function Invoke-W0Runtime {
 
         if ($Case -eq 'ListenerFailure') {
             Wait-W0Evidence 'propagated listener failure on redirected stdout' $Config.serverTimeoutSeconds {
-                Test-W0ListenerFailure (Get-W0Log $ServerOutput) $Port
+                $Outcome = Get-W0ListenerOutcome (Get-W0Log $ServerOutput) $Port
+                if ($Outcome -eq 'continued') { throw 'The internal client attempted to connect after the listener failed.' }
+                if ($Outcome -eq 'ready') { throw 'The server reached DM readiness while the fixture held its port.' }
+                $Outcome -eq 'failed'
             } $Children
             return 'listener_failure_observed'
         }
@@ -115,7 +149,7 @@ function Invoke-W0Runtime {
         } $Children
 
         foreach ($Index in 1..2) {
-            $Children += Start-W0Process "client-$Index" $ClientExecutable @('-r2', '-start', "client(127.0.0.1/port=$Port/name=W0Client$Index)") $Runtime
+            $Children += Start-W0Process "client-$Index" $ClientExecutable @('-r2', '-start', "client(127.0.0.1/port=$Port/name=W0Client$Index)") $Runtime @('rs_fullscreen 0')
         }
         $Clients = $Children[1..2]
         Wait-W0Evidence 'two distinct remote DM peers' $Config.clientTimeoutSeconds {

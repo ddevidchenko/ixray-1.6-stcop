@@ -13,11 +13,14 @@ function Assert-Result {
 
 $BindFailure = '[SteamNetServer] Failed to listen on port 5446'
 $StartupFailure = 'Failed to start server.'
-Assert-Result (!(Test-W0ListenerFailure $BindFailure 5446)) 'A low-level bind error needs a propagated startup failure.'
-Assert-Result (Test-W0ListenerFailure "$BindFailure`n$StartupFailure" 5446) 'An ordered bind and startup failure is the intended regression outcome.'
-Assert-Result (!(Test-W0ListenerFailure "$StartupFailure`n$BindFailure" 5446)) 'A prior startup failure does not explain a later bind failure.'
-Assert-Result (!(Test-W0ListenerFailure "${BindFailure}0`n$StartupFailure" 5446)) 'A port prefix is insufficient.'
-Assert-Result (!(Test-W0ListenerFailure "$BindFailure`n$StartupFailure`nDM ready: role=server peer=1 pid=21" 5446)) 'A ready server contradicts the failed startup.'
+Assert-Result ((Get-W0ListenerOutcome $BindFailure 5446) -ceq 'pending') 'A low-level bind error needs a propagated startup failure.'
+Assert-Result ((Get-W0ListenerOutcome "$BindFailure`n$StartupFailure" 5446) -ceq 'failed') 'An ordered bind and startup failure is the intended regression outcome.'
+Assert-Result ((Get-W0ListenerOutcome "$StartupFailure`n$BindFailure" 5446) -ceq 'pending') 'A prior startup failure does not explain a later bind failure.'
+Assert-Result ((Get-W0ListenerOutcome "${BindFailure}0`n$StartupFailure" 5446) -ceq 'pending') 'A port prefix is insufficient.'
+Assert-Result ((Get-W0ListenerOutcome "$BindFailure`n$StartupFailure`nDM ready: role=server peer=1 pid=21" 5446) -ceq 'ready') 'A ready server contradicts the failed startup.'
+$InternalJoin = '[SteamNetClient] Connecting to server at 127.0.0.1:5446'
+Assert-Result ((Get-W0ListenerOutcome "$BindFailure`n$InternalJoin" 5446) -ceq 'continued') 'An internal client attempt after the bind error demonstrates continued startup.'
+Assert-Result ((Get-W0ListenerOutcome "$InternalJoin`n$BindFailure" 5446) -ceq 'pending') 'Only an internal client attempt after the failed bind is evidence of continued startup.'
 
 $TransportOnly = "[SteamNetClient] Connected to server`n[SteamNetServer] server client connected"
 Assert-Result (@(Get-W0ReadyPeers $TransportOnly).Count -eq 0) 'Transport connections do not establish DM readiness.'

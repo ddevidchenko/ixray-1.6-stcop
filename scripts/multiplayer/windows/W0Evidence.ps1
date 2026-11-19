@@ -1,16 +1,19 @@
-function Test-W0ListenerFailure {
+function Get-W0ListenerOutcome {
     param([string] $Output, [int] $Port)
 
-    if (@(Get-W0ReadyPeers $Output).Count -ne 0) { return $false }
+    if (@(Get-W0ReadyPeers $Output).Count -ne 0) { return 'ready' }
 
     $BindFailed = $false
     foreach ($Line in ($Output -split '\r?\n')) {
         if ($Line -ceq "[SteamNetServer] Failed to listen on port $Port") {
             $BindFailed = $true
         }
-        if ($BindFailed -and $Line -ceq 'Failed to start server.') { return $true }
+        if ($BindFailed -and $Line -ceq 'Failed to start server.') { return 'failed' }
+        if ($BindFailed -and $Line.StartsWith('[SteamNetClient] Connecting to server at ', [StringComparison]::Ordinal)) {
+            return 'continued'
+        }
     }
-    return $false
+    return 'pending'
 }
 
 function Get-W0ReadyPeers {

@@ -24,7 +24,7 @@ class XRNETSERVER_API SteamNetServer : public BaseServer
 private:
 	ISteamNetworkingSockets*      m_pInterface = nullptr;
 	HSteamListenSocket            m_hListenSock = k_HSteamListenSocket_Invalid;
-	HSteamNetPollGroup            m_hPollGroup = k_HSteamListenSocket_Invalid;
+	HSteamNetPollGroup            m_hPollGroup = k_HSteamNetPollGroup_Invalid;
 
 	xrCriticalSection             csConnection;
 	xr_string                     m_server_password;

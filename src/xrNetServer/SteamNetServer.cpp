@@ -73,6 +73,7 @@ bool SteamNetServer::CreateConnection(GameDescriptionData & game_descr, ServerCo
 	if (m_pInterface == NULL)
 	{
 		Msg("! [SteamNetServer] Server interface is NULL");
+		GameNetworkingSockets_Kill();
 		return false;
 	}
 
@@ -80,8 +81,6 @@ bool SteamNetServer::CreateConnection(GameDescriptionData & game_descr, ServerCo
 	SteamNetworkingIPAddr bindServerAddress;
 	bindServerAddress.Clear();
 	bindServerAddress.m_port = (uint16)connectOpt.dwServerPort;
-
-	psNET_Port = connectOpt.dwServerPort;
 
 	// SET UPPER LIMIT OF BUFFERED PENDING BYTES TO BE SENT
 	SteamNetworkingUtils()->SetGlobalConfigValueInt32(k_ESteamNetworkingConfig_SendBufferSize, 1024 * 1024);	
@@ -96,6 +95,7 @@ bool SteamNetServer::CreateConnection(GameDescriptionData & game_descr, ServerCo
 	if (m_hListenSock == k_HSteamListenSocket_Invalid)
 	{
 		Msg("! [SteamNetServer] Failed to listen on port %d", bindServerAddress.m_port);
+		DestroyConnection();
 		return false;
 	}
 
@@ -103,6 +103,7 @@ bool SteamNetServer::CreateConnection(GameDescriptionData & game_descr, ServerCo
 	if (m_hPollGroup == k_HSteamNetPollGroup_Invalid)
 	{
 		Msg("! [SteamNetServer] Failed to create poll group");
+		DestroyConnection();
 		return false;
 	}
 
@@ -111,6 +112,7 @@ bool SteamNetServer::CreateConnection(GameDescriptionData & game_descr, ServerCo
 
 	m_server_password = connectOpt.server_pass;
 	m_max_players = (m_bDedicated) ? (connectOpt.dwMaxPlayers + 1) : (connectOpt.dwMaxPlayers);
+	psNET_Port = connectOpt.dwServerPort;
 
 	Msg("- [SteamNetServer] created on port %d", bindServerAddress.m_port);
 	thread_spawn(steam_net_update_server, "snetwork-update-server", 0, this);
@@ -138,10 +140,10 @@ void SteamNetServer::DestroyConnection()
 		m_hListenSock = k_HSteamListenSocket_Invalid;
 	}
 
-	if (m_hPollGroup != k_HSteamListenSocket_Invalid)
+	if (m_hPollGroup != k_HSteamNetPollGroup_Invalid)
 	{
 		m_pInterface->DestroyPollGroup(m_hPollGroup);
-		m_hPollGroup = k_HSteamListenSocket_Invalid;
+		m_hPollGroup = k_HSteamNetPollGroup_Invalid;
 	}
 
 	m_pInterface = nullptr;

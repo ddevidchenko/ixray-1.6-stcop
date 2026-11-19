@@ -137,13 +137,13 @@ BaseServer::EConnect BaseServer::Connect(const char* options, GameDescriptionDat
 
 	if (!psNET_direct_connect)
 	{
-		bool success = CreateConnection(game_descr, connectOpt);
-		if (!success)
+		if (!CreateConnection(game_descr, connectOpt))
 		{
-			return ErrNoError;
+			return ErrConnect;
 		}
 		BannedList_Load();
 		IpList_Load();
+		NetworkSessionStarted = true;
 	}
 #ifndef XR_MP_BUILD
 	else
@@ -159,8 +159,9 @@ void BaseServer::Disconnect()
 {
 	DestroyConnection();
 
-	if (!psNET_direct_connect)
+	if (NetworkSessionStarted)
 	{
+		NetworkSessionStarted = false;
 		BannedList_Save();
 		IpList_Unload();
 	}

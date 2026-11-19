@@ -1732,6 +1732,11 @@ void game_sv_Deathmatch::OnPlayerConnect(ClientID id_who)
 		xrCData->ps->net_Export		(P, true);
 		u_EventSend					(P);
 		xrCData->net_Ready			= true;
+		if (g_dedicated_server && Type() == eGameIDDeathmatch)
+		{
+			const char* Role = xrCData == m_server->GetServerClient() ? "server" : "remote";
+			Msg("DM ready: role=%s peer=%u pid=%u", Role, id_who.value(), xrCData->process_id);
+		}
 	};
 	Send_Anomaly_States				(id_who);
 };

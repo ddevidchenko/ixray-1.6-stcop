@@ -18,7 +18,6 @@ namespace DedicatedConsoleInput
 		xrCriticalSection g_consoleOutputMutex;
 		xr_string g_consoleInputBuffer;
 		HANDLE g_consoleStdIn = INVALID_HANDLE_VALUE;
-		HANDLE g_consoleStdOut = INVALID_HANDLE_VALUE;
 		DWORD g_consoleOriginalInputMode = 0;
 
 		class ThreadActivityGuard final
@@ -75,10 +74,8 @@ namespace DedicatedConsoleInput
 
 		void RenderConsoleInputLine()
 		{
-			if (!g_consoleInputThreadRunning.load())
-				return;
-
-			if (g_consoleStdOut == INVALID_HANDLE_VALUE)
+			DWORD InputMode = 0;
+			if (!g_consoleInputThreadRunning.load() || !GetConsoleMode(GetStdHandle(STD_INPUT_HANDLE), &InputMode))
 				return;
 
 			xr_string currentBuffer;
@@ -87,8 +84,10 @@ namespace DedicatedConsoleInput
 				currentBuffer = g_consoleInputBuffer;
 			}
 
+			const HANDLE Output = GetStdHandle(STD_OUTPUT_HANDLE);
+			xrCriticalSectionGuard outputLock(&g_consoleOutputMutex);
 			CONSOLE_SCREEN_BUFFER_INFO info = {};
-			if (!GetConsoleScreenBufferInfo(g_consoleStdOut, &info))
+			if (!GetConsoleScreenBufferInfo(Output, &info))
 				return;
 
 			const xr_string prompt = ">>> ";
@@ -97,14 +96,12 @@ namespace DedicatedConsoleInput
 			const DWORD consoleWidth = info.dwSize.X;
 			const int displayLength = static_cast<int>(wideLine.size());
 
-			xrCriticalSectionGuard outputLock(&g_consoleOutputMutex);
-
 			COORD basePosition = info.dwCursorPosition;
 			basePosition.X = 0;
 
 			DWORD written = 0;
 			if (!wideLine.empty())
-				WriteConsoleOutputCharacterW(g_consoleStdOut, wideLine.data(), static_cast<DWORD>(wideLine.size()), basePosition, &written);
+				WriteConsoleOutputCharacterW(Output, wideLine.data(), static_cast<DWORD>(wideLine.size()), basePosition, &written);
 
 			if (consoleWidth > static_cast<DWORD>(displayLength))
 			{
@@ -114,7 +111,7 @@ namespace DedicatedConsoleInput
 					std::wstring spaces(static_cast<size_t>(spacesCount), L' ');
 					COORD clearPos = basePosition;
 					clearPos.X = static_cast<SHORT>(displayLength);
-					WriteConsoleOutputCharacterW(g_consoleStdOut, spaces.c_str(), spacesCount, clearPos, &written);
+					WriteConsoleOutputCharacterW(Output, spaces.c_str(), spacesCount, clearPos, &written);
 				}
 			}
 
@@ -124,7 +121,37 @@ namespace DedicatedConsoleInput
 			else
 				cursorPosition.X = 0;
 
-			SetConsoleCursorPosition(g_consoleStdOut, cursorPosition);
+			SetConsoleCursorPosition(Output, cursorPosition);
+		}
+
+		bool TryWriteConsoleLogLine(const xr_string& Text, bool AppendNewLine)
+		{
+			const HANDLE Output = GetStdHandle(STD_OUTPUT_HANDLE);
+			xrCriticalSectionGuard OutputLock(&g_consoleOutputMutex);
+			CONSOLE_SCREEN_BUFFER_INFO Info = {};
+			if (!GetConsoleScreenBufferInfo(Output, &Info))
+			{
+				return false;
+			}
+
+			const COORD LineStart = {0, Info.dwCursorPosition.Y};
+			DWORD Written = 0;
+			if (Info.dwSize.X > 0)
+			{
+				FillConsoleOutputCharacterW(Output, L' ', Info.dwSize.X, LineStart, &Written);
+			}
+			SetConsoleCursorPosition(Output, LineStart);
+
+			const auto WideText = Utf8ToWide(Text);
+			if (!WideText.empty())
+			{
+				WriteConsoleW(Output, WideText.data(), static_cast<DWORD>(WideText.size()), &Written, nullptr);
+			}
+			if (AppendNewLine)
+			{
+				WriteConsoleW(Output, L"\n", 1, &Written, nullptr);
+			}
+			return true;
 		}
 
 		void AppendToInputBuffer(const xr_string& text)
@@ -212,11 +239,8 @@ namespace DedicatedConsoleInput
 #if defined(IXR_WINDOWS)
 			ThreadActivityGuard activityGuard(g_consoleInputThreadActive);
 			g_consoleStdIn = GetStdHandle(STD_INPUT_HANDLE);
-			g_consoleStdOut = GetStdHandle(STD_OUTPUT_HANDLE);
 
-			if (g_consoleStdIn != INVALID_HANDLE_VALUE &&
-				g_consoleStdOut != INVALID_HANDLE_VALUE &&
-				GetConsoleMode(g_consoleStdIn, &g_consoleOriginalInputMode))
+			if (GetConsoleMode(g_consoleStdIn, &g_consoleOriginalInputMode))
 			{
 				DWORD consoleMode = g_consoleOriginalInputMode;
 				consoleMode |= ENABLE_EXTENDED_FLAGS;
@@ -276,8 +300,13 @@ namespace DedicatedConsoleInput
 
 						{
 							xrCriticalSectionGuard outputLock(&g_consoleOutputMutex);
-							DWORD written = 0;
-							WriteConsoleW(g_consoleStdOut, L"\n", 1, &written, nullptr);
+							const HANDLE Output = GetStdHandle(STD_OUTPUT_HANDLE);
+							CONSOLE_SCREEN_BUFFER_INFO Info = {};
+							if (GetConsoleScreenBufferInfo(Output, &Info))
+							{
+								DWORD Written = 0;
+								WriteConsoleW(Output, L"\n", 1, &Written, nullptr);
+							}
 						}
 
 						RenderConsoleInputLine();
@@ -311,7 +340,6 @@ namespace DedicatedConsoleInput
 			}
 
 			g_consoleStdIn = INVALID_HANDLE_VALUE;
-			g_consoleStdOut = INVALID_HANDLE_VALUE;
 #endif // defined(IXR_WINDOWS)
 
 			xr_string line;
@@ -394,7 +422,6 @@ namespace DedicatedConsoleInput
 			g_consoleStdIn = INVALID_HANDLE_VALUE;
 		}
 
-		g_consoleStdOut = INVALID_HANDLE_VALUE;
 		{
 			xrCriticalSectionGuard lock(&g_consoleInputStateMutex);
 			g_consoleInputBuffer.clear();
@@ -408,44 +435,10 @@ namespace DedicatedConsoleInput
 
 	void HandleLogLine(const xr_string& utf8Text, u32 originalLength)
 	{
+		const bool AppendNewLine = originalLength == 0 || utf8Text.empty() || utf8Text.back() != '\n';
 #if defined(IXR_WINDOWS)
-		if (g_consoleStdOut != INVALID_HANDLE_VALUE)
+		if (TryWriteConsoleLogLine(utf8Text, AppendNewLine))
 		{
-			{
-				xrCriticalSectionGuard outputLock(&g_consoleOutputMutex);
-				CONSOLE_SCREEN_BUFFER_INFO info = {};
-				if (GetConsoleScreenBufferInfo(g_consoleStdOut, &info))
-				{
-					COORD lineStart = info.dwCursorPosition;
-					lineStart.X = 0;
-					SetConsoleCursorPosition(g_consoleStdOut, lineStart);
-
-					DWORD consoleWidth = info.dwSize.X;
-					if (consoleWidth > 0)
-					{
-						xr_vector<wchar_t> blank(static_cast<size_t>(consoleWidth), L' ');
-						if (!blank.empty())
-						{
-							DWORD cleared = 0;
-							WriteConsoleW(g_consoleStdOut, blank.data(), consoleWidth, &cleared, nullptr);
-						}
-					}
-
-					SetConsoleCursorPosition(g_consoleStdOut, lineStart);
-				}
-
-				DWORD written = 0;
-				if (!utf8Text.empty())
-				{
-					const xr_vector<wchar_t> wideText = Utf8ToWide(utf8Text);
-					if (!wideText.empty())
-						WriteConsoleW(g_consoleStdOut, wideText.data(), static_cast<DWORD>(wideText.size()), &written, nullptr);
-				}
-
-				if (originalLength == 0 || utf8Text.empty() || utf8Text.back() != '\n')
-					WriteConsoleW(g_consoleStdOut, L"\n", 1, &written, nullptr);
-			}
-
 			RenderConsoleInputLine();
 			return;
 		}
@@ -454,13 +447,9 @@ namespace DedicatedConsoleInput
 		if (!utf8Text.empty())
 			std::fputs(utf8Text.c_str(), stdout);
 
-		if (originalLength == 0 || utf8Text.empty() || utf8Text.back() != '\n')
+		if (AppendNewLine)
 			std::fputc('\n', stdout);
 
 		std::fflush(stdout);
-
-#if defined(IXR_WINDOWS)
-		RenderConsoleInputLine();
-#endif
 	}
 } // namespace DedicatedConsoleInput

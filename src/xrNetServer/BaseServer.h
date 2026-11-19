@@ -73,6 +73,7 @@ public:
 	};
 
 private:
+	bool NetworkSessionStarted = false;
 #ifdef DEBUG
 	bool					sender_functor_invoked;
 #endif

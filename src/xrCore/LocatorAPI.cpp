@@ -727,6 +727,39 @@ IReader *CLocatorAPI::setup_fs_ltx	(const char* fs_name)
 	return			(result);
 }
 
+static void ReadAppDataRootOverride(string_path& Root)
+{
+	if (!Core.ParamsData.test(ECoreParams::overlaypath))
+	{
+		return;
+	}
+
+	constexpr char Option[] = "-overlaypath ";
+	const char* Argument = strstr(Core.Params, Option);
+	if (Argument)
+	{
+		Argument += sizeof(Option) - 1;
+		Argument += strspn(Argument, " \t");
+		const bool Quoted = *Argument == '"';
+		if (Quoted)
+		{
+			++Argument;
+		}
+		const char* End = Quoted ? strchr(Argument, '"') : Argument + strcspn(Argument, " \t\r\n");
+		if (End && End != Argument && (Quoted || *Argument != '-'))
+		{
+			const xr_string_view Path(Argument, static_cast<size_t>(End - Argument));
+			if (Path.size() < sizeof(Root) - 1)
+			{
+				Path.copy(Root, Path.size());
+				Root[Path.size()] = '\0';
+				return;
+			}
+		}
+	}
+	Msg("! Missing or invalid directory for -overlaypath");
+}
+
 void CLocatorAPI::_initialize(u32 flags, const char* target_folder, const char* fs_name)
 {	
 	char _delimiter = '|'; //','
@@ -741,6 +774,7 @@ void CLocatorAPI::_initialize(u32 flags, const char* target_folder, const char* 
 	// scan root directory
 	bNoRecurse = true;
 	string4096		buf;
+	string_path AppDataRootOverride = {};
 
 	// Load ignore list
 	ParseIgnoreList();
@@ -760,6 +794,7 @@ void CLocatorAPI::_initialize(u32 flags, const char* target_folder, const char* 
 	else
 	{
 		IReader* pFSltx = setup_fs_ltx(fs_name);
+		ReadAppDataRootOverride(AppDataRootOverride);
 		// append all pathes    
 		string_path		id, root, add, def, capt;
 		const char*			lp_add, *lp_def, *lp_capt;
@@ -807,12 +842,22 @@ void CLocatorAPI::_initialize(u32 flags, const char* target_folder, const char* 
 			lp_capt = (cnt >= 6) ? capt : nullptr;
 
 			PathPairIt p_it = pathes.find(root);
+			const char* ResolvedRoot = (p_it != pathes.end()) ? p_it->second->m_Path : root;
+			if (AppDataRootOverride[0] && xr_strcmp(id, "$app_data_root$") == 0)
+			{
+				ResolvedRoot = AppDataRootOverride;
+				lp_add = nullptr;
+			}
 
 			std::pair<PathPairIt, bool> I;
-			FS_Path* P = new FS_Path((p_it != pathes.end()) ? p_it->second->m_Path : root, lp_add, lp_def, lp_capt, fl);
+			FS_Path* P = new FS_Path(ResolvedRoot, lp_add, lp_def, lp_capt, fl);
 			bNoRecurse = !(fl & FS_Path::flRecurse);
 			Recurse(P->m_Path);
 			I = pathes.insert(std::make_pair(xr_strdup(id), P));
+			if (AppDataRootOverride[0])
+			{
+				Msg("FS alias %s = %s", id, P->m_Path);
+			}
 #ifndef DEBUG
 			m_Flags.set(flCacheFiles, false);
 #endif // DEBUG
@@ -838,29 +883,6 @@ void CLocatorAPI::_initialize(u32 flags, const char* target_folder, const char* 
 
 	Msg("Init FileSystem %f sec", t.GetElapsed_sec());
 	//-----------------------------------------------------------
-	if (Core.ParamsData.test(ECoreParams::overlaypath))
-	{
-		string1024				c_newAppPathRoot = {};
-		const char* Argument = strstr(Core.Params, "-overlaypath ");
-		if (Argument && sscanf(Argument + sizeof("-overlaypath ") - 1, "%1023s", c_newAppPathRoot) == 1 && c_newAppPathRoot[0] != '-')
-		{
-			if (FS_Path* LogsPath = FS.get_path("$logs$"))
-			{
-				LogsPath->_set_root(c_newAppPathRoot);
-			}
-			if (FS_Path* AppDataPath = FS.get_path("$app_data_root$"))
-			{
-				GetScannedDirsBuffer()->clear();
-				AppDataPath->_set_root(c_newAppPathRoot);
-				rescan_path(AppDataPath->m_Path, AppDataPath->m_Flags.is(FS_Path::flRecurse));
-			}
-		}
-		else
-		{
-			Msg("! Missing directory for -overlaypath");
-		}
-	}
-
 	GetScanCacheBuffer().reset();
 	GetScannedDirsBuffer().reset();
 	rec_files.clear();
@@ -869,6 +891,10 @@ void CLocatorAPI::_initialize(u32 flags, const char* target_folder, const char* 
 	if (!Core.ParamsData.test(ECoreParams::nolog))
 	{
 		xrLogger::OpenLogFile();
+		if (AppDataRootOverride[0])
+		{
+			xrLogger::FlushLog();
+		}
 	}
 }
 

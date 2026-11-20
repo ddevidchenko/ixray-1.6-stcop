@@ -12,6 +12,7 @@
 #include "graph_engine.h"
 #include "ef_storage.h"
 #include "ai_space.h"
+#include "Multiplayer/ArenaLadderNavigation.h"
 #include "console_registrator.h"
 #include "cover_manager.h"
 #include "cover_point.h"
@@ -131,7 +132,7 @@ bool CAI_Space::load				(const char* level_name)
 	return true;
 }
 
-bool CAI_Space::LoadArenaNavigation()
+bool CAI_Space::LoadArenaNavigation(bool LoadLadders)
 {
 	if (Device.IsEditorMode() || m_game_graph || m_alife_simulator)
 	{
@@ -142,7 +143,18 @@ bool CAI_Space::LoadArenaNavigation()
 	{
 		return false;
 	}
+	xr_unique_ptr<Multiplayer::ArenaLadderNavigation> Ladders;
+	if (LoadLadders)
+	{
+		Ladders.reset(new Multiplayer::ArenaLadderNavigation(*Grid, ArenaGeneration + 1));
+		if (!Ladders->Load())
+		{
+			return false;
+		}
+	}
 	unload();
+	++ArenaGeneration;
+	ArenaLadders = std::move(Ladders);
 	m_level_graph = Grid.release();
 	ArenaNavigation = true;
 	StartLevelNavigation();
@@ -161,6 +173,7 @@ void CAI_Space::StartLevelNavigation()
 void CAI_Space::unload				(bool reload)
 {
 	ArenaNavigation = false;
+	ArenaLadders.reset();
 	script_engine().unload	();
 
 	xr_delete				(m_doors_manager);

@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include "Multiplayer/ArenaLadderNavigation.h"
+
 class CGameGraph;
 class CGameLevelCrossTable;
 class CLevelGraph;
@@ -43,9 +45,11 @@ private:
 
 private:
 			bool						load					(const char* level_name);
-	[[nodiscard]] bool LoadArenaNavigation();
+	[[nodiscard]] bool LoadArenaNavigation(bool LoadLadders);
 	void StartLevelNavigation();
 	bool ArenaNavigation = false;
+	u32 ArenaGeneration = 0;
+	xr_unique_ptr<Multiplayer::ArenaLadderNavigation> ArenaLadders;
 			void						unload					(bool reload = false);
 			void						patrol_path_storage_raw	(IReader &stream);
 			void						patrol_path_storage		(IReader &stream);
@@ -63,6 +67,7 @@ public:
 	IC		ILevelGraph					&level_graph			() const;
 	IC		const ILevelGraph			*get_level_graph		() const;
 	[[nodiscard]] bool UsesArenaNavigation() const noexcept { return ArenaNavigation; }
+	Multiplayer::ArenaLadderNavigation* ArenaLadderLinks() const { return ArenaLadders.get(); }
 			const IGameLevelCrossTable	&cross_table			() const;
 			const IGameLevelCrossTable	*get_cross_table		() const;
 	IC		const CPatrolPathStorage	&patrol_paths			() const;

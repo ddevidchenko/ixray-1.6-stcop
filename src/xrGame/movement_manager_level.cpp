@@ -20,6 +20,12 @@ void CMovementManager::process_level_path()
 {
 	PROF_EVENT("Build Path/Process Level Path");
 
+	if (UsesArenaLadderRouting())
+	{
+		ProcessArenaLevelPath();
+		return;
+	}
+
 	if (!level_path().actual() && (m_path_state > ePathStateBuildLevelPath))
 	{
 		m_path_state = ePathStateBuildLevelPath;

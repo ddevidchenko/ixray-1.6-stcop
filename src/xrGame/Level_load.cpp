@@ -63,7 +63,7 @@ bool CLevel::Load_GameSpecific_Before()
 		!FS.exist(fn_game, "$level$", "alife.spawn") && FS.exist(fn_game, "$level$", "level.ai");
 	if (W1Navigation || ArenaClient)
 	{
-		const bool Loaded = ai().LoadArenaNavigation();
+		const bool Loaded = ai().LoadArenaNavigation(W1Navigation);
 		if (W1Navigation)
 		{
 			if (Loaded)
@@ -72,7 +72,7 @@ bool CLevel::Load_GameSpecific_Before()
 			}
 			else
 			{
-				Msg("W1 navigation: status=failed map=%s reason=level.ai unavailable or invalid", map_data.m_name.c_str());
+				Msg("W1 navigation: status=failed map=%s reason=level.ai or level.navlinks unavailable or invalid", map_data.m_name.c_str());
 			}
 		}
 		else if (!Loaded)

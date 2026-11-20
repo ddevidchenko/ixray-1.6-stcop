@@ -128,6 +128,7 @@ virtual		void		AddControlVel						(const Fvector& vel)										=0 ;
 virtual		void		Jump								(const Fvector& jump_velocity)								=0 ;
 virtual		bool		JumpState							()															=0 ;
 virtual		EEnvironment CheckInvironment					()															=0 ;
+virtual bool HasGroundSupport() const { return false; }
 virtual		bool		ContactWas							()															=0 ;
 virtual		void		GroundNormal						(Fvector &norm)												=0 ;
 virtual		void		Create								(dVector3 /**sizes/**/)										=0 ;

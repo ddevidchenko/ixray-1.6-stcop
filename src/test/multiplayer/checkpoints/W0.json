@@ -125,6 +125,11 @@
                 "step": "stalker-navigation"
             },
             {
+                "name": "Multiplayer.ArenaLadders",
+                "successMessage": "Arena ladder checks passed",
+                "step": "arena-ladders"
+            },
+            {
                 "name": "Multiplayer.StalkerAuthority",
                 "successMessage": "Stalker authority checks passed",
                 "step": "stalker-authority"

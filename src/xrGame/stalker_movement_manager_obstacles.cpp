@@ -80,7 +80,7 @@ void stalker_movement_manager_obstacles::rebuild_path				()
 bool stalker_movement_manager_obstacles::apply_border				(const obstacles_query &query)
 {
 	u32								start_vertex_id = object().ai_location().level_vertex_id();
-	u32								dest_vertex_id = level_path().dest_vertex_id();
+	u32								dest_vertex_id = WalkDestinationVertex();
 	ILevelGraph						&graph = ai().level_graph();
 
 	restricted_object().CRestrictedObject::add_border(start_vertex_id,dest_vertex_id);
@@ -118,7 +118,7 @@ bool stalker_movement_manager_obstacles::can_build_restricted_path	(const obstac
 	}
 
 
-	m_failed_to_build_path			= !ai().level_graph().Search(object().ai_location().level_vertex_id(),level_path().dest_vertex_id(),m_temp_path,type_max(float),0xFFFFFFFF,4096);
+	m_failed_to_build_path			= !ai().level_graph().Search(object().ai_location().level_vertex_id(),WalkDestinationVertex(),m_temp_path,type_max(float),0xFFFFFFFF,4096);
 
 
 	remove_border					(query);

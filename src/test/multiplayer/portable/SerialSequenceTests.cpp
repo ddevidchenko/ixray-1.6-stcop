@@ -124,6 +124,11 @@ namespace ClientCatchUpTests
 bool Run();
 }
 
+namespace ArenaLadderTests
+{
+bool Run();
+}
+
 namespace StalkerPrerequisitesTests
 {
 bool RunNavigation();
@@ -370,6 +375,11 @@ int main(int ArgumentCount, char** Arguments)
 	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--stalker-navigation") == 0)
 	{
 		return StalkerPrerequisitesTests::RunNavigation() ? EXIT_SUCCESS : EXIT_FAILURE;
+	}
+
+	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--arena-ladders") == 0)
+	{
+		return ArenaLadderTests::Run() ? EXIT_SUCCESS : EXIT_FAILURE;
 	}
 	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--stalker-authority") == 0)
 	{

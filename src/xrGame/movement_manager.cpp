@@ -83,6 +83,7 @@ void CMovementManager::Load(const char* section)
 
 void CMovementManager::reinit		()
 {
+	CancelArenaLadder(nullptr);
 	m_speed							= 0.f;
 	m_path_type						= ePathTypeNoPath;
 	m_path_state					= ePathStateDummy;
@@ -113,6 +114,7 @@ bool CMovementManager::net_Spawn	(CSE_Abstract* data)
 
 void CMovementManager::net_Destroy	()
 {
+	CancelArenaLadder(nullptr);
 	level_path_builder().remove		();
 	detail_path_builder().remove	();
 	restrictions().net_Destroy		();
@@ -206,6 +208,11 @@ void CMovementManager::update_path				()
 
 				if (!LevelGraph.valid_vertex_id(level_path().dest_vertex_id()))
 				{
+					if (ai().UsesArenaNavigation())
+					{
+						detail().make_inactual();
+						return;
+					}
 					shared_str ObjName = object().Name();
 #ifndef MASTER_GOLD
 					Msg("! Invalid dest level vertex id in object: %s", *ObjName);
@@ -396,7 +403,10 @@ void CMovementManager::on_frame					(CPHMovementControl *movement_control, Fvect
 		)
 		update_path					();
 			
-	move_along_path					(movement_control,dest_position,object().client_update_fdelta());
+	if (!MoveArenaLadder(*movement_control, dest_position))
+	{
+		move_along_path(movement_control, dest_position, object().client_update_fdelta());
+	}
 }
 
 void CMovementManager::on_travel_point_change	(const u32 &previous_travel_point_index)

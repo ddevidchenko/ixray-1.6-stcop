@@ -128,7 +128,7 @@ A CLI entry point and build integration for this new route must be added as part
 
 MP uses one arena graph. Native `level.ai` supplies nodes, walk links, and cover. Ladder links attach to those same node IDs as directed traversal edges. The route planner returns ordered walking segments and typed traversal steps. The movement controller walks to the entry, reserves the ladder, mounts, climbs, and dismounts onto the exit node. A blocked entry, occupied ladder, or invalidated exit triggers a bounded retry or replan.
 
-The initial graph-free W1 load uses the existing `level.ai` format. The production bake adds a versioned `level.navlinks` companion for traversal links and map or agent freshness. A map with only walking may declare an empty link table. Both assets form one logical graph. Traversal encoding should preserve the native walk records and single-player reader compatibility.
+The graph-free dedicated W1 path loads the native `level.ai` and optional `level.navlinks`. MP-105 uses a text attachment with a schema version, the native grid GUID, and named directed ladder links. The server resolves each name against the live climbable objects from `level.spawn`. A walk-only arena may omit the attachment. The production bake and freshness work extends the format with the collision, ladder, and agent identity. Both assets form one logical graph and preserve the native walk records. [MP-105 fixture and format](multiplayer-checkpoints/w0.md#mp-105-ladder-routing-and-traversal)
 
 ```text
 gamedata/levels/<map>/

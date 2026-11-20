@@ -24,6 +24,33 @@ CElevatorState::CElevatorState()
 	m_character=nullptr;
 }
 
+bool CElevatorState::BeginDirectedClimb(IClimableObject& Ladder, bool Up)
+{
+	if (!m_character || !m_character->b_exist || !m_character->CastAICharacter() || DirectedClimb)
+	{
+		return false;
+	}
+
+	m_ladder = &Ladder;
+	DirectedClimb = true;
+	m_state = Up ? clbClimbingUp : clbClimbingDown;
+	dBodySetGravityMode(m_character->get_body(), 0);
+	return true;
+}
+
+void CElevatorState::EndDirectedClimb()
+{
+	if (!DirectedClimb)
+	{
+		return;
+	}
+
+	dBodySetGravityMode(m_character->get_body(), 1);
+	m_ladder = nullptr;
+	m_state = clbNoLadder;
+	DirectedClimb = false;
+}
+
 float CElevatorState::ClimbDirection()
 {
 	VERIFY(m_ladder&&m_character);
@@ -37,7 +64,7 @@ float CElevatorState::ClimbDirection()
 void CElevatorState::PhTune(float step)
 {	
 	VERIFY(m_character&&m_character->b_exist&&m_character->is_active());
-	if(!m_ladder)			return;
+	if (!m_ladder || DirectedClimb) return;
 	switch(m_state)
 	{
 	case	clbNone			:UpdateStNone()			;		break;			
@@ -63,6 +90,10 @@ void CElevatorState::InitContact(dContact* c,bool &do_collide,u16 ,u16 )
 
 void CElevatorState::SetElevator(IClimableObject* climable)
 {
+	if (DirectedClimb)
+	{
+		return;
+	}
 	Fvector d;
 	float dist=climable->DDToAxis(m_character,d);
 	if(m_ladder==climable||dist>out_dist) return;
@@ -263,6 +294,12 @@ void CElevatorState::UpdateClimbingCommon(const Fvector	&d_to_ax,float to_ax,con
 }
 bool CElevatorState::GetControlDir(Fvector& dir)
 {
+	if (DirectedClimb)
+	{
+		dir.set(m_character->ControlAccel()).normalize_safe();
+		return true;
+	}
+
 	bool ret=true;
 	VERIFY(m_ladder&&m_character);
 	Fvector d;
@@ -338,6 +375,11 @@ void CElevatorState::NewState()
 void CElevatorState::Depart()
 {
 	VERIFY(m_character);
+	if (DirectedClimb)
+	{
+		EndDirectedClimb();
+		return;
+	}
 	if(m_ladder && ClimbingState())SwitchState(clbDepart);
 }
 
@@ -369,6 +411,7 @@ void CElevatorState::GetJumpDir(const Fvector& accel,Fvector& dir)
 
 void CElevatorState::Deactivate()
 {
+	EndDirectedClimb();
 	SwitchState(clbNoLadder);
 	m_state=clbNoLadder;
 	m_ladder=nullptr;
@@ -412,6 +455,7 @@ void CElevatorState::NetRelcase(IPhysicsShellHolder* O)
 	if (!O || !m_ladder || O != m_ladder->cast_IPhysicsShellHolder())
 		return;
 
+	EndDirectedClimb();
 	m_state = clbNoLadder;
 	m_ladder = nullptr;
 }

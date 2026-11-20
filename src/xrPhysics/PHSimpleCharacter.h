@@ -140,6 +140,7 @@ public:
 	/////////////////CPHCharacter////////////////////////////////////////////
 public:
 	//Check state
+	bool HasGroundSupport() const override { return !b_lose_ground && !m_elevator_state.ClimbingState(); }
 	virtual		bool			 		ContactWas						()					{if(b_meet_control) {b_meet_control=false;return true;} else return false;}
 	virtual		EEnvironment	 		CheckInvironment				()			;
 	virtual		void			 		GroundNormal					(Fvector &norm)		;

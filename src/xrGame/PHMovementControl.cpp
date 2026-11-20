@@ -456,14 +456,30 @@ void CPHMovementControl::Calculate(const xr_vector<DetailPathManager::STravelPat
 		bExernalImpulse = false;
 	}
 
-	m_character->SetMaximumVelocity(speed);
+	ApplyAIControl(add_deviation ? deviation : dir, speed);
+}
 
-	if (add_deviation)
+void CPHMovementControl::DriveLadder(const Fvector& Velocity)
+{
+	m_character->IPosition(vPosition);
+	Fvector Control = Velocity;
+	if (bExernalImpulse)
 	{
-		dir = deviation;
+		m_character->ApplyForce(vExternalImpulse);
+		Control.mad(vExternalImpulse, 0.1f);
+		vExternalImpulse.set(0.f, 0.f, 0.f);
+		bExernalImpulse = false;
 	}
+	const float Speed = Control.magnitude();
+	Control.normalize_safe();
+	SetPathDir(Control);
+	ApplyAIControl(Control, Speed);
+}
 
-	m_character->SetAcceleration(dir);
+void CPHMovementControl::ApplyAIControl(const Fvector& Direction, float Speed)
+{
+	m_character->SetMaximumVelocity(Speed);
+	m_character->SetAcceleration(Direction);
 	m_character->GetSmothedVelocity(vVelocity);
 	fActualVelocity = vVelocity.magnitude();
 

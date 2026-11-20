@@ -94,8 +94,14 @@ bool CDetailPathManager::try_get_direction(Fvector& direction) const
 	return					true;
 }
 
-void CDetailPathManager::build_path(const xr_vector<u32> &level_path, u32 intermediate_index)
+void CDetailPathManager::build_path(const xr_vector<u32> &level_path, u32 intermediate_index, const Fvector* SegmentEnd)
 {
+	const Fvector Goal = m_dest_position;
+	const xr_scope_exit RestoreGoal([&] { m_dest_position = Goal; });
+	if (SegmentEnd)
+	{
+		m_dest_position = *SegmentEnd;
+	}
 	if (valid(m_start_position) && valid(m_dest_position)) {
 		switch (m_path_type) {
 			case eDetailPathTypeSmooth : {

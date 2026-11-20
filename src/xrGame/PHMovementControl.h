@@ -98,6 +98,7 @@ public:
 	void				setOutBorder		( ){ in_dead_area_count=1; }
 private:
 	void				TraceBorder			( const Fvector &previous_position );
+	void ApplyAIControl(const Fvector& Direction, float Speed);
 	void				CheckEnvironment	( const Fvector& V );
 
 	CharacterType		eCharacterType;
@@ -224,6 +225,7 @@ public:
 												u32& travel_point,					 //in- travel start, out - current trev point
 												float& precesition					 //in- tolerance, out - precesition
 												);
+	void DriveLadder(const Fvector& Velocity);
 	void				AddControlVel			(const Fvector& vel);
 	void				SetVelocityLimit		(float val);
 	float				VelocityLimit			();

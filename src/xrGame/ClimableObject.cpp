@@ -1,5 +1,7 @@
 #include "StdAfx.h"
 #include "ClimableObject.h"
+#include "ai_space.h"
+#include "Multiplayer/ArenaLadderNavigation.h"
 #include "../xrPhysics/IPHStaticGeomShell.h"
 #include "xrServer_Objects_ALife.h"
 #include "../xrPhysics/PHCharacter.h"
@@ -46,7 +48,7 @@ IC void OrientToNorm(const Fvector& normal,Fmatrix& form,Fobb& box)
 
 
 
-CClimableObject::CClimableObject		():  m_pStaticShell ( nullptr ), m_material(u16(-1))
+CClimableObject::CClimableObject		():  m_pStaticShell ( nullptr ), m_radius(0.f), m_material(u16(-1))
 {
 	
 }
@@ -63,9 +65,19 @@ bool CClimableObject::	net_Spawn			( CSE_Abstract* DC)
 {
 	CSE_Abstract				*e = (CSE_Abstract*)(DC);
 	CSE_ALifeObjectClimable	*CLB=smart_cast<CSE_ALifeObjectClimable*>(e);
-	R_ASSERT( CLB );
+	const auto* Box = CLB && !CLB->shapes.empty() && CLB->shapes[0].type == CShapeData::cfBox
+		? &CLB->shapes[0].data.box : nullptr;
+	if (!Box || !std::isfinite(Box->_11) || !std::isfinite(Box->_22) || !std::isfinite(Box->_33) ||
+		Box->_11 < 0.f || Box->_22 < 0.f || Box->_33 < 0.f ||
+		(Box->_11 > 0.f) + (Box->_22 > 0.f) + (Box->_33 > 0.f) < 2)
+	{
+		// The failed-spawn path calls net_Destroy, which requires base spawn initialization.
+		inherited::net_Spawn(DC);
+		Msg("! Invalid climbable spawn geometry");
+		return false;
+	}
 	m_material = GMLib.GetMaterialIdx( CLB->material.c_str() );
-	const Fmatrix& b=CLB->shapes[0].data.box;
+	const auto& b = *Box;
 	m_box.m_halfsize.set(b._11,b._22,b._33);
 	m_radius= std::max(std::max(m_box.m_halfsize.x,m_box.m_halfsize.y),m_box.m_halfsize.z);
 
@@ -100,11 +112,21 @@ bool CClimableObject::	net_Spawn			( CSE_Abstract* DC)
 	}
 //	shedule_unregister();
 	processing_deactivate();
-	//m_pStaticShell->set_ObjectContactCallback(ObjectContactCallback);
+	if (ret)
+	{
+		if (auto* Ladders = ai().ArenaLadderLinks())
+		{
+			Ladders->Register(*this);
+		}
+	}
 	return ret;
 }
 void CClimableObject::	net_Destroy			()
 {
+	if (auto* Ladders = ai().ArenaLadderLinks())
+	{
+		Ladders->Unregister(*this);
+	}
 	inherited::net_Destroy();
 	DestroyStaticGeomShell( m_pStaticShell );
 

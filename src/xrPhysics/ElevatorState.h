@@ -14,6 +14,7 @@ public:
 
 private:
 	Estate m_state;
+	bool DirectedClimb = false;
 
 	struct  SEnertionState {
 		float dist;
@@ -26,7 +27,10 @@ IClimableObject	*m_ladder;
 CPHCharacter	*m_character;
 Fvector			m_start_position;//for depart state
 u32				m_start_time;
-public: 
+public:
+	bool BeginDirectedClimb(IClimableObject& Ladder, bool Up) override;
+	void EndDirectedClimb() override;
+	bool DirectedClimbActive() const override { return DirectedClimb; }
 						CElevatorState					();
 			void		PhTune							(float step)																			;
 			void		SetCharacter					(CPHCharacter *character);

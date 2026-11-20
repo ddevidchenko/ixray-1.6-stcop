@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include "Multiplayer/ArenaLadderTraversal.h"
+
 #include "ai_monster_space.h"
 #include "graph_engine_space.h"
 #include "game_graph_space.h"
@@ -159,6 +161,30 @@ public:
 	CCreature			*m_object;
 
 private:
+	struct ArenaLadderState
+	{
+		Multiplayer::ArenaLadders::Traversal Motor;
+		u32 NextLink = Multiplayer::ArenaLadders::NoLink;
+		u32 BlockedLink = Multiplayer::ArenaLadders::NoLink;
+		u32 BlockedAt = 0;
+		u32 LastPlan = 0;
+		u64 ReleasedOnStep = 0;
+		u32 MapGeneration = 0;
+		u32 LadderRevision = 0;
+		bool PlanDelayed = false;
+		bool Recovering = false;
+		Fvector Mount{};
+		Fvector End{};
+		Fvector Exit{};
+		Fvector Facing{};
+	};
+	ArenaLadderState ArenaLadder;
+
+	bool UsesArenaLadderRouting() const;
+	void ProcessArenaLevelPath();
+	bool MoveArenaLadder(CPHMovementControl& Physics, Fvector& Position);
+	void ReplanArenaLadder(u32 BlockedLink);
+
 			void	process_game_path		();
 			void	process_level_path		();
 			void	process_patrol_path		();
@@ -179,6 +205,7 @@ public:
 	virtual void	reload					(const char* caSection);
 	virtual bool	net_Spawn				(CSE_Abstract* data);
 	virtual void	net_Destroy				();
+	void CancelArenaLadder(CPHMovementControl* Physics);
 	virtual	void	on_frame				(CPHMovementControl *movement_control, Fvector &dest_position);
 	IC		bool	actual					() const;
 			bool	actual_all				() const;
@@ -237,6 +264,8 @@ public:
 	virtual	void					on_restrictions_change		();
 
 protected:
+	u32 WalkDestinationVertex() const;
+
 			bool					move_along_path				() const;
 
 protected:

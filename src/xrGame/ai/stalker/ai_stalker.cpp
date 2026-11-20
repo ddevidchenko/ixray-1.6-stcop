@@ -484,6 +484,7 @@ void CAI_Stalker::Die				(CObject* who)
 	SpatialComponent->type &= ~ESPATIAL_TYPE::STALKER_ALIVE;
 	SpatialComponent->type |= ESPATIAL_TYPE::STALKER_DEAD;
 
+	movement().CancelArenaLadder(character_physics_support()->movement());
 	movement().on_death				( );
 
 	notify_on_wounded_or_killed		(who);

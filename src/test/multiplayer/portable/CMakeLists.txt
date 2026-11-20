@@ -38,6 +38,7 @@ add_executable(TestMultiplayerUnit
     CatchUpEventQueueTests.cpp
     ClientCatchUpTests.cpp
     StalkerPrerequisitesTests.cpp
+    ArenaLadderTests.cpp
     CombatantRegistryTests.cpp
     ParticipantConnectionTests.cpp
     CatchUpDespawnTests.cpp
@@ -112,3 +113,6 @@ option(IXRAY_MULTIPLAYER_VERIFY_TEST_FAILURE "Register a deliberately failing mu
 if(IXRAY_MULTIPLAYER_VERIFY_TEST_FAILURE)
     add_test(NAME Multiplayer.Sequence.DeliberateFailure COMMAND TestMultiplayerUnit --verify-failure)
 endif()
+
+add_test(NAME Multiplayer.ArenaLadders COMMAND TestMultiplayerUnit --arena-ladders)
+set_tests_properties(Multiplayer.ArenaLadders PROPERTIES LABELS multiplayer)

@@ -180,6 +180,10 @@ private:
 	};
 	ArenaLadderState ArenaLadder;
 
+	u32 LastArenaWalkTrace = 0;
+	u64 LastArenaDirectPlacementGeneration = 0;
+
+	void TraceArenaWalk(bool DirectPlacement);
 	bool UsesArenaLadderRouting() const;
 	void ProcessArenaLevelPath();
 	bool MoveArenaLadder(CPHMovementControl& Physics, Fvector& Position);

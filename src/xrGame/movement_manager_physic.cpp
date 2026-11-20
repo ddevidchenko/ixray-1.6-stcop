@@ -8,6 +8,7 @@
 
 #include "StdAfx.h"
 #include "movement_manager.h"
+#include "ai_space.h"
 #include "PHMovementControl.h"
 #include "detail_path_manager.h"
 #include "Level.h"
@@ -204,6 +205,39 @@ Fvector CMovementManager::path_position	(const float &time_to_check)
 	);
 }
 
+void CMovementManager::TraceArenaWalk(bool DirectPlacement)
+{
+	static const bool TraceEnabled = strstr(Core.Params, "-mp_route_trace") != nullptr;
+	if (!TraceEnabled || !g_dedicated_server || !ai().ArenaNavigationReady() ||
+		!object().Local() || !OnServer() || !object().cast_stalker())
+	{
+		return;
+	}
+
+	const u64 Generation = ai().ArenaWorkGeneration();
+	const u32 Now = Device.dwTimeGlobal;
+	if (DirectPlacement)
+	{
+		if (LastArenaDirectPlacementGeneration == Generation)
+		{
+			return;
+		}
+		LastArenaDirectPlacementGeneration = Generation;
+	}
+	else
+	{
+		if (Now - LastArenaWalkTrace < 250)
+		{
+			return;
+		}
+		LastArenaWalkTrace = Now;
+	}
+
+	Msg("MP108 walk: generation=%llu stalker=%u method=%s",
+		static_cast<unsigned long long>(Generation), u32(object().ID()),
+		DirectPlacement ? "direct" : "checked");
+}
+
 void CMovementManager::move_along_path		(CPHMovementControl *movement_control, Fvector &dest_position, float time_delta)
 {
 	PROF_EVENT("Build Path/Move Along Path")
@@ -303,6 +337,7 @@ void CMovementManager::move_along_path		(CPHMovementControl *movement_control, F
 	if(!movement_control->PhysicsOnlyMode())
 		movement_control->SetCharacterVelocity(velocity);
 
+	bool DirectPlacement = false;
 	if (DBG_PH_MOVE_CONDITIONS(ph_dbg_draw_mask.test(phDbgNeverUseAiPhMove)||!ph_dbg_draw_mask.test(phDbgAlwaysUseAiPhMove)&&)!(m_nearest_objects.empty())) {  //  физ. объект
 		
 		if(DBG_PH_MOVE_CONDITIONS(!ph_dbg_draw_mask.test(phDbgNeverUseAiPhMove)&&) !movement_control->TryPosition(dest_position)) {
@@ -313,18 +348,22 @@ void CMovementManager::move_along_path		(CPHMovementControl *movement_control, F
 			apply_collision_hit(movement_control);
 
 		} else {
-			DBG_PH_MOVE_CONDITIONS( if(ph_dbg_draw_mask.test(phDbgNeverUseAiPhMove)){movement_control->SetPosition(dest_position);movement_control->DisableCharacter();})
+			DBG_PH_MOVE_CONDITIONS( if(ph_dbg_draw_mask.test(phDbgNeverUseAiPhMove)){DirectPlacement = true;movement_control->SetPosition(dest_position);movement_control->DisableCharacter();})
 			movement_control->b_exect_position	=	true;
 
 		}
 		movement_control->GetPosition	(dest_position);
 	}
 	else {
-		//DBG_PH_MOVE_CONDITIONS( if(ph_dbg_draw_mask.test(phDbgNeverUseAiPhMove)){movement_control->SetPosition(dest_position);movement_control->DisableCharacter();})
+			DirectPlacement = true;
 			movement_control->SetPosition(dest_position);
 			movement_control->DisableCharacter();
 			movement_control->b_exect_position	=	true;
 
+	}
+	if (dest_position.distance_to_sqr(object().Position()) > _sqr(EPS_L))
+	{
+		TraceArenaWalk(DirectPlacement);
 	}
 	/*
 	} else { // есть физ. объекты

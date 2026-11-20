@@ -210,6 +210,7 @@ bool CMovementManager::MoveArenaLadder(CPHMovementControl& Physics, Fvector& Pos
 	const u32 Now = Device.dwTimeGlobal;
 	const u32 Link = ArenaLadder.NextLink;
 	const u16 Owner = object().ID();
+	const auto Generation = static_cast<unsigned long long>(ArenaLadder.MapGeneration);
 
 	const auto Drive = [&](const Fvector& Velocity)
 	{
@@ -282,7 +283,7 @@ bool CMovementManager::MoveArenaLadder(CPHMovementControl& Physics, Fvector& Pos
 		Physics.EnableCharacter();
 		Character->SetVelocity(Stop);
 		clear_path();
-		Msg("Arena ladder: stalker=%u link=%u %u->%u mount", u32(Owner), Link, Edge.Entry, Edge.Exit);
+		Msg("Arena ladder: generation=%llu stalker=%u link=%u %u->%u mount", Generation, u32(Owner), Link, Edge.Entry, Edge.Exit);
 	}
 
 	const auto Previous = ArenaLadder.Motor.State();
@@ -315,7 +316,7 @@ bool CMovementManager::MoveArenaLadder(CPHMovementControl& Physics, Fvector& Pos
 		{
 			object().ai_location().level_vertex(Edge.Exit);
 		}
-		Msg("Arena ladder: stalker=%u link=%u %s", u32(Owner), Link,
+		Msg("Arena ladder: generation=%llu stalker=%u link=%u %s", Generation, u32(Owner), Link,
 			Current == Phase::Complete ? "grounded exit" : "failed");
 		ReplanArenaLadder(Current == Phase::Failed ? Link : NoLink);
 		if (Current == Phase::Complete)
@@ -330,11 +331,11 @@ bool CMovementManager::MoveArenaLadder(CPHMovementControl& Physics, Fvector& Pos
 	{
 		if (Current == Phase::Climb)
 		{
-			Msg("Arena ladder: stalker=%u link=%u climb", u32(Owner), Link);
+			Msg("Arena ladder: generation=%llu stalker=%u link=%u climb", Generation, u32(Owner), Link);
 		}
 		else if (Current == Phase::Dismount)
 		{
-			Msg("Arena ladder: stalker=%u link=%u dismount", u32(Owner), Link);
+			Msg("Arena ladder: generation=%llu stalker=%u link=%u dismount", Generation, u32(Owner), Link);
 		}
 		else if (Current == Phase::Settle)
 		{

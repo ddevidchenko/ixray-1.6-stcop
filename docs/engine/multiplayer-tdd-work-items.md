@@ -23,6 +23,7 @@ Items marked **Implemented / Windows pending** have passing macOS checks for the
 | Wire formats, admission and transport ownership | MP-020a–k, MP-021a–b, MP-022a–d, MP-023a–b, MP-024a, MP-025a–e, MP-026a–b | [W0 portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch), [two-client check](multiplayer-checkpoints/w0.md#run-the-two-client-check) where listed |
 | Reliable submission, snapshots, native pacing and baseline streaming | MP-027a–d | [W0 portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) |
 | Combatant baseline, catch-up and snapshots | MP-037a–o | [W0 portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) |
+| Native stalker route evidence | MP-108 checkpoint | [Windows route check](multiplayer-checkpoints/mp-108.md) |
 
 ## How to use this backlog
 
@@ -1026,10 +1027,11 @@ These items expand MP-071. Follow the [navigation pipeline](multiplayer-navigati
 
 ### MP-108 — Prove generated paths work through native stalker movement
 
-- **Kind / runs / depends:** TDD + visual integration GATE; `P/W`; MP-070, MP-100–107, MP-109.
-- **Red:** a stalker-based bot projects onto the correct floor, finds a route around real cover, walks stairs/doorways and executes selected typed links through its NPC movement/physics. Test unreachable destination, door-state change, temporary crowd, stale path and map reload; path failure triggers bounded recovery rather than position warping.
-- **Green / seam:** adapt native graph search and stalker path following behind a narrow MP navigation interface; add the required traversal actions. Visualize route plus collision/node/link state. Generation, attachment and actual NPC execution must share map/agent identity; a future alternate body requires separate capability acceptance.
-- [ ] **Complete when:** the first arena's required-route suite passes on a dedicated Windows server after a fresh bake and after reload. Preserve captures, native/package hashes, GUIDs and controller/agent parameters; a successful abstract A* search alone is insufficient.
+- **Kind / runs / depends:** TDD + visual integration GATE; `P/W`; MP-005, MP-070, MP-100–107, MP-109.
+- **Red:** require correct-floor arrival around cover and up steps, clearance through a doorway, a bounded stop or detour for a closed door and a temporary crowd, and ground support after both ladder directions. Block the ladder exit and verify a real retry after clearing it. Give the stalker a disconnected goal and leave a route active during reload. The synthetic checkpoint tests went RED before the evidence reader handled phase order, combined walking and ladder evidence, and reload identity. Native Windows RED is pending.
+- **Prepared:** the [Windows route check](multiplayer-checkpoints/mp-108.md) exercises the same freshly baked arena before and after an in-process reload. Opt-in walking traces distinguish physics movement from direct placement. Ladder logs carry the map generation. The collector binds the server log and client recordings to the startup revision and staged map hashes. [Evidence tests](../../src/test/multiplayer/checkpoints/TestMP108Evidence.ps1)
+- **Source review and proposed refactor:** the legacy motor can place a stalker at a route position when the dynamic-object query is empty, even though the map's static collision still applies. Forcing the legacy physics branch leaves two problems. Its final substep can overwrite an earlier rejection, and the detail-path cursor advances before physical movement is resolved. Crowd detours also run a separate walk-only search. Introduce an arena walking controller that consumes the typed path's walk segments and commits progress and arrival from the physics body's accepted position. Feed door, crowd, and ladder failures back through the same segment recovery and typed planner. Keep legacy single-player movement isolated. The [controller proposal](multiplayer-checkpoints/mp-108.md#proposed-arena-walking-controller) lists the regression cases.
+- [ ] **Complete when:** the required-route suite passes on a dedicated Windows server after a fresh bake and after reload, with a proven authoritative stalker fixture. Preserve the capture, native/package hashes, GUID, and fixture/controller settings. Portable evidence checks passed. Windows build and gameplay evidence are pending.
 
 ### MP-109 — Extract semantic ladders and validate climb-link candidates
 

@@ -2,12 +2,13 @@
 #include "CatchUpEventQueue.h"
 #include "ClientCatchUp.h"
 #include "PeerJoin.h"
-#include "../../../xrGame/Multiplayer/CombatantRegistry.h"
+#include "../../../xrGame/Multiplayer/CombatantReplicas.h"
 
 #include <algorithm>
 #include <array>
 #include <cstdio>
 #include <limits>
+#include <memory>
 
 namespace CatchUpDespawnTests
 {
@@ -187,7 +188,7 @@ static bool CheckEncodingAndOwnership()
 class FixtureApplier final : public IClientCatchUpApplier
 {
 public:
-	explicit FixtureApplier(CombatantRegistry& Bodies) : Bodies(Bodies) {}
+	explicit FixtureApplier(CombatantReplicas& Bodies) : Bodies(Bodies) {}
 
 	bool ApplyEvent(const CatchUpEvent& Event) noexcept override
 	{
@@ -198,7 +199,7 @@ public:
 		}
 		const auto& Despawn = Decoded->GetMessage();
 		const WorldIdentity World{Despawn.Identity.ServerSession, Despawn.Identity.WorldEpoch};
-		return Bodies.Resolve(World, Despawn.Body) == Despawn.Participant && Bodies.RetireBody(World, Despawn.Body);
+		return Bodies.Despawn(World, Despawn.Participant, Despawn.Body);
 	}
 
 	bool ApplyBarrier(JoinIdentity, JoinBarrier) noexcept override
@@ -207,7 +208,7 @@ public:
 	}
 
 private:
-	CombatantRegistry& Bodies;
+	CombatantReplicas& Bodies;
 };
 
 static bool CheckCatchUpHandoff()
@@ -219,22 +220,20 @@ static bool CheckCatchUpHandoff()
 	constexpr BaselineBoundary Baseline{0, 0, std::numeric_limits<u32>::max()};
 	constexpr JoinBarrier Barrier{Baseline.BaselineId, 5, 0, 0};
 
-	CombatantRegistry Bodies(World);
+	auto History = std::make_unique<RetiredCombatantGenerations>();
+	CombatantReplicas Bodies(World, *History);
 	FixtureApplier Applier(Bodies);
-	const auto Participant = Bodies.AddParticipant();
-	const auto OtherParticipant = Bodies.AddParticipant();
-	const auto Previous = Participant ? Bodies.BindBody(World, *Participant, 0) : std::nullopt;
-	if (!Expect("the fixture can retire the previous life", Previous && Bodies.RetireBody(World, *Previous) && OtherParticipant))
-	{
-		return false;
-	}
-	const auto Current = Bodies.BindBody(World, *Participant, 0);
-	if (!Expect("the current body reuses the engine slot", Current && Current != Previous))
+	constexpr ParticipantId Participant{5};
+	constexpr ParticipantId OtherParticipant{8};
+	constexpr EntityRef Previous{0, 1, 1};
+	constexpr EntityRef Current{0, 2, 2};
+	if (!Expect("the current body reuses a retired engine slot", Bodies.RegisterBody(World, Participant, Previous) &&
+		Bodies.Despawn(World, Participant, Previous) && Bodies.RegisterBody(World, Participant, Current)))
 	{
 		return false;
 	}
 
-	const CatchUpDespawn Message{Peer, 0, Baseline.BaselineId, 0, std::numeric_limits<u64>::max(), 0, *Participant, *Current};
+	const CatchUpDespawn Message{Peer, 0, Baseline.BaselineId, 0, std::numeric_limits<u64>::max(), 0, Participant, Current};
 	std::array<u8, sizeof(Golden)> Send{};
 	const auto Written = EncodeCatchUpDespawn(Message, Send);
 	const auto Encoded = Written ? DecodeCatchUpDespawn(xr_span(Send).first(*Written)) : std::unexpected(Written.error());
@@ -277,18 +276,19 @@ static bool CheckCatchUpHandoff()
 	Wrong.BaselineId = std::numeric_limits<u32>::max();
 	Passed &= Reject(Wrong, ClientCatchUpError::BaselineMismatch);
 	Wrong = Message;
-	Wrong.Body = *Previous;
+	Wrong.Body = Previous;
 	Passed &= Reject(Wrong, ClientCatchUpError::ApplicationFailed);
 	Wrong = Message;
-	Wrong.Participant = *OtherParticipant;
+	Wrong.Participant = OtherParticipant;
 	Passed &= Reject(Wrong, ClientCatchUpError::ApplicationFailed);
 	Passed &= Expect("rejected events preserve the replacement body and applied watermark",
-		Bodies.Resolve(World, *Current) == Participant && Client.GetAppliedWatermark() == Baseline.EventWatermark);
+		Bodies.Classify(World, Participant, Current) == ReplicaBodyState::Current && Client.GetAppliedWatermark() == Baseline.EventWatermark);
 	Passed &= ExpectError("a submitted but unapplied despawn keeps the barrier pending",
 		Client.CompleteBarrier(Peer, Barrier, 1, Applier), ClientCatchUpError::BarrierPending);
 
 	Passed &= Expect("the exact current body retires and advances the applied watermark",
-		Client.ApplyEvent(Delivered->AsEvent(), Applier).has_value() && !Bodies.Resolve(World, *Current) && Client.GetAppliedWatermark() == 0u);
+		Client.ApplyEvent(Delivered->AsEvent(), Applier).has_value() &&
+		Bodies.Classify(World, Participant, Current) == ReplicaBodyState::Stale && Client.GetAppliedWatermark() == 0u);
 	Passed &= ExpectError("duplicate delivery cannot apply again", Client.ApplyEvent(Delivered->AsEvent(), Applier),
 		ClientCatchUpError::UnexpectedSequence);
 	const auto Ack = Client.CompleteBarrier(Peer, Barrier, 1, Applier);

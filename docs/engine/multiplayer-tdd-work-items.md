@@ -435,6 +435,12 @@ The [peer runbook](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch
 - **Mac checks passed / Windows pending.** Reviewed tests failed before client application tracking existed. Review also reproduced a replacement that predated an already applied snapshot. The suite covers early and failed application, stale scopes and duplicates, finite barrier and retry behavior, zero-event catch-up, wrap, rebase, and a typed acknowledgement handoff to the server. [Tests](../../src/test/multiplayer/portable/ClientCatchUpTests.cpp).
 - [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) collects a passing `client-catch-up.xml` on Windows.
 
+#### MP-037h — Retain retired combatant identities on the client
+
+- Register active body identities from trusted baseline or lifecycle data. Classify snapshot targets by exact world, participant, slot, generation, and life. A valid despawn records the slot's retired generation so delayed snapshots and replayed registrations cannot revive it. [Replica identity contract](multiplayer-implementation-contracts.md#client-combatant-replica-identity).
+- **Mac checks passed / Windows pending.** The first tests on base `bde05b460` exposed an erased registration losing its retirement history and accepting a replayed body. Reviewed tests cover conflicts, unknown and stale generations, exact duplicates, slot reuse, round and session scope, the 32-body cap, the last valid slot, and history across 300 retirements. The existing catch-up despawn handoff now uses the production replica registry, so a stale body leaves both the replica and readiness watermark intact. All 29 portable tests passed in Debug, Release, and ASan/UBSan on macOS arm64. Fixtures use literal data and no seed or assets. [Registry tests](../../src/test/multiplayer/portable/CombatantReplicasTests.cpp), [catch-up handoff](../../src/test/multiplayer/portable/CatchUpDespawnTests.cpp).
+- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) records passing `combatant-replicas.xml` and `catch-up-despawn.xml` on Windows. Snapshot payload application, baseline world import and runtime integration remain open in MP-037.
+
 ### MP-038 — Make death, score, round flow, and spectator state authoritative
 
 - **Kind / runs / depends:** TDD; `P/W`; MP-004, MP-033, MP-035, MP-037.

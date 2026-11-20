@@ -19,8 +19,7 @@ static_assert(DespawnPayloadSize == 35 && DespawnPayloadSize <= MaxPayloadSize);
 
 static bool HasAssignedDespawnFields(const CatchUpDespawn& Event) noexcept
 {
-	return Event.EventId != 0 && Event.Participant.Value != 0 && Event.Body.ObjectId != InvalidObjectId &&
-		Event.Body.Generation != 0 && Event.Body.LifeId != 0;
+	return Event.EventId != 0 && Event.Participant.IsAssigned() && Event.Body.IsAssigned();
 }
 
 std::expected<DecodedCatchUpDespawn, BoundMessageError> DecodeCatchUpDespawn(xr_span<const u8> Bytes) noexcept

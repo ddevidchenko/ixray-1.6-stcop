@@ -227,7 +227,7 @@ The server sends `CatchUpStateEvent` on the ordered reliable control/state strea
 | Object generation | Nonzero `u32` |
 | Life ID | Nonzero `u32` |
 
-World epoch, baseline ID, ticks and sequences allow zero. The durable event ID identifies the same event when sent to different recipients. The decoder returns owned event fields and a view of the checked frame for catch-up retention and application. Keep the datagram alive and unchanged until the queue copies the bytes or the client finishes applying them. The world adapter resolves the exact body in the current world and checks its participant before retiring it. Other event kinds, live delivery, and runtime world application follow separately. [Codec](../../src/xrNetServer/Multiplayer/CatchUpDespawn.h), [wire and handoff tests](../../src/test/multiplayer/portable/CatchUpDespawnTests.cpp).
+World epoch, baseline ID, ticks and sequences allow zero. The durable event ID identifies the same event when sent to different recipients. The decoder returns owned event fields and a view of the checked frame for catch-up retention and application. Keep the datagram alive and unchanged until the queue copies the bytes or the client finishes applying them. The world adapter resolves the exact body in the current world and checks its participant before retiring it. The portable replica registry applies despawns to checked body identities. Other event kinds, live delivery, and engine world application follow separately. [Codec](../../src/xrNetServer/Multiplayer/CatchUpDespawn.h), [wire and handoff tests](../../src/test/multiplayer/portable/CatchUpDespawnTests.cpp).
 
 ### Initial-state baseline transfer
 
@@ -372,6 +372,14 @@ The client owner binds a tracker to the selected baseline and receiver identity.
 A barrier may arrive before import. It must cover the selected capture tick and the current event watermark. The client applies events through the exact declared watermark and defers later events until the staged barrier snapshot is applied. Successful snapshot application yields the exact ready acknowledgement. A transport retry can reuse that acknowledgement while keeping the barrier applied once. Later events can proceed after snapshot application.
 
 For a same-round rebase, the replacement must cover the applied event watermark and any applied barrier tick. A successful rebase resets import confirmation and the previous barrier. The owner replaces the tracker on an accepted world change. Concrete world application and transport integration remain with the engine owners. [Client tracker](../../src/xrNetServer/Multiplayer/ClientCatchUp.h), [application tests](../../src/test/multiplayer/portable/ClientCatchUpTests.cpp).
+
+### Client combatant replica identity
+
+The client owner registers current bodies from trusted baseline or lifecycle data. Each active body occupies one of 32 places. A participant and an engine object slot can each have at most one active body. Repeating an exact active registration is idempotent.
+
+The registry classifies snapshot references in the current session and world before the owner applies state. An exact active participant and body is current. A lower generation than a known active body in the same slot is stale. A different participant or life for the active slot and generation is a conflict. An unseen generation is unknown and can await lifecycle data. Invalid identities and references to another world fail classification. Snapshot tick and watermark checks belong to the snapshot owner.
+
+An exact despawn removes the active body and records its generation for that slot. Any reference at or below that generation stays stale for the rest of the world, including a replayed registration. A despawn for a stale, unknown or conflicting reference leaves the state intact. The owner supplies 65,535 generation entries, about 256 KiB, so history covers the entire valid engine slot range. A verified world advance clears the history and active bodies. [Replica registry](../../src/xrGame/Multiplayer/CombatantReplicas.h), [tests](../../src/test/multiplayer/portable/CombatantReplicasTests.cpp).
 
 ## 5. Round and spawn behavior
 

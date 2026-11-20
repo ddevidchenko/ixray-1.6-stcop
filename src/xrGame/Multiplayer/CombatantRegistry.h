@@ -206,7 +206,7 @@ private:
 
 	[[nodiscard]] Entry* FindParticipant(ParticipantId Participant) noexcept
 	{
-		if (Participant.Value == 0)
+		if (!Participant.IsAssigned())
 		{
 			return nullptr;
 		}

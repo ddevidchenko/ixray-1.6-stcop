@@ -131,6 +131,11 @@ namespace CatchUpDespawnTests
 bool Run();
 }
 
+namespace CombatantReplicasTests
+{
+bool Run();
+}
+
 namespace SerialSequenceTests
 {
 struct SequenceCase
@@ -280,6 +285,10 @@ int main(int ArgumentCount, char** Arguments)
 	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--catch-up-despawn") == 0)
 	{
 		return CatchUpDespawnTests::Run() ? EXIT_SUCCESS : EXIT_FAILURE;
+	}
+	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--combatant-replicas") == 0)
+	{
+		return CombatantReplicasTests::Run() ? EXIT_SUCCESS : EXIT_FAILURE;
 	}
 	if (ArgumentCount != 1)
 	{

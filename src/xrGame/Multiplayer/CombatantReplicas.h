@@ -57,6 +57,8 @@ public:
 	CombatantReplicas(const CombatantReplicas&) = delete;
 	CombatantReplicas& operator=(const CombatantReplicas&) = delete;
 
+	[[nodiscard]] WorldIdentity GetWorldIdentity() const noexcept { return Identity; }
+
 	// The owner calls this for trusted baseline or lifecycle data and supplies the tick of any imported state.
 	[[nodiscard]] bool RegisterBody(WorldIdentity World, ParticipantId Participant, EntityRef Body,
 		std::optional<u32> AppliedStateTick = std::nullopt) noexcept

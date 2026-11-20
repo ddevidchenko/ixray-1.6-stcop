@@ -245,7 +245,7 @@ The [peer runbook](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch
 
 - Freeze the shared public combatant layout and stalker extension. Validate exact lengths, finite transforms, bounded angles, public state, channel and ladder fields. Decode the complete typed batch into owned values and reject repeat participants and slots. [Record contract](multiplayer-implementation-contracts.md#public-combatant-record-bodies).
 - **Mac checks passed / Windows pending.** Independent human and stalker golden records failed to encode and decode on base `634334057`. Reviewed tests cover all truncated prefixes, wrong kinds, reserved values, wrap-boundary ticks, stalker animation modes, atomic writes, and invalid later records in a mixed batch. All 32 portable tests passed in Debug, Release, and ASan/UBSan on macOS arm64. Fixtures use literal inputs and no seed or game assets. [Tests](../../src/test/multiplayer/portable/CombatantSnapshotTests.cpp).
-- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) records a passing `combatant-snapshot.xml` on Windows. Runtime capture, held batch delivery, content ID resolution, and world application remain open in MP-037.
+- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) records a passing `combatant-snapshot.xml` on Windows. Client dispatch continues in MP-037j. Runtime capture, held batch delivery, and engine world application remain open.
 
 ### MP-021 — Bound legacy envelope parsing and decompression
 
@@ -457,7 +457,13 @@ The [peer runbook](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch
 
 - Seed the per-body tick from trusted imported state. Require the current receiver and world, exact body identity, a newer tick, and a locally applied event frontier that covers the update. Record the tick after successful application only. [Live snapshot contract](multiplayer-implementation-contracts.md#live-replica-snapshot-application).
 - **Mac checks passed / Windows pending.** The first tests on base `ac8bfd2cc` exposed out-of-order and duplicate updates overwriting state. Reviewed coverage includes recovery after loss, per-body ticks, applied-event gating with the real catch-up tracker, failed application and retry, serial wrap and ambiguity, old lives, and a new world epoch. All 30 portable tests passed in Debug, Release, and ASan/UBSan on macOS arm64. Fixtures use literal data and no seed or assets. [Snapshot tests](../../src/test/multiplayer/portable/ReplicaSnapshotTests.cpp).
-- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) records a passing `replica-snapshot.xml` on Windows. Batch framing and typed public bodies are covered by MP-020j and MP-020k. Baseline world import and runtime integration remain open.
+- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) records a passing `replica-snapshot.xml` on Windows. Batch framing and typed public bodies are covered by MP-020j and MP-020k. Typed dispatch follows in MP-037j.
+
+#### MP-037j — Dispatch decoded live snapshots through the replica registry
+
+- Require the admitted tracker identity and the matching replica world. Open dispatch after successful synchronization and accept only ticks strictly newer than the applied barrier. Apply typed records independently against the current event watermark and return ordered outcomes for retry or repair. [Dispatch contract](multiplayer-implementation-contracts.md#typed-live-snapshot-dispatch).
+- **Mac checks passed / Windows pending.** The first test on base `4983ccb9f` showed an eligible wire snapshot failing to reach its world callback. Reviewed tests cover pre-barrier and failed synchronization, identity mismatches, event deferral, retries, unknown and retired lives, independent records after reordering, same-round rebase, and tick and event wrap. All 33 portable tests passed in Debug, Release, and ASan/UBSan on macOS arm64. Fixtures encode and decode real snapshot batches and use no seed or game assets. [Dispatch tests](../../src/test/multiplayer/portable/ReplicaSnapshotDispatchTests.cpp).
+- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) records a passing `replica-snapshot-dispatch.xml` on Windows. Bounded retry storage, baseline world import, and engine integration remain open.
 
 ### MP-038 — Make death, score, round flow, and spectator state authoritative
 

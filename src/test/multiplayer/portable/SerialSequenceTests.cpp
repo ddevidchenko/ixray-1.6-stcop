@@ -151,6 +151,11 @@ namespace CombatantSnapshotTests
 bool Run();
 }
 
+namespace ReplicaSnapshotDispatchTests
+{
+bool Run();
+}
+
 namespace SerialSequenceTests
 {
 struct SequenceCase
@@ -316,6 +321,10 @@ int main(int ArgumentCount, char** Arguments)
 	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--combatant-snapshot") == 0)
 	{
 		return CombatantSnapshotTests::Run() ? EXIT_SUCCESS : EXIT_FAILURE;
+	}
+	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--replica-snapshot-dispatch") == 0)
+	{
+		return ReplicaSnapshotDispatchTests::Run() ? EXIT_SUCCESS : EXIT_FAILURE;
 	}
 	if (ArgumentCount != 1)
 	{

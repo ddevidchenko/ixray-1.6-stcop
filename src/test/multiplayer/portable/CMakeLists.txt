@@ -37,6 +37,7 @@ add_executable(TestMultiplayerUnit
     ReplicaSnapshotTests.cpp
     SnapshotBatchTests.cpp
     CombatantSnapshotTests.cpp
+    ReplicaSnapshotDispatchTests.cpp
     ../transport/ScriptedTransport.cpp
 )
 target_link_libraries(TestMultiplayerUnit PRIVATE xrNetServerMultiplayer)
@@ -74,8 +75,9 @@ add_test(NAME Multiplayer.CombatantReplicas COMMAND TestMultiplayerUnit --combat
 add_test(NAME Multiplayer.ReplicaSnapshot COMMAND TestMultiplayerUnit --replica-snapshot)
 add_test(NAME Multiplayer.SnapshotBatch COMMAND TestMultiplayerUnit --snapshot-batch)
 add_test(NAME Multiplayer.CombatantSnapshot COMMAND TestMultiplayerUnit --combatant-snapshot)
+add_test(NAME Multiplayer.ReplicaSnapshotDispatch COMMAND TestMultiplayerUnit --replica-snapshot-dispatch)
 set_tests_properties(
-    Multiplayer.Sequence Multiplayer.MapSyncDeadline Multiplayer.WeaponSpread Multiplayer.ScriptedTransport Multiplayer.WireEnvelope Multiplayer.WirePayload Multiplayer.ClientHello Multiplayer.ServerWelcome Multiplayer.AdmissionReject Multiplayer.PendingAdmission Multiplayer.AdmissionCompletion Multiplayer.PendingAdmissionLimit Multiplayer.PeerJoin Multiplayer.ClientJoin Multiplayer.BaselineTransfer Multiplayer.BaselineStaging Multiplayer.BaselineRecords Multiplayer.BaselineStagingBudget Multiplayer.BaselineRebase Multiplayer.PeerRebase Multiplayer.CatchUpEventQueue Multiplayer.ClientCatchUp Multiplayer.StalkerNavigation Multiplayer.StalkerAuthority Multiplayer.W1NavigationOption Multiplayer.CombatantRegistry Multiplayer.ParticipantConnection Multiplayer.CatchUpDespawn Multiplayer.CombatantReplicas Multiplayer.ReplicaSnapshot Multiplayer.SnapshotBatch Multiplayer.CombatantSnapshot
+    Multiplayer.Sequence Multiplayer.MapSyncDeadline Multiplayer.WeaponSpread Multiplayer.ScriptedTransport Multiplayer.WireEnvelope Multiplayer.WirePayload Multiplayer.ClientHello Multiplayer.ServerWelcome Multiplayer.AdmissionReject Multiplayer.PendingAdmission Multiplayer.AdmissionCompletion Multiplayer.PendingAdmissionLimit Multiplayer.PeerJoin Multiplayer.ClientJoin Multiplayer.BaselineTransfer Multiplayer.BaselineStaging Multiplayer.BaselineRecords Multiplayer.BaselineStagingBudget Multiplayer.BaselineRebase Multiplayer.PeerRebase Multiplayer.CatchUpEventQueue Multiplayer.ClientCatchUp Multiplayer.StalkerNavigation Multiplayer.StalkerAuthority Multiplayer.W1NavigationOption Multiplayer.CombatantRegistry Multiplayer.ParticipantConnection Multiplayer.CatchUpDespawn Multiplayer.CombatantReplicas Multiplayer.ReplicaSnapshot Multiplayer.SnapshotBatch Multiplayer.CombatantSnapshot Multiplayer.ReplicaSnapshotDispatch
     PROPERTIES LABELS multiplayer
 )
 

@@ -435,6 +435,12 @@ Each complete update must be strictly newer than the body's last applied tick. I
 
 The owner serializes application with lifecycle changes. The callback applies the body's complete update atomically, reports failure without changing it, and does not reenter the registry. Only a successful application records the tick. Despawn and accepted world advance clear the affected tick history. Payload decoding, buffering, and application of the synchronization barrier stay with their owners. [Replica registry](../../src/xrGame/Multiplayer/CombatantReplicas.h), [snapshot tests](../../src/test/multiplayer/portable/ReplicaSnapshotTests.cpp).
 
+### Typed live snapshot dispatch
+
+The dispatcher accepts a fully decoded combatant batch. Its receiver identity must match the catch-up tracker, and the replica registry must belong to the same session and world. Baseline import and barrier declaration can finish before live dispatch opens. Dispatch opens after the barrier applies successfully and rejects any batch whose tick does not strictly follow that barrier in serial order. This protects state imported at the barrier even if a replica's own tick still reflects the initial capture. Rebase closes live dispatch until the replacement barrier applies.
+
+Records are checked independently against the live event watermark and per-body registry. A typed world callback receives the decoded public state and batch header for an eligible human or stalker. Each outcome refers to the record in the same position in the batch. Unknown bodies, unapplied events, and failed applications are visible to the owner for deferral or repair. The next successful retry skips any body that already applied that tick. A late batch can still carry useful state for another body. The owner manages retry storage and resolves content before updating engine entities. [Dispatcher](../../src/xrGame/Multiplayer/ReplicaSnapshotDispatch.h), [end-to-end portable tests](../../src/test/multiplayer/portable/ReplicaSnapshotDispatchTests.cpp).
+
 ## 5. Round and spawn behavior
 
 Proposed phase defaults: load -> wait for the first active human/bot -> running -> results/intermission -> reset -> next round, waiting again if no combatants remain. Bots can start/run a match without humans. Results/intermission starts at ten seconds, configurable; this duration is an engineering default rather than a user-selected value.

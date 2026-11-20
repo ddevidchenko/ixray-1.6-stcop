@@ -37,7 +37,9 @@ public:
 	ClientCatchUp(const ClientCatchUp&) = delete;
 	ClientCatchUp& operator=(const ClientCatchUp&) = delete;
 
+	[[nodiscard]] JoinIdentity GetIdentity() const noexcept { return Identity; }
 	[[nodiscard]] std::optional<u32> GetAppliedWatermark() const noexcept { return AppliedWatermark; }
+	[[nodiscard]] std::optional<JoinBarrier> GetAppliedBarrier() const noexcept { return BarrierApplied ? DeclaredBarrier : std::nullopt; }
 	// Called after the selected capture has been imported successfully.
 	[[nodiscard]] std::expected<void, ClientCatchUpError> ConfirmBaselineApplied(JoinIdentity Peer, BaselineBoundary Applied) noexcept;
 	[[nodiscard]] std::expected<void, ClientCatchUpError> ApplyEvent(const CatchUpEvent& Event, IClientCatchUpApplier& Applier) noexcept;

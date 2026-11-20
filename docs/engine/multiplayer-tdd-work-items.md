@@ -139,6 +139,11 @@ The [peer runbook](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch
 - **Implemented / Windows pending.** The Windows regression is prepared. The reviewed option and runner evidence tests failed first, then passed. All 25 portable tests passed in Debug, Release, and ASan/UBSan on macOS arm64. The option suite covers missing, malformed, duplicated, disabled, and valid requests. The runner checks that map-specific readiness is present when DM becomes ready and that failure evidence takes precedence. The test-only Windows revision is `cac3c66a9`. It can distinguish a server reaching DM readiness without W1 navigation from a process or fixture failure. [Portable option tests](../../src/test/multiplayer/portable/StalkerPrerequisitesTests.cpp), [runner evidence tests](../../src/test/multiplayer/checkpoints/TestW0Evidence.ps1).
 - [ ] **Complete when** the [W1 navigation checkpoint](multiplayer-checkpoints/w0.md#w1-dedicated-navigation-check) records staged fixture hashes, graph readiness and two remote joins on the fixed Windows commit. The workspace has no compiled arena fixture. NPC registration, gameplay and replication remain part of the parent proof.
 
+#### MP-005c — Prepare a dedicated navigation fixture from the Level Editor
+
+- The Windows runbook walks through making a small deathmatch map with a matching AI grid and spawn graph. The staging helper checks required files, graph and patrol chunks, and distinct team-0 player spawns. It preserves the compiler's source files and records the hashes of the staged game files. Synthetic PowerShell checks failed before validation and staging were added and passed after review. [Preparation runbook](multiplayer-checkpoints/w0.md#prepare-a-w1-test-arena-on-windows), [staging script](../../scripts/multiplayer/windows/PrepareW1Fixture.ps1), [tests](../../src/test/multiplayer/checkpoints/TestW1Fixture.ps1).
+- [ ] **Complete when** the Windows editor/compiler produces the arena and the [W1 navigation check](multiplayer-checkpoints/w0.md#w1-dedicated-navigation-check) validates its graph in the dedicated server with two remote clients. The full stalker gameplay proof remains under MP-005.
+
 ### MP-010 — Add an independent portable test target
 
 - **Kind / runs / depends:** TDD; `P`; none.

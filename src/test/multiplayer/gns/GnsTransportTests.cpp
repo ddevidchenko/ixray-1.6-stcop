@@ -1,6 +1,6 @@
 #include "../transport/TransportScenario.h"
 
-#include <steam/steamnetworkingsockets.h>
+#include "../../../xrNetServer/Multiplayer/GnsRuntime.h"
 
 #include <array>
 #include <chrono>
@@ -15,18 +15,185 @@ namespace GnsTransportTests
 using namespace Multiplayer::Test;
 using namespace std::chrono_literals;
 
+// The fixture owns all runtime operations on its test thread.
+struct FixtureLock
+{
+};
+
+class FixtureGuard
+{
+public:
+	explicit FixtureGuard(FixtureLock*) noexcept {}
+};
+
+using ProcessRuntime = Multiplayer::GnsRuntime<FixtureLock, FixtureGuard>;
+
+static bool CheckSharedRuntime()
+{
+	ProcessRuntime Runtime;
+	SteamNetworkingErrMsg Error{};
+	auto Server = Runtime.AcquireServer(Error);
+	auto Client = Runtime.AcquireClient("local fixture", Error);
+	auto* Sockets = Server.Get();
+	if (!Sockets || Client.Get() != Sockets)
+	{
+		std::fputs("server and client must share the first initialized GNS interface\n", stderr);
+		return false;
+	}
+
+	auto Moved = std::move(Client);
+	Server.Reset();
+	if (Client.Get() || Moved.Get() != Sockets || SteamNetworkingSockets() != Sockets)
+	{
+		std::fputs("releasing the server or moving the client must preserve the remaining lease\n", stderr);
+		return false;
+	}
+	Moved.Reset();
+	if (SteamNetworkingSockets() != nullptr)
+	{
+		std::fputs("the final endpoint must release the GNS runtime\n", stderr);
+		return false;
+	}
+	return true;
+}
+
+struct RuntimeFaults
+{
+	bool FailStart = false;
+	bool HideInterface = false;
+	int Starts = 0;
+	int Stops = 0;
+};
+
+static RuntimeFaults g_RuntimeFaults;
+
+static bool StartRuntime(const SteamNetworkingIdentity* Identity, SteamNetworkingErrMsg& Error)
+{
+	++g_RuntimeFaults.Starts;
+	if (g_RuntimeFaults.FailStart)
+	{
+		std::snprintf(Error, sizeof(Error), "injected initialization failure");
+		return false;
+	}
+	return GameNetworkingSockets_Init(Identity, Error);
+}
+
+static ISteamNetworkingSockets* GetRuntimeInterface()
+{
+	return g_RuntimeFaults.HideInterface ? nullptr : SteamNetworkingSockets();
+}
+
+static void StopRuntime()
+{
+	++g_RuntimeFaults.Stops;
+	GameNetworkingSockets_Kill();
+}
+
+static bool CheckFailureAndRetry()
+{
+	g_RuntimeFaults = {};
+	ProcessRuntime Runtime({StartRuntime, GetRuntimeInterface, StopRuntime});
+	SteamNetworkingErrMsg Error{};
+
+	const std::array<char, 256> LongIdentity = []
+	{
+		std::array<char, 256> Value{};
+		Value.fill('x');
+		Value.back() = 0;
+		return Value;
+	}();
+	if (Runtime.AcquireClient(nullptr, Error).Get() || Runtime.AcquireClient(LongIdentity.data(), Error).Get() ||
+		g_RuntimeFaults.Starts != 0 || g_RuntimeFaults.Stops != 0 || !Error[0])
+	{
+		std::fputs("invalid client identities must leave the runtime untouched\n", stderr);
+		return false;
+	}
+
+	g_RuntimeFaults.FailStart = true;
+	if (Runtime.AcquireServer(Error).Get() || g_RuntimeFaults.Starts != 1 || g_RuntimeFaults.Stops != 0 || !Error[0])
+	{
+		std::fputs("failed GNS initialization must leave a retryable runtime without calling shutdown\n", stderr);
+		return false;
+	}
+
+	g_RuntimeFaults.FailStart = false;
+	g_RuntimeFaults.HideInterface = true;
+	if (Runtime.AcquireServer(Error).Get() || SteamNetworkingSockets() != nullptr ||
+		g_RuntimeFaults.Starts != 2 || g_RuntimeFaults.Stops != 1 || !Error[0])
+	{
+		std::fputs("successful initialization without an interface must be unwound once\n", stderr);
+		return false;
+	}
+
+	g_RuntimeFaults.HideInterface = false;
+	auto Server = Runtime.AcquireServer(Error);
+	auto Client = Runtime.AcquireClient("fixture", Error);
+	if (!Server.Get() || Client.Get() != Server.Get() || g_RuntimeFaults.Starts != 3 || g_RuntimeFaults.Stops != 1)
+	{
+		std::fputs("a retry must initialize once and both leases must use that interface\n", stderr);
+		return false;
+	}
+	Client = std::move(Server);
+	if (!Client.Get() || Server.Get() || g_RuntimeFaults.Stops != 1 || SteamNetworkingSockets() != Client.Get())
+	{
+		std::fputs("moving onto an existing lease must release just one ownership share\n", stderr);
+		return false;
+	}
+	Client.Reset();
+	Client.Reset();
+	if (g_RuntimeFaults.Stops != 2 || SteamNetworkingSockets() != nullptr)
+	{
+		std::fputs("reset after move assignment must shut down once\n", stderr);
+		return false;
+	}
+	return true;
+}
+
+static bool CheckProcessIdentity()
+{
+	ProcessRuntime Runtime;
+	SteamNetworkingErrMsg Error{};
+	auto First = Runtime.AcquireClient("fixture one", Error);
+	auto Same = Runtime.AcquireClient("fixture one", Error);
+	auto Different = Runtime.AcquireClient("fixture two", Error);
+	auto Server = Runtime.AcquireServer(Error);
+	SteamNetworkingIdentity Identity{};
+	if (!First.Get() || Same.Get() != First.Get() || Different.Get() || Server.Get() || !Error[0] ||
+		!First.Get()->GetIdentity(&Identity) || !Identity.GetGenericString() ||
+		std::strcmp(Identity.GetGenericString(), "fixture one") != 0)
+	{
+		std::fputs("an active remote client identity cannot change while the runtime is leased\n", stderr);
+		return false;
+	}
+
+	Same.Reset();
+	First.Reset();
+	Server = Runtime.AcquireServer(Error);
+	auto Local = Runtime.AcquireClient("fixture two", Error);
+	if (!Server.Get() || Local.Get() != Server.Get() || !Local.Get()->GetIdentity(&Identity) || !Identity.IsLocalHost())
+	{
+		std::fputs("a fresh server runtime supplies the shared local identity to its client\n", stderr);
+		return false;
+	}
+
+	Local.Reset();
+	if (SteamNetworkingSockets() != Server.Get())
+	{
+		std::fputs("closing the client first must preserve the live server runtime\n", stderr);
+		return false;
+	}
+	return true;
+}
+
 class GnsTransport
 {
 public:
-	GnsTransport()
+	explicit GnsTransport(ProcessRuntime& Runtime)
 	{
 		SteamNetworkingErrMsg Error{};
-		Initialized = GameNetworkingSockets_Init(nullptr, Error);
-		if (Initialized)
-		{
-			Sockets = SteamNetworkingSockets();
-		}
-		else
+		Lease = Runtime.AcquireClient("loopback fixture", Error);
+		Sockets = Lease.Get();
+		if (!Sockets)
 		{
 			std::fprintf(stderr, "GNS initialization failed: %s\n", Error);
 		}
@@ -36,10 +203,6 @@ public:
 	{
 		Close(Peer::First);
 		Close(Peer::Second);
-		if (Initialized)
-		{
-			GameNetworkingSockets_Kill();
-		}
 	}
 
 	GnsTransport(const GnsTransport&) = delete;
@@ -137,7 +300,7 @@ public:
 private:
 	std::array<HSteamNetConnection, 2> Handles{k_HSteamNetConnection_Invalid, k_HSteamNetConnection_Invalid};
 	ISteamNetworkingSockets* Sockets = nullptr;
-	bool Initialized = false;
+	ProcessRuntime::Lease Lease;
 };
 
 static ReceivedMessage AwaitReceive(GnsTransport& Link, Peer Receiver)
@@ -161,8 +324,16 @@ static ReceivedMessage AwaitReceive(GnsTransport& Link, Peer Receiver)
 int main()
 {
 	using namespace GnsTransportTests;
+	bool Passed = CheckSharedRuntime();
+	Passed &= CheckFailureAndRetry();
+	Passed &= CheckProcessIdentity();
+	if (!Passed)
 	{
-		GnsTransport Link;
+		return EXIT_FAILURE;
+	}
+	ProcessRuntime Runtime;
+	{
+		GnsTransport Link(Runtime);
 		if (!ExpectStatus("open both handles for scope cleanup", Link.Connect(), TransportStatus::Success))
 		{
 			return EXIT_FAILURE;
@@ -177,7 +348,15 @@ int main()
 	for (int Cycle = 0; Cycle < 3; ++Cycle)
 	{
 		{
-			GnsTransport Link;
+			SteamNetworkingErrMsg Error{};
+			auto Server = Runtime.AcquireServer(Error);
+			if (!Server.Get())
+			{
+				std::fprintf(stderr, "GNS runtime fixture could not start a server lease: %s\n", Error);
+				return EXIT_FAILURE;
+			}
+			GnsTransport Link(Runtime);
+			Server.Reset();
 			if (!CheckTransportExchange(Link, [&Link](Peer Side) { return AwaitReceive(Link, Side); }))
 			{
 				return EXIT_FAILURE;

@@ -311,6 +311,12 @@ The [peer runbook](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch
 - **Green / seam:** one RAII runtime owner with clear endpoint ownership in `xrNetServer`; replace independent endpoint init/kill assumptions in the SteamNet classes. Test lifecycle order only where required to prevent use-after-free.
 - [ ] **Complete when:** final endpoint teardown joins owned workers and destroys callbacks/resources before runtime shutdown, including partial startup failure.
 
+#### MP-024a — Protect the process runtime with endpoint leases
+
+- Give the GNS owner one serialized start/shutdown path and movable endpoint leases. Preserve the initial process identity while leased. Release the library after the last lease. [Runtime](../../src/xrNetServer/Multiplayer/GnsRuntime.h).
+- **Mac checks passed / Windows pending.** Real GNS loopback exercises the shared interface after a server lease releases, reversed close order, move assignment, and repeated startup. Injected failures check init failure, missing interface, and retry. The live endpoint switch depends on owned shutdown for both the receive worker and the legacy clock-sync thread.
+- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) records a passing `gns-loopback.xml` on Windows with the shared runtime.
+
 ### MP-025 — Own endpoint resources and unwind every creation failure
 
 - **Kind / runs / depends:** TDD; `P/N/W`; MP-024.

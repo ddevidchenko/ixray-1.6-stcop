@@ -1,5 +1,6 @@
 #include "../transport/TransportScenario.h"
 
+#include "../../../xrNetServer/Multiplayer/GnsCallbackPump.h"
 #include "../../../xrNetServer/Multiplayer/GnsEndpoint.h"
 #include "../../../xrNetServer/Multiplayer/GnsRuntime.h"
 #include "../../../xrNetServer/Multiplayer/GnsReceive.h"
@@ -14,6 +15,11 @@
 #include <system_error>
 #include <thread>
 #include <utility>
+
+namespace GnsCallbackPumpTests
+{
+bool Run(ISteamNetworkingSockets& Sockets);
+}
 
 namespace GnsTransportTests
 {
@@ -310,6 +316,15 @@ static bool CheckEndpointLifecycle()
 		return false;
 	}
 
+	g_Resources.Failure = Attempt::PollGroup;
+	const auto GroupFailed = Endpoint.OpenClient(Runtime.AcquireClient("fixture", Error), Address, {}, RunWorker, nullptr);
+	if (GroupFailed != std::unexpected(GnsEndpointError::PollGroupFailed) || Endpoint.Get().Sockets ||
+		g_Resources.Connections != 0 || g_Resources.PollGroups != 0 || SteamNetworkingSockets() != nullptr)
+	{
+		std::fputs("a failed client receive group must release the connection and its runtime lease\n", stderr);
+		return false;
+	}
+
 	g_Resources.Failure = Attempt::None;
 	if (!Endpoint.OpenClient(Runtime.AcquireClient("fixture", Error), Address, {}, RunWorker, nullptr))
 	{
@@ -317,7 +332,7 @@ static bool CheckEndpointLifecycle()
 		return false;
 	}
 	if (Endpoint.OpenClient(Runtime.AcquireClient("fixture", Error), Address, {}, RunWorker, nullptr) !=
-		std::unexpected(GnsEndpointError::AlreadyOpen) || g_Resources.Connections != 1 || !Endpoint.Get().Sockets)
+		std::unexpected(GnsEndpointError::AlreadyOpen) || g_Resources.Connections != 1 || g_Resources.PollGroups != 1 || !Endpoint.Get().Sockets)
 	{
 		std::fputs("duplicate open must preserve the active endpoint\n", stderr);
 		return false;
@@ -330,7 +345,7 @@ static bool CheckEndpointLifecycle()
 	Endpoint.Close();
 	Endpoint.Close();
 	if (g_Resources.ClosedEarly || !g_Resources.Started.load() || !g_Resources.Exited.load() ||
-		g_Resources.Connections != 0 || Endpoint.Get().Sockets || SteamNetworkingSockets() != nullptr)
+		g_Resources.Connections != 0 || g_Resources.PollGroups != 0 || Endpoint.Get().Sockets || SteamNetworkingSockets() != nullptr)
 	{
 		std::fputs("closing an active endpoint must join the worker before closing its connection\n", stderr);
 		return false;
@@ -359,55 +374,13 @@ private:
 };
 
 using EventInbox = TransportInbox<InboxLock, InboxGuard>;
-constexpr u64 PeerGeneration = 17;
+using CallbackPump = GnsCallbackPump<EventInbox>;
 
 struct ReceiveFixture
 {
 	EventInbox& Inbox;
 	std::atomic<bool> Failed = false;
 };
-
-struct AcceptedPeer
-{
-	GnsEndpointView Server;
-	EventInbox& Inbox;
-	HSteamNetConnection Connection = k_HSteamNetConnection_Invalid;
-	bool Failed = false;
-};
-
-static thread_local AcceptedPeer* g_AcceptedPeer = nullptr;
-
-static void AcceptPeer(SteamNetConnectionStatusChangedCallback_t* Event)
-{
-	auto* Target = g_AcceptedPeer;
-	if (!Target || Event->m_info.m_hListenSocket != Target->Server.Listener)
-	{
-		return;
-	}
-	auto& Sockets = *Target->Server.Sockets;
-	const TransportPeer Peer{Event->m_hConn, PeerGeneration};
-	if (Event->m_info.m_eState == k_ESteamNetworkingConnectionState_Connecting)
-	{
-		if (!Sockets.SetConnectionUserData(Event->m_hConn, PeerGeneration) || Sockets.AcceptConnection(Event->m_hConn) != k_EResultOK ||
-			!Target->Inbox.PushConnected(Peer) || !Sockets.SetConnectionPollGroup(Event->m_hConn, Target->Server.PollGroup))
-		{
-			Target->Failed = true;
-			return;
-		}
-		Target->Connection = Event->m_hConn;
-	}
-	else if (Event->m_info.m_eState == k_ESteamNetworkingConnectionState_ClosedByPeer && Event->m_hConn == Target->Connection)
-	{
-		Target->Failed = !Target->Inbox.PushDisconnected(Peer, static_cast<u32>(Event->m_info.m_eEndReason));
-	}
-}
-
-static void PumpCallbacks(AcceptedPeer& Peer)
-{
-	g_AcceptedPeer = &Peer;
-	Peer.Server.Sockets->RunCallbacks();
-	g_AcceptedPeer = nullptr;
-}
 
 static void RunReceive(std::stop_token Stop, GnsEndpointView View, void* Context) noexcept
 {
@@ -427,31 +400,75 @@ static void RunReceive(std::stop_token Stop, GnsEndpointView View, void* Context
 	}
 }
 
-static void RunUntilStopped(std::stop_token Stop, GnsEndpointView, void*) noexcept
+template <class Predicate>
+static bool WaitFor(Predicate&& Ready)
 {
-	while (!Stop.stop_requested())
+	const auto Deadline = std::chrono::steady_clock::now() + 2s;
+	do
 	{
+		if (Ready())
+		{
+			return true;
+		}
 		std::this_thread::sleep_for(1ms);
 	}
+	while (std::chrono::steady_clock::now() < Deadline);
+	return false;
 }
 
-static bool CheckRealEndpoints(bool CloseServerFirst)
+static std::optional<TransportEvent> NextEvent(EventInbox& Inbox)
+{
+	const auto Next = Inbox.Pop();
+	return Next ? *Next : std::nullopt;
+}
+
+static bool CheckPump(CallbackPump& Pump, const CallbackPump::ServerRoute* Server, const CallbackPump::ClientRoute* Client)
+{
+	const auto Result = Pump.Poll(Server, Client);
+	return Result && Result->Server == GnsEndpointEventStatus::Ok && Result->Client == GnsEndpointEventStatus::Ok;
+}
+
+static bool CheckClose(CallbackPump& Pump, const CallbackPump::ServerRoute* Server, const CallbackPump::ClientRoute* Client,
+	EventInbox& Inbox, TransportPeer Peer, u32 Reason)
+{
+	std::optional<TransportEvent> Closed;
+	bool Pumped = true;
+	WaitFor([&]
+	{
+		Pumped = CheckPump(Pump, Server, Client);
+		Closed = NextEvent(Inbox);
+		return !Pumped || Closed.has_value();
+	});
+	return Pumped && Closed && Closed->Kind == TransportEventKind::Disconnected && Closed->Peer == Peer && Closed->Reason == Reason;
+}
+
+enum class CloseOrder
+{
+	ListenerFirst,
+	ClientFirst,
+	ServerPeerFirst,
+};
+
+static bool CheckRealEndpoints(CloseOrder Order)
 {
 	ProcessRuntime Runtime;
+	CallbackPump Pump;
 	SteamNetworkingErrMsg Error{};
-	xr_array<TransportEvent, 3> Storage;
-	EventInbox Inbox(Storage);
-	ReceiveFixture Receive{Inbox};
+	xr_array<TransportEvent, 3> ServerStorage;
+	xr_array<TransportEvent, 3> ClientStorage;
+	EventInbox ServerInbox(ServerStorage);
+	EventInbox ClientInbox(ClientStorage);
+	ReceiveFixture ServerReceive{ServerInbox};
+	ReceiveFixture ClientReceive{ClientInbox};
 	GnsEndpoint<ProcessRuntime::Lease> Server;
 	GnsEndpoint<ProcessRuntime::Lease> Client;
 	SteamNetworkingIPAddr Address{};
-	SteamNetworkingConfigValue_t Callback;
-	Callback.SetPtr(k_ESteamNetworkingConfig_Callback_ConnectionStatusChanged, reinterpret_cast<void*>(&AcceptPeer));
+	const auto Callback = CallbackPump::CallbackOption();
 	// GNS requires a nonzero direct-IP listen port.
 	for (u16 Port = 48700; Port < 48732; ++Port)
 	{
 		Address.SetIPv4(0x7f000001u, Port);
-		const auto Opened = Server.OpenServer(Runtime.AcquireServer(Error), Address, std::span(&Callback, 1), RunReceive, &Receive);
+		const auto Opened = Server.OpenServer(Runtime.AcquireServer(Error), Address, xr_span(&Callback, 1), RunReceive, &ServerReceive);
 		if (Opened || Opened.error() != GnsEndpointError::ListenerFailed)
 		{
 			break;
@@ -464,109 +481,109 @@ static bool CheckRealEndpoints(bool CloseServerFirst)
 	}
 
 	const auto Listen = Server.Get();
-	if (!Listen.Sockets->GetListenSocketAddress(Listen.Listener, &Address) ||
-		!Client.OpenClient(Runtime.AcquireClient("loopback", Error), Address, {}, RunUntilStopped, nullptr))
+	const auto Options = Pump.PrepareClient();
+	if (!Options || !Listen.Sockets->GetListenSocketAddress(Listen.Listener, &Address))
+	{
+		std::fputs("could not prepare the hosted GNS client route\n", stderr);
+		return false;
+	}
+	if (!Client.OpenClient(Runtime.AcquireClient("loopback", Error), Address, Options->Native, RunReceive, &ClientReceive))
 	{
 		std::fputs("could not connect an owned GNS client to the listener\n", stderr);
 		return false;
 	}
-	AcceptedPeer Peer{Listen, Inbox};
-	const auto Connection = Client.Get().Connection;
-	const auto Deadline = std::chrono::steady_clock::now() + 2s;
-	bool Connected = false;
-	do
+
+	const CallbackPump::ServerRoute ServerRoute{Server.Get(), ServerInbox};
+	const CallbackPump::ClientRoute ClientRoute{Client.Get(), ClientInbox, Options->Generation};
+	const TransportPeer Local{ClientRoute.Endpoint.Connection, static_cast<u64>(Options->Generation)};
+	std::optional<TransportEvent> Accepted;
+	std::optional<TransportEvent> Connected;
+	bool Pumped = true;
+	WaitFor([&]
 	{
-		PumpCallbacks(Peer);
-		SteamNetConnectionInfo_t Info{};
-		Connected = Peer.Connection != k_HSteamNetConnection_Invalid && Listen.Sockets->GetConnectionInfo(Connection, &Info) &&
-			Info.m_eState == k_ESteamNetworkingConnectionState_Connected;
-		if (Connected || Peer.Failed)
+		Pumped = CheckPump(Pump, &ServerRoute, &ClientRoute);
+		if (!Accepted)
 		{
-			break;
+			Accepted = NextEvent(ServerInbox);
 		}
-		std::this_thread::sleep_for(1ms);
-	}
-	while (std::chrono::steady_clock::now() < Deadline);
-	constexpr u8 Message[]{0x41, 0, 0xa3};
-	if (!Connected || Listen.Sockets->SendMessageToConnection(Connection, Message, sizeof(Message),
-			k_nSteamNetworkingSend_ReliableNoNagle, nullptr) != k_EResultOK)
+		if (!Connected)
+		{
+			Connected = NextEvent(ClientInbox);
+		}
+		return !Pumped || (Accepted && Connected);
+	});
+	if (!Pumped || !Accepted || !Connected || Accepted->Kind != TransportEventKind::Connected ||
+		Connected->Kind != TransportEventKind::Connected || Connected->Peer != Local || Accepted->Peer.Generation == Local.Generation)
 	{
-		std::fputs("owned GNS endpoints could not exchange a reliable message\n", stderr);
+		std::fputs("one process pump must publish both native connect events with distinct generations\n", stderr);
 		return false;
 	}
 
-	const auto Joined = Inbox.Pop();
-	if (!Joined || !*Joined || (*Joined)->Kind != TransportEventKind::Connected ||
-		(*Joined)->Peer != TransportPeer{Peer.Connection, PeerGeneration})
+	const auto Remote = Accepted->Peer;
+	auto& Sockets = *Listen.Sockets;
+	constexpr u8 ToServer[]{0x41, 0, 0xa3};
+	constexpr u8 ToClient[]{0x42, 0, 0xb4};
+	if (Sockets.SendMessageToConnection(Local.Handle, ToServer, sizeof(ToServer), k_nSteamNetworkingSend_ReliableNoNagle, nullptr) != k_EResultOK ||
+		Sockets.SendMessageToConnection(Remote.Handle, ToClient, sizeof(ToClient), k_nSteamNetworkingSend_ReliableNoNagle, nullptr) != k_EResultOK)
 	{
-		std::fputs("the owner must receive the native connect event first\n", stderr);
+		std::fputs("owned GNS endpoints could not exchange reliable messages\n", stderr);
 		return false;
 	}
 
-	std::optional<TransportEvent> Packet;
-	const auto ReceiveDeadline = std::chrono::steady_clock::now() + 2s;
-	do
+	std::optional<TransportEvent> ServerPacket;
+	std::optional<TransportEvent> ClientPacket;
+	WaitFor([&]
 	{
-		const auto Next = Inbox.Pop();
-		if (!Next || Receive.Failed.load())
+		if (!ServerPacket)
 		{
-			break;
+			ServerPacket = NextEvent(ServerInbox);
 		}
-		if (*Next)
+		if (!ClientPacket)
 		{
-			Packet = **Next;
-			break;
+			ClientPacket = NextEvent(ClientInbox);
 		}
-		std::this_thread::sleep_for(1ms);
-	}
-	while (std::chrono::steady_clock::now() < ReceiveDeadline);
-	if (!Packet || Packet->Kind != TransportEventKind::Packet || Packet->Peer != (*Joined)->Peer ||
-		!std::ranges::equal(Packet->GetPayload(), Message))
+		return (ServerPacket && ClientPacket) || ServerReceive.Failed.load() || ClientReceive.Failed.load();
+	});
+	if (!ServerPacket || !ClientPacket || ServerPacket->Kind != TransportEventKind::Packet || ClientPacket->Kind != TransportEventKind::Packet ||
+		ServerPacket->Peer != Remote || ClientPacket->Peer != Local || !std::ranges::equal(ServerPacket->GetPayload(), ToServer) ||
+		!std::ranges::equal(ClientPacket->GetPayload(), ToClient))
 	{
-		std::fputs("the receive worker must publish owned bytes and the native connection generation\n", stderr);
+		std::fputs("both receive workers must publish owned bytes after their native connect events\n", stderr);
 		return false;
 	}
 
-	if (CloseServerFirst)
+	if (Order == CloseOrder::ListenerFirst)
 	{
 		Server.Close();
 		SteamNetConnectionInfo_t ClosedInfo{};
-		if (SteamNetworkingSockets() != Listen.Sockets || Client.Get().Connection != Connection ||
-			Listen.Sockets->GetConnectionInfo(Peer.Connection, &ClosedInfo))
+		if (SteamNetworkingSockets() != Listen.Sockets || Client.Get().Connection != Local.Handle ||
+			Sockets.GetConnectionInfo(Remote.Handle, &ClosedInfo))
 		{
-			std::fputs("closing the listener releases accepted peers and preserves the client's runtime lease\n", stderr);
+			std::fputs("closing the listener must release accepted peers and preserve the client's lease\n", stderr);
 			return false;
 		}
+	}
+	else if (Order == CloseOrder::ClientFirst)
+	{
 		Client.Close();
+		if (!CheckClose(Pump, &ServerRoute, nullptr, ServerInbox, Remote, k_ESteamNetConnectionEnd_App_Generic))
+		{
+			std::fputs("closing the client must publish the server peer's disconnection with its original generation and reason\n", stderr);
+			return false;
+		}
 	}
 	else
 	{
-		Client.Close();
-		std::optional<TransportEvent> Disconnected;
-		const auto CloseDeadline = std::chrono::steady_clock::now() + 2s;
-		do
+		constexpr int Reason = k_ESteamNetConnectionEnd_App_Min + 42;
+		if (!Sockets.CloseConnection(Remote.Handle, Reason, nullptr, false) ||
+			!CheckClose(Pump, &ServerRoute, &ClientRoute, ClientInbox, Local, Reason))
 		{
-			PumpCallbacks(Peer);
-			const auto Next = Inbox.Pop();
-			if (!Next || Peer.Failed)
-			{
-				break;
-			}
-			if (*Next)
-			{
-				Disconnected = **Next;
-				break;
-			}
-			std::this_thread::sleep_for(1ms);
-		}
-		while (std::chrono::steady_clock::now() < CloseDeadline);
-		if (!Disconnected || Disconnected->Kind != TransportEventKind::Disconnected || Disconnected->Peer != (*Joined)->Peer)
-		{
-			std::fputs("the owner must receive the close for the same transport generation after its packet\n", stderr);
+			std::fputs("closing the accepted server peer must deliver its reason to the client's inbox\n", stderr);
 			return false;
 		}
-		Server.Close();
 	}
+	Client.Close();
+	Server.Close();
 	return SteamNetworkingSockets() == nullptr;
 }
 
@@ -714,9 +731,16 @@ int main()
 	bool Passed = CheckSharedRuntime();
 	Passed &= CheckFailureAndRetry();
 	Passed &= CheckProcessIdentity();
+	{
+		ProcessRuntime Runtime;
+		SteamNetworkingErrMsg Error{};
+		auto Lease = Runtime.AcquireServer(Error);
+		Passed &= Lease.Get() && GnsCallbackPumpTests::Run(*Lease.Get());
+	}
 	Passed &= EndpointTests::CheckEndpointLifecycle();
-	Passed &= EndpointTests::CheckRealEndpoints(true);
-	Passed &= EndpointTests::CheckRealEndpoints(false);
+	Passed &= EndpointTests::CheckRealEndpoints(EndpointTests::CloseOrder::ListenerFirst);
+	Passed &= EndpointTests::CheckRealEndpoints(EndpointTests::CloseOrder::ClientFirst);
+	Passed &= EndpointTests::CheckRealEndpoints(EndpointTests::CloseOrder::ServerPeerFirst);
 	if (!Passed)
 	{
 		return EXIT_FAILURE;

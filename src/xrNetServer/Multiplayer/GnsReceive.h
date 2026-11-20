@@ -22,15 +22,13 @@ using GnsIngressError = std::variant<GnsReceiveError, TransportInboxError>;
 template <class Lock, class Guard>
 [[nodiscard]] std::expected<bool, GnsIngressError> ReceiveGnsPacket(GnsEndpointView View, TransportInbox<Lock, Guard>& Inbox) noexcept
 {
-	if (!View.Sockets || (View.PollGroup == k_HSteamNetPollGroup_Invalid && View.Connection == k_HSteamNetConnection_Invalid))
+	if (!View.Sockets || View.PollGroup == k_HSteamNetPollGroup_Invalid)
 	{
 		return std::unexpected(GnsIngressError{GnsReceiveError::InactiveEndpoint});
 	}
 
 	SteamNetworkingMessage_t* Raw = nullptr;
-	const int Count = View.PollGroup != k_HSteamNetPollGroup_Invalid ?
-		View.Sockets->ReceiveMessagesOnPollGroup(View.PollGroup, &Raw, 1) :
-		View.Sockets->ReceiveMessagesOnConnection(View.Connection, &Raw, 1);
+	const int Count = View.Sockets->ReceiveMessagesOnPollGroup(View.PollGroup, &Raw, 1);
 	const auto Release = [](SteamNetworkingMessage_t* Packet) noexcept { Packet->Release(); };
 	const std::unique_ptr<SteamNetworkingMessage_t, decltype(Release)> Packet(Raw, Release);
 	if (Count == 0)

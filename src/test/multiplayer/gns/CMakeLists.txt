@@ -13,7 +13,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     include("../../../../cmake/modules/GameNetworkingSockets.cmake")
 endif()
 
-add_executable(TestMultiplayerGns GnsTransportTests.cpp)
+add_executable(TestMultiplayerGns GnsTransportTests.cpp GnsCallbackPumpTests.cpp)
 target_link_libraries(TestMultiplayerGns PRIVATE Steam::Sockets)
 set_target_properties(TestMultiplayerGns PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
 

@@ -336,6 +336,12 @@ The [peer runbook](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch
 - **Mac checks passed / Windows pending.** A portable test drives a single in-flight MSYS ping, queue backpressure, send failure, cancellation and restart, stale replies, deadline fallback, and wire clock wrap. Remote loading polls one step per turn after connection acceptance. The normal frame drives console resync. Direct single-player completes without a probe. [Clock state](../../src/xrNetServer/Multiplayer/LegacyClockSync.h), [client driver](../../src/xrNetServer/BaseClient.cpp), [loading stage](../../src/xrGame/Level_network_start_client.cpp).
 - [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) records a passing `legacy-clock-sync.xml` on Windows and the [two-client check](multiplayer-checkpoints/w0.md#run-the-two-client-check) verifies join and reconnect on the integrated engine.
 
+#### MP-025c — Route GNS callbacks from one process owner
+
+- **Depends on:** MP-024a, MP-025a, MP-026a. The owner pumps callbacks for the shared GNS interface and forwards only transport lifecycle events. Inbound and outbound peers join their receive groups after the connect event enters the corresponding inbox. [Callback pump](../../src/xrNetServer/Multiplayer/GnsCallbackPump.h).
+- **Mac checks passed / Windows pending.** Deterministic cases cover hosted routing, reused handles, disconnect before readiness, duplicate and foreign callbacks, queue overflow, and partial native failure. Real peers exchange packets in both directions and exercise explicit peer close and listener cleanup using the same pump.
+- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) records these cases in `gns-loopback.xml` on Windows. Legacy engine startup and callback adoption remain under MP-025 and MP-026.
+
 ### MP-026 — Apply network events only at the simulation boundary
 
 - **Kind / runs / depends:** TDD; `P/W`; MP-022–025.

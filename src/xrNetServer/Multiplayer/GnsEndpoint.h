@@ -154,11 +154,6 @@ private:
 			{
 				return Fail(GnsEndpointError::ListenerFailed);
 			}
-			Handles.PollGroup = Api.CreatePollGroup(*Sockets);
-			if (Handles.PollGroup == k_HSteamNetPollGroup_Invalid)
-			{
-				return Fail(GnsEndpointError::PollGroupFailed);
-			}
 		}
 		else
 		{
@@ -167,6 +162,12 @@ private:
 			{
 				return Fail(GnsEndpointError::ConnectionFailed);
 			}
+		}
+
+		Handles.PollGroup = Api.CreatePollGroup(*Sockets);
+		if (Handles.PollGroup == k_HSteamNetPollGroup_Invalid)
+		{
+			return Fail(GnsEndpointError::PollGroupFailed);
 		}
 
 		try

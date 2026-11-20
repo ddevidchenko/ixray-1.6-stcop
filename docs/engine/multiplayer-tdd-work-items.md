@@ -1,6 +1,6 @@
 # Multiplayer TDD work items
 
-The operator reports that W0 passed on Windows. The exact revision and result bundle are pending attachment. MP-010, MP-011a, MP-011b, MP-012, MP-020a and MP-020b have macOS evidence.
+The operator reports that W0 passed on Windows. The exact revision and result bundle are pending attachment. MP-010, MP-011a, MP-011b, MP-012, MP-020a, MP-020b and MP-020c have macOS evidence.
 
 Implements the [modern multiplayer plan](multiplayer-modernization-plan.md): 32 total human/bot combatants, simple DM, direct IP over GameNetworkingSockets first, human-like bots, authoritative simulation, prediction, lag compensation, and immediate local effects. Windows x64 is the initial runtime target; macOS remains usable for source work and portable tests. Hitscan, ballistics, and hybrid gunplay remain alternatives until the comparison gate.
 
@@ -177,6 +177,12 @@ The [peer runbook](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch
 - **Design:** use caller-owned buffers and explicit little-endian integer fields, finite binary32 values, and bounded UTF-8 strings with a `u16` byte count. Readers and writers preserve their cursor on field failure. Frame and payload codecs share their endian conversion. [Payload encoding](multiplayer-implementation-contracts.md#payload-field-encoding), [codec](../../src/xrNetServer/Multiplayer/WirePayload.h).
 - **Mac checks passed / Windows pending:** `Multiplayer.WirePayload` first failed on overlong UTF-8. The reviewed tests also reproduced acceptance of NaNs and infinities and a changed read cursor. Hand-authored bytes now verify field order and values. Boundary tests cover truncated fields, byte and capacity limits, UTF-8 scalar validity, overlapping output, and exact finite float bits. Fixtures use literal data. [Tests](../../src/test/multiplayer/portable/WirePayloadTests.cpp).
 - [ ] **Complete when:** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) reports a passing `wire-payload.xml` on Windows.
+
+#### MP-020c — Encode and validate client hello
+
+- The codec carries 32-byte build, content, and rules compatibility identifiers and bounded fields for the requested name and credentials. It checks that the envelope is unbound and consumes the whole payload before returning a hello. Encoding validates a bounded temporary payload before writing the complete frame. Compatibility matching and credential verification belong to MP-022. [Client hello wire layout](multiplayer-implementation-contracts.md#client-hello), [codec](../../src/xrNetServer/Multiplayer/ClientHello.h).
+- **Mac checks passed / Windows pending.** The first hand-authored datagram failed before implementation. Reviewed tests exercise whole-frame and typed truncation, bound identities, trailing data, name and credential limits, and atomic encoding with overlapping buffers. Tests use literal fixtures. [Tests](../../src/test/multiplayer/portable/ClientHelloTests.cpp).
+- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) collects a passing `client-hello.xml` on Windows.
 
 ### MP-021 — Bound legacy envelope parsing and decompression
 

@@ -39,6 +39,7 @@ public:
 		return std::bit_cast<Value>(Bits);
 	}
 
+	[[nodiscard]] std::expected<xr_span<const u8>, PayloadError> ReadBytes(std::size_t Count) noexcept;
 	[[nodiscard]] std::expected<f32, PayloadError> ReadFiniteFloat() noexcept;
 	[[nodiscard]] std::expected<xr_string_view, PayloadError> ReadUtf8(std::size_t MaxBytes) noexcept;
 	[[nodiscard]] std::size_t RemainingBytes() const noexcept { return Unread.size(); }
@@ -65,6 +66,7 @@ public:
 		return {};
 	}
 
+	[[nodiscard]] std::expected<void, PayloadError> WriteBytes(xr_span<const u8> Bytes) noexcept;
 	[[nodiscard]] std::expected<void, PayloadError> WriteFiniteFloat(f32 Value) noexcept;
 	[[nodiscard]] std::expected<void, PayloadError> WriteUtf8(xr_string_view Value, std::size_t MaxBytes) noexcept;
 	[[nodiscard]] xr_span<const u8> Written() const noexcept { return Output.first(Position); }

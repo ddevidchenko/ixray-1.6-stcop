@@ -207,6 +207,28 @@ static bool CheckShortScalarsAndOverlap()
 	return Passed;
 }
 
+static bool CheckRawBytes()
+{
+	constexpr u8 Raw[] = {0x00, 0xff, 0x80};
+	PayloadReader Reader(Raw);
+	bool Passed = Expect("oversized raw read leaves bytes available", IsError(Reader.ReadBytes(4), PayloadError::Truncated) && Reader.RemainingBytes() == 3);
+	const auto First = Reader.ReadBytes(2);
+	Passed &= Expect("raw read borrows the exact bytes", First && First->data() == Raw && std::ranges::equal(*First, xr_span(Raw).first(2)));
+	Passed &= Expect("raw read advances by the requested size", Reader.ReadInteger<u8>() == u8{0x80} && Reader.RemainingBytes() == 0);
+	const auto Empty = Reader.ReadBytes(0);
+	Passed &= Expect("zero-byte read is valid at the end", Empty && Empty->empty() && Reader.RemainingBytes() == 0);
+
+	std::array<u8, 4> Bytes{0x00, 0xff, 0x80, Canary};
+	PayloadWriter Writer(Bytes);
+	Passed &= Expect("prefix for overlapping raw write", Writer.WriteInteger(u8{0x33}).has_value());
+	const auto Saved = Bytes;
+	Passed &= Expect("raw write beyond capacity leaves output unchanged", IsError(Writer.WriteBytes(Bytes), PayloadError::OutputTooSmall) &&
+		Writer.Written().size() == 1 && Bytes == Saved);
+	Passed &= Expect("raw write supports overlap", Writer.WriteBytes(xr_span(Bytes).first(2)).has_value() && Bytes == std::array<u8, 4>{0x33, 0x33, 0xff, Canary});
+	Passed &= Expect("zero-byte write preserves position", Writer.WriteBytes({}).has_value() && Writer.Written().size() == 3);
+	return Passed;
+}
+
 bool Run()
 {
 	bool Passed = CheckGolden();
@@ -214,6 +236,7 @@ bool Run()
 	Passed &= CheckBoundsAndRecovery();
 	Passed &= CheckFloatBits();
 	Passed &= CheckShortScalarsAndOverlap();
+	Passed &= CheckRawBytes();
 	if (Passed)
 	{
 		std::puts("Wire payload checks passed");

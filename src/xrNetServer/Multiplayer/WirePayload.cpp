@@ -73,6 +73,17 @@ static bool IsValidUtf8(xr_string_view Text) noexcept
 	return true;
 }
 
+std::expected<xr_span<const u8>, PayloadError> PayloadReader::ReadBytes(std::size_t Count) noexcept
+{
+	if (Count > Unread.size())
+	{
+		return std::unexpected(PayloadError::Truncated);
+	}
+	const auto Bytes = Unread.first(Count);
+	Unread = Unread.subspan(Count);
+	return Bytes;
+}
+
 std::expected<f32, PayloadError> PayloadReader::ReadFiniteFloat() noexcept
 {
 	auto Cursor = *this;
@@ -112,6 +123,20 @@ std::expected<xr_string_view, PayloadError> PayloadReader::ReadUtf8(std::size_t 
 	}
 	Unread = Cursor.Unread.subspan(*Length);
 	return Text;
+}
+
+std::expected<void, PayloadError> PayloadWriter::WriteBytes(xr_span<const u8> Bytes) noexcept
+{
+	if (Bytes.size() > Output.size() - Position)
+	{
+		return std::unexpected(PayloadError::OutputTooSmall);
+	}
+	if (!Bytes.empty())
+	{
+		std::memmove(Output.data() + Position, Bytes.data(), Bytes.size());
+		Position += Bytes.size();
+	}
+	return {};
 }
 
 std::expected<void, PayloadError> PayloadWriter::WriteFiniteFloat(f32 Value) noexcept

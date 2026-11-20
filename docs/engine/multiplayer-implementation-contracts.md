@@ -117,6 +117,20 @@ GNS delivery does not establish application causality across message classes. Va
 
 Start with one ordered reliable control/state stream per peer plus independently sequenced unreliable gameplay state. Use a small number of GNS lanes only if supported by the pinned dependency and justified by measurements; application queues/limits are required either way. Do not assume today's upstream headers match this checkout's packaged library.
 
+### Client hello
+
+A `ClientHello` uses envelope tag `0x01` and carries protocol version `1` in the envelope. The server session, world epoch, and connection epoch are zero for this unbound message. The envelope carries the caller's message sequence.
+
+| Payload field in order | Encoding |
+| --- | --- |
+| Build compatibility ID | 32 opaque bytes |
+| Content manifest ID | 32 opaque bytes |
+| Rules ID | 32 opaque bytes |
+| Requested display name | `u16` byte count followed by up to 32 UTF-8 bytes. Empty means the client supplies no display preference. The field rejects an embedded U+0000. |
+| Credentials | `u16` byte count followed by up to 128 opaque bytes. A count of zero carries no credentials. |
+
+The payload length is 100 through 260 bytes. The decoder consumes the complete payload and rejects missing fields and trailing data. Admission compares the claimed compatibility IDs against the server's expected values and verifies credentials before assigning connection identity. [Codec](../../src/xrNetServer/Multiplayer/ClientHello.h), [independent golden datagram](../../src/test/multiplayer/portable/ClientHelloTests.cpp).
+
 ### Input and discrete actions
 
 Each command includes `u32 CommandSequence`, `u32 ClientTick`, signed `i8` forward/right input, `u16` yaw, `i16` pitch and a `u16` held-button mask. Declare direction normalization and button meanings in MP-030's golden fixtures. Yaw covers a full turn; pitch is bounded to the shared controller's allowed range. A client timestamp is evidence for bounded scheduling, not permission to choose an arbitrary execution/rewind time.

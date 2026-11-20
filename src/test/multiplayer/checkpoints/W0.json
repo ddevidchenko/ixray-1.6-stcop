@@ -1,7 +1,7 @@
 {
     "id": "W0",
     "Portable": {
-        "workItems": ["MP-010", "MP-011a", "MP-011b"],
+        "workItems": ["MP-010", "MP-011a", "MP-011b", "MP-012"],
         "configuration": "RelWithDebInfo",
         "sourceDirectory": "src/test/multiplayer/portable",
         "architecture": "x64",
@@ -18,6 +18,11 @@
                 "name": "Multiplayer.WeaponSpread",
                 "successMessage": "Weapon spread checks passed",
                 "step": "weapon-spread"
+            },
+            {
+                "name": "Multiplayer.ScriptedTransport",
+                "successMessage": "Scripted transport checks passed",
+                "step": "scripted-transport"
             }
         ],
         "deliberateFailureTest": "Multiplayer.Sequence.DeliberateFailure",
@@ -25,6 +30,19 @@
         "configureTimeoutSeconds": 180,
         "buildTimeoutSeconds": 300,
         "testTimeoutSeconds": 30
+    },
+    "Peers": {
+        "workItems": ["MP-010", "MP-011a", "MP-011b", "MP-012"],
+        "configuration": "RelWithDebInfo",
+        "targets": ["TestMultiplayerUnit", "TestMultiplayerGns"],
+        "test": {
+            "name": "Multiplayer.GnsLoopback",
+            "successMessage": "GNS loopback exchange and close checks passed",
+            "step": "gns-loopback"
+        },
+        "configureTimeoutSeconds": 1200,
+        "buildTimeoutSeconds": 300,
+        "testTimeoutSeconds": 40
     },
     "BaselineBuild": {
         "workItems": ["MP-001"],

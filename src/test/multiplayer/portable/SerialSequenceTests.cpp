@@ -14,6 +14,11 @@ namespace WeaponSpreadTests
 bool Run();
 }
 
+namespace ScriptedTransportTests
+{
+bool Run();
+}
+
 namespace SerialSequenceTests
 {
 struct SequenceCase
@@ -63,6 +68,10 @@ int main(int ArgumentCount, char** Arguments)
 	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--weapon-spread") == 0)
 	{
 		return WeaponSpreadTests::Run() ? EXIT_SUCCESS : EXIT_FAILURE;
+	}
+	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--scripted-transport") == 0)
+	{
+		return ScriptedTransportTests::Run() ? EXIT_SUCCESS : EXIT_FAILURE;
 	}
 	if (ArgumentCount != 1)
 	{

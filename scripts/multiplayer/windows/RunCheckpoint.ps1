@@ -6,7 +6,7 @@ param(
     [ValidatePattern('^[0-9a-fA-F]{40}$')]
     [string] $Revision,
 
-    [ValidateSet('Portable', 'BaselineBuild', 'BaselineRuntime')]
+    [ValidateSet('Portable', 'Peers', 'BaselineBuild', 'BaselineRuntime')]
     [string] $Mode = 'Portable',
 
     [string] $ResultsRoot,
@@ -106,6 +106,20 @@ function Read-CheckpointTest {
     return $Cases.Item(0)
 }
 
+function Invoke-AssertedCTest {
+    param([string] $CTest, [string[]] $Arguments, [string] $Source, [int] $TimeoutSeconds, $Test)
+
+    $Pattern = '^' + [regex]::Escape($Test.name) + '$'
+    $Results = Join-Path $Bundle "$($Test.step).xml"
+    $null = Invoke-CheckpointStep $Test.step $CTest ($Arguments + @('-R', $Pattern, '--output-junit', $Results)) $Source $TimeoutSeconds
+    $Result = Read-CheckpointTest $Results $Test.name
+    $Output = $Result.SelectSingleNode('system-out')
+    if ($Result.GetAttribute('status') -cne 'run' -or !$Output -or
+        ($Output.InnerText -split '\r?\n') -cnotcontains $Test.successMessage) {
+        throw "$($Test.name) did not report completion. See $($Test.step).xml."
+    }
+}
+
 $ControllerRoot = (Resolve-Path (Join-Path $PSScriptRoot '../../..')).Path
 $Revision = $Revision.ToLowerInvariant()
 if (!$ResultsRoot) {
@@ -139,7 +153,7 @@ try {
     $DefinitionPath = 'src/test/multiplayer/checkpoints/W0.json'
     $Git = (Get-Command git -CommandType Application | Select-Object -First 1).Source
     $CMake = (Get-Command cmake -CommandType Application | Select-Object -First 1).Source
-    if ($Mode -eq 'Portable') {
+    if ($Mode -in @('Portable', 'Peers')) {
         $CTest = (Get-Command ctest -CommandType Application | Select-Object -First 1).Source
     }
 
@@ -173,14 +187,17 @@ try {
     $Report.configuration = $Config.configuration
     $Report.workItems = $Config.workItems
 
-    if ($Mode -in @('BaselineBuild', 'BaselineRuntime')) {
-        $EngineBuild = $Definition.BaselineBuild
+    if ($Mode -in @('Peers', 'BaselineBuild', 'BaselineRuntime')) {
+        $EngineBuild = if ($Mode -eq 'BaselineRuntime') { $Definition.BaselineBuild } else { $Config }
         if ($Mode -eq 'BaselineRuntime') {
             . (Join-Path $PSScriptRoot 'W0Evidence.ps1')
             . (Join-Path $PSScriptRoot 'W0Runtime.ps1')
             $RuntimeRoot = Initialize-W0Runtime $GameDataRoot $Map $Config $Workspace
         }
         $Configure = @('-S', $Source, '-B', $Build, '-A', 'x64', '-DIXRAY_MP=ON', '-DIXRAY_MP_SQL=OFF')
+        if ($Mode -eq 'Peers') {
+            $Configure += @('-DIXRAY_TESTS=ON', '-DIXRAY_MULTIPLAYER_VERIFY_TEST_FAILURE=ON')
+        }
         $null = Invoke-CheckpointStep 'configure' $CMake $Configure $Source $EngineBuild.configureTimeoutSeconds
         $BuildArguments = @('--build', $Build, '--config', $EngineBuild.configuration, '--parallel', '--target') + $EngineBuild.targets
         $null = Invoke-CheckpointStep 'build' $CMake $BuildArguments $Source $EngineBuild.buildTimeoutSeconds
@@ -188,7 +205,7 @@ try {
             $BinaryDirectory = Join-Path $Build "bin/$($EngineBuild.configuration)"
             $Report.status = Invoke-W0Runtime $RuntimeRoot $Map $Config $RuntimeCase $BinaryDirectory
         }
-        else {
+        elseif ($Mode -eq 'BaselineBuild') {
             $Report.status = 'build_passed'
         }
     }
@@ -199,34 +216,36 @@ try {
         }
         $null = Invoke-CheckpointStep 'configure' $CMake $Configure $Source $Config.configureTimeoutSeconds
         $null = Invoke-CheckpointStep 'build' $CMake @('--build', $Build, '--config', $Config.configuration, '--target', $Config.target) $Source $Config.buildTimeoutSeconds
+    }
+
+    if ($Mode -in @('Portable', 'Peers')) {
         $CTestArgs = @('--test-dir', $Build, '-C', $Config.configuration, '--no-tests=error', '--output-on-failure', '--verbose')
-        $Tests = @(@{ name = $Config.test; successMessage = $Config.testSuccessMessage; step = 'test' })
-        if ($Config.PSObject.Properties['additionalTests']) {
-            $Tests += $Config.additionalTests
+        $Unit = $Definition.Portable
+        $Tests = @(@{ name = $Unit.test; successMessage = $Unit.testSuccessMessage; step = 'test' })
+        if ($Unit.PSObject.Properties['additionalTests']) {
+            $Tests += $Unit.additionalTests
         }
         foreach ($Test in $Tests) {
-            $TestPattern = '^' + [regex]::Escape($Test.name) + '$'
-            $TestResults = Join-Path $Bundle "$($Test.step).xml"
-            $null = Invoke-CheckpointStep $Test.step $CTest ($CTestArgs + @('-R', $TestPattern, '--output-junit', $TestResults)) $Source $Config.testTimeoutSeconds
-            $TestResult = Read-CheckpointTest $TestResults $Test.name
-            $TestOutput = $TestResult.SelectSingleNode('system-out')
-            if ($TestResult.GetAttribute('status') -cne 'run' -or !$TestOutput -or
-                ($TestOutput.InnerText -split '\r?\n') -cnotcontains $Test.successMessage) {
-                throw "$($Test.name) did not report completion. See $($Test.step).xml."
-            }
+            Invoke-AssertedCTest $CTest $CTestArgs $Source $Unit.testTimeoutSeconds $Test
         }
 
-        $FailurePattern = '^' + [regex]::Escape($Config.deliberateFailureTest) + '$'
+        $FailurePattern = '^' + [regex]::Escape($Unit.deliberateFailureTest) + '$'
         $FailureResults = Join-Path $Bundle 'deliberate-failure.xml'
-        $null = Invoke-CheckpointStep 'deliberate-failure' $CTest ($CTestArgs + @('-R', $FailurePattern, '--output-junit', $FailureResults)) $Source $Config.testTimeoutSeconds @(8)
-        $FailureResult = Read-CheckpointTest $FailureResults $Config.deliberateFailureTest
+        $null = Invoke-CheckpointStep 'deliberate-failure' $CTest ($CTestArgs + @('-R', $FailurePattern, '--output-junit', $FailureResults)) $Source $Unit.testTimeoutSeconds @(8)
+        $FailureResult = Read-CheckpointTest $FailureResults $Unit.deliberateFailureTest
         $Failure = $FailureResult.SelectSingleNode('failure')
         $FailureOutput = $FailureResult.SelectSingleNode('system-out')
         if ($FailureResult.GetAttribute('status') -cne 'fail' -or !$Failure -or $Failure.GetAttribute('message') -cne 'Failed' -or
-            !$FailureOutput -or ($FailureOutput.InnerText -split '\r?\n') -cnotcontains $Config.deliberateFailureMessage) {
+            !$FailureOutput -or ($FailureOutput.InnerText -split '\r?\n') -cnotcontains $Unit.deliberateFailureMessage) {
             throw 'Expected assertion did not fail. See deliberate-failure.xml.'
         }
-        $Report.status = 'portable_passed'
+        if ($Mode -eq 'Peers') {
+            Invoke-AssertedCTest $CTest $CTestArgs $Source $Config.testTimeoutSeconds $Config.test
+            $Report.status = 'peers_passed'
+        }
+        else {
+            $Report.status = 'portable_passed'
+        }
     }
 }
 catch {

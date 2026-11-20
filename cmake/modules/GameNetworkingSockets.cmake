@@ -15,33 +15,15 @@ if(WIN32)
 
     add_imported_lib(Steam::Sockets "${STEAM_SOCKETS_INCLUDE}" "${STEAM_SOCKETS_LIB}" "${STEAM_SOCKETS_DLLS}")
 else()
-        message(STATUS "Fetching GameNetworkingSockets from system...")
-    find_package(GameNetworkingSockets QUIET)
-
-    if(GameNetworkingSockets_FOUND)
-        add_library(Steam::Sockets INTERFACE IMPORTED)
-        set_target_properties(Steam::Sockets PROPERTIES
-            INTERFACE_INCLUDE_DIRECTORIES "${GameNetworkingSockets_INCLUDE_DIRS}"
-            INTERFACE_LINK_LIBRARIES "${GameNetworkingSockets_LIBRARIES}"
-        )
-    else()
-        message(STATUS "Fetching GameNetworkingSockets from source...")
-        set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-        FetchContent_Declare(
-            GameNetworkingSockets
-            GIT_REPOSITORY https://github.com/ValveSoftware/GameNetworkingSockets.git
-            GIT_BRANCH master
-        )
-        
-        add_compile_definitions(STEAMNETWORKINGSOCKETS_SNP_PARANOIA=0)
-        FetchContent_MakeAvailable(GameNetworkingSockets)
-
-        if(NOT TARGET Steam::Sockets)
-            add_library(Steam::Sockets INTERFACE IMPORTED)
-            set_target_properties(Steam::Sockets PROPERTIES
-                INTERFACE_INCLUDE_DIRECTORIES "${gamenetworkingsockets_SOURCE_DIR}/include"
-                INTERFACE_LINK_LIBRARIES "GameNetworkingSockets"
-            )
-        endif()
-    endif()
+    include(FetchContent)
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+    # Match the 1.4.1 headers and runtime used by the Windows package above.
+    FetchContent_Declare(GameNetworkingSockets
+        URL https://codeload.github.com/ValveSoftware/GameNetworkingSockets/tar.gz/505c697d0abef5da2ff3be35aa4ea3687597c3e9
+        URL_HASH SHA256=5c138d89185113d4deb67ad359f6245a77af654326e6eb50923b1d732ca8ad25
+        DOWNLOAD_EXTRACT_TIMESTAMP FALSE
+    )
+    add_compile_definitions(STEAMNETWORKINGSOCKETS_SNP_PARANOIA=0)
+    FetchContent_MakeAvailable(GameNetworkingSockets)
+    add_library(Steam::Sockets ALIAS GameNetworkingSockets)
 endif()

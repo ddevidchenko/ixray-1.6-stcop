@@ -1,6 +1,6 @@
 # Multiplayer TDD work items
 
-The operator reports that W0 passed on Windows. The exact revision and result bundle are pending attachment. MP-010, MP-011a and MP-011b have macOS evidence.
+The operator reports that W0 passed on Windows. The exact revision and result bundle are pending attachment. MP-010, MP-011a, MP-011b and MP-012 have macOS evidence.
 
 Implements the [modern multiplayer plan](multiplayer-modernization-plan.md): 32 total human/bot combatants, simple DM, direct IP over GameNetworkingSockets first, human-like bots, authoritative simulation, prediction, lag compensation, and immediate local effects. Windows x64 is the initial runtime target; macOS remains usable for source work and portable tests. Hitscan, ballistics, and hybrid gunplay remain alternatives until the comparison gate.
 
@@ -72,7 +72,7 @@ cmake --build --preset Server-x64-Windows-RelWithDebInfo --target xrEngine xrSer
 ctest --test-dir build/x64/Server-Windows -C RelWithDebInfo --output-on-failure -L multiplayer
 ```
 
-MP-013 must document the actual commands for GNS peers and multi-process scenarios. Existing `-autotest` can host/capture scenarios but does not replace multiplayer assertions; `-autotest_cmd` must remain last. Keep scenario assertions, process exit codes, and timeouts distinct from render-frame collection.
+The [peer runbook](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) documents standalone GNS and the Windows batch. MP-013 covers multi-process engine scenarios. Existing `-autotest` can host/capture scenarios but does not replace multiplayer assertions; `-autotest_cmd` must remain last. Keep scenario assertions, process exit codes, and timeouts distinct from render-frame collection.
 
 ## Baseline and test foundations
 
@@ -146,6 +146,8 @@ MP-013 must document the actual commands for GNS peers and multi-process scenari
 - **Kind / runs / depends:** TDD; `P/N`; MP-010–011.
 - **Red:** scripted messages are dropped, delayed, duplicated, reordered, and constrained by bandwidth exactly as the fixture specifies; injected connect/send/receive/close failures reach the consumer. A real loopback peer pair exchanges payloads and detects closure within a deadline.
 - **Green / seam:** a narrow transport boundary, deterministic delivery scheduler for gameplay tests, and a separate real GNS peer executable. Pin compatible GNS headers/libraries across hosts using [dependency CMake](../../cmake/modules/GameNetworkingSockets.cmake). Keep fake delivery behavior independent of the production sequence logic under test.
+- **Fixture contract:** each direction has its own send script and optional byte rate in bytes per millisecond. An empty plan drops a message, multiple offsets schedule copies, and equal arrival times preserve insertion order. Delays start after transmission and loss still consumes transmission time. Tests drive the clock explicitly. Connect, send, receive and close faults are visible to the caller and leave the affected operation retryable. The real fixture uses reliable UDP loopback, ephemeral ports, a two-second receive deadline and scope-owned handles and runtime. [Fake](../../src/test/multiplayer/transport/ScriptedTransport.h), [shared exchange](../../src/test/multiplayer/transport/TransportScenario.h), [GNS peer test](../../src/test/multiplayer/gns/GnsTransportTests.cpp).
+- **Mac checks passed / Windows pending:** the fake initially delivered too early and ignored faults. The reviewed tests also exposed missing duplicate scheduling, incorrect rate limits and partial publication on invalid timestamps. The real peers exchanged all payloads and failed on close classification before the fix. Both now pass the shared binary exchange and close scenario. Portable checks passed in Debug, Release, and under ASan/UBSan. Twelve consecutive real-peer runs passed on macOS, including reopening after teardown and checking that the GNS runtime was released. Inputs are literal and require no game assets or seed. [Windows batch and standalone GNS commands](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch).
 - [ ] **Complete when:** the same logical protocol tests run through the fake transport and selected real-peer cases, and no open socket/worker outlives its fixture.
 
 ### MP-013 — Make failures and platform coverage visible

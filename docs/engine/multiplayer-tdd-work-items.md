@@ -1,6 +1,6 @@
 # Multiplayer TDD work items
 
-The operator reports that W0 passed on Windows. The exact revision and result bundle are pending attachment. MP-010, MP-011a, MP-011b, MP-012, MP-020a, MP-020b, MP-020c, MP-020d, MP-020e, MP-020f, MP-020g, MP-022a, MP-022b, MP-022c, MP-022d, MP-037a, MP-037b, MP-037c, MP-037d and MP-037e have macOS evidence.
+The operator reports that W0 passed on Windows. The exact revision and result bundle are pending attachment. MP-010, MP-011a, MP-011b, MP-012, MP-020a, MP-020b, MP-020c, MP-020d, MP-020e, MP-020f, MP-020g, MP-022a, MP-022b, MP-022c, MP-022d, MP-037a, MP-037b, MP-037c, MP-037d, MP-037e and MP-037f have macOS evidence.
 
 Implements the [modern multiplayer plan](multiplayer-modernization-plan.md): 32 total human/bot combatants, simple DM, direct IP over GameNetworkingSockets first, human-like bots, authoritative simulation, prediction, lag compensation, and immediate local effects. Windows x64 is the initial runtime target; macOS remains usable for source work and portable tests. Hitscan, ballistics, and hybrid gunplay remain alternatives until the comparison gate.
 
@@ -383,6 +383,12 @@ The [peer runbook](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch
 - Select a baseline before declaring readiness. Share freshness checks with the receiver. Replace the selection and clear the old barrier while preserving the synchronization deadline. Close on a fourth valid rebase in a rolling 60-second window. [Server rebase contract](multiplayer-implementation-contracts.md#server-side-baseline-rebase).
 - **Mac checks passed / Windows pending.** Reviewed tests failed before server replacement existed. They cover selection, stale barriers, rejected requests preserving retry places, exact synchronization and rolling-window deadlines, history across round resets, and wrapped server/receiver handoffs. Live catch-up scheduling and transport integration remain open. [Tests](../../src/test/multiplayer/portable/PeerRebaseTests.cpp).
 - [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) collects a passing `peer-rebase.xml` on Windows.
+
+#### MP-037f — Retain a bounded server catch-up stream
+
+- Bind a portable queue to the selected baseline and receiver. Copy serialized events into caller-owned storage, enforce contiguous sequences and count and byte limits, and retire only after reliable submission. Report rebase on overflow and preserve the observed watermark for the replacement capture. [Retention contract](multiplayer-implementation-contracts.md#server-catch-up-event-retention).
+- **Mac checks passed / Windows pending.** The reviewed tests failed before queue retention existed. They cover exact capacities, scope and sequence rejection, failed submissions, both storage rings, overflow, and an owner handoff to a replacement baseline. Event schemas and live capture, scheduling, and application remain open. [Tests](../../src/test/multiplayer/portable/CatchUpEventQueueTests.cpp).
+- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) collects a passing `catch-up-event-queue.xml` on Windows.
 
 ### MP-038 — Make death, score, round flow, and spectator state authoritative
 

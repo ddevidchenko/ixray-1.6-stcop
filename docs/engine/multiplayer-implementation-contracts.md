@@ -99,7 +99,7 @@ Additional initial engineering defaults, configurable within validated limits an
 | --- | --- |
 | Admission / map-loading / synchronization deadlines | 10 / 120 / 30 monotonic-wall-clock seconds; report the failed stage separately |
 | Initial-state staging | At most 4 MiB and 8,192 records per peer; at most 4,096 chunks, each carrying at most 1,024 baseline-data bytes |
-| Catch-up state events | At most 4,096 queued relevant events per synchronizing peer; overflow triggers a newer baseline |
+| Catch-up state events | At most 4,096 queued relevant events per synchronizing peer, within the owner-provided byte capacity. Overflow triggers a newer baseline. |
 | Snapshot waiting/unknown references | At most eight pending batches and 256 entity references per peer; keep latest useful state and request repair/rebase rather than growing indefinitely |
 | Rebase attempts | Three accepted attempts per connection in a rolling 60-second window. The next valid attempt closes with a synchronization failure reason. |
 
@@ -314,6 +314,14 @@ A same-map round advance must increase the world epoch without wrapping. It clea
 During synchronization the server owner can select a replacement capture before or after declaring a barrier. The server and receiver use the same baseline ID, capture tick, and event watermark freshness checks. A successful rebase clears the earlier barrier and preserves the synchronization deadline. Declare a fresh barrier for the replacement before accepting readiness.
 
 Only accepted replacements spend retry places. The tracker keeps the last three accepted attempt times across same-map round changes. A place opens at exactly 60 seconds after the corresponding attempt. A fourth valid attempt with all three places still charged moves the peer to `Closing` and reports `RebaseLimitExceeded` once. The synchronization deadline takes precedence at equality. The server owner uses the terminal reason to close the connection and return its resources. [Join tracker](../../src/xrNetServer/Multiplayer/PeerJoin.h), [server rebase tests](../../src/test/multiplayer/portable/PeerRebaseTests.cpp).
+
+### Server catch-up event retention
+
+The server owner binds a queue to one receiver identity and selected baseline. The queue starts from the capture watermark and accepts consecutive `u32` sequences in the receiver's filtered state-event stream, including across wrap. The owner supplies nonempty serialized event bytes within the 1,100-byte message cap. The queue copies them into exclusive caller-owned storage. Separate caller-owned length slots bound occupancy to at most 4,096 events. Both buffers can reuse space from retired events.
+
+Peek copies the oldest event into the caller's send buffer. The owner commits its sequence on the same turn the reliable transport queue accepts that event. Only then does the submitted watermark advance and the storage return to the catch-up queue. Failed submissions can peek and retry the same event. Short output buffers leave both the queue and the output intact.
+
+A valid event that exceeds the count or byte capacity makes the queue report `RebaseRequired`. The owner selects a replacement capture covering the latest observed event sequence before replacing the queue. The old queue stops sending and retiring events while continuing to track consecutive observations. The replacement starts from its new capture watermark in fresh logical state. Live capture, event codecs, and transport scheduling follow their snapshot work items. [Queue](../../src/xrNetServer/Multiplayer/CatchUpEventQueue.h), [retention tests](../../src/test/multiplayer/portable/CatchUpEventQueueTests.cpp).
 
 ## 5. Round and spawn behavior
 

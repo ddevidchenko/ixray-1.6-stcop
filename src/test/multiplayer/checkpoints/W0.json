@@ -1,7 +1,7 @@
 {
     "id": "W0",
     "Portable": {
-        "workItems": ["MP-010", "MP-011a", "MP-011b", "MP-012", "MP-020a", "MP-020b", "MP-020c", "MP-020d", "MP-020e", "MP-020f", "MP-020g", "MP-022a", "MP-022b", "MP-022c", "MP-022d", "MP-037a"],
+        "workItems": ["MP-010", "MP-011a", "MP-011b", "MP-012", "MP-020a", "MP-020b", "MP-020c", "MP-020d", "MP-020e", "MP-020f", "MP-020g", "MP-022a", "MP-022b", "MP-022c", "MP-022d", "MP-037a", "MP-037b"],
         "configuration": "RelWithDebInfo",
         "sourceDirectory": "src/test/multiplayer/portable",
         "architecture": "x64",
@@ -83,6 +83,11 @@
                 "name": "Multiplayer.BaselineStaging",
                 "successMessage": "Baseline staging checks passed",
                 "step": "baseline-staging"
+            },
+            {
+                "name": "Multiplayer.BaselineRecords",
+                "successMessage": "Baseline record checks passed",
+                "step": "baseline-records"
             }
         ],
         "deliberateFailureTest": "Multiplayer.Sequence.DeliberateFailure",
@@ -92,7 +97,7 @@
         "testTimeoutSeconds": 30
     },
     "Peers": {
-        "workItems": ["MP-010", "MP-011a", "MP-011b", "MP-012", "MP-020a", "MP-020b", "MP-020c", "MP-020d", "MP-020e", "MP-020f", "MP-020g", "MP-022a", "MP-022b", "MP-022c", "MP-022d", "MP-037a"],
+        "workItems": ["MP-010", "MP-011a", "MP-011b", "MP-012", "MP-020a", "MP-020b", "MP-020c", "MP-020d", "MP-020e", "MP-020f", "MP-020g", "MP-022a", "MP-022b", "MP-022c", "MP-022d", "MP-037a", "MP-037b"],
         "configuration": "RelWithDebInfo",
         "targets": ["TestMultiplayerUnit", "TestMultiplayerGns"],
         "test": {

@@ -14,6 +14,7 @@ add_library(xrNetServerMultiplayer OBJECT
     ClientJoin.cpp ClientJoin.h
     BaselineTransfer.cpp BaselineTransfer.h
     BaselineStaging.cpp BaselineStaging.h
+    BaselineRecords.cpp BaselineRecords.h
 )
 target_include_directories(xrNetServerMultiplayer PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 set_target_properties(xrNetServerMultiplayer PROPERTIES

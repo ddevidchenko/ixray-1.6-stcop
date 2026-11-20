@@ -202,7 +202,7 @@ The server sends `BaselineBegin`, `BaselineChunk`, and `BaselineEnd` on the reli
 | Record count | `u16` |
 | Chunk count | `u16` |
 
-A declaration allows at most 4 MiB, 8,192 records, and 4,096 chunks. The declared chunk count equals the total byte count divided by 1,024 and rounded up. An empty baseline has zero bytes, records, and chunks. Each encoded record occupies at least one byte, and a nonempty baseline declares at least one record.
+A declaration allows at most 4 MiB, 8,192 records, and 4,096 chunks. The declared chunk count equals the total byte count divided by 1,024 and rounded up. An empty baseline has zero bytes, records, and chunks. A nonempty baseline declares at least one record. The transfer header caps the record count at the declared byte count. Record framing is checked after assembly.
 
 `BaselineChunk` carries a `u32` baseline ID, a zero-based `u16` chunk index from 0 through 4,095, and 1–1,024 opaque baseline-data bytes. The envelope length delimits the data. In a declared transfer, the encoded record stream is split at successive 1,024-byte offsets. The final chunk carries the remaining bytes. `BaselineEnd` carries the `u32` baseline ID alone.
 
@@ -279,13 +279,21 @@ A matching duplicate declaration or chunk is idempotent while receiving. A confl
 
 A same-map round advance clears the declaration and receipt bitmap. The next world can reuse numeric baseline IDs, while frames for the old world fail the identity check. The owner supplies the aggregate budget and handles same-round rebase policy. Record validation, event catch-up, and world publication follow byte assembly. [Stager](../../src/xrNetServer/Multiplayer/BaselineStaging.h), [staging tests](../../src/test/multiplayer/portable/BaselineStagingTests.cpp).
 
+### Baseline record validation
+
+The assembled byte range contains exactly the declared record count. Each record has a `u8` kind, a little-endian `u16` payload byte count, and exactly that many payload bytes. The payload can be empty when the schema for that kind permits it. Chunk boundaries can fall anywhere in the stream, including inside a record header.
+
+Validate the staged identity against the current connection, check the manifest and exact byte count, then read every record using the supplied schema. The schema recognizes supported kinds and checks their payloads without applying world changes. Missing records, truncated headers or payloads, schema failures, and trailing data all prevent returning a cursor.
+
+Successful validation returns an ordered cursor over the reserved immutable buffer. Consume it while the staged view is valid. Concrete record layouts, cross-record consistency checks, and committing world state belong to the import path. [Validator](../../src/xrNetServer/Multiplayer/BaselineRecords.h), [record tests](../../src/test/multiplayer/portable/BaselineRecordsTests.cpp).
+
 ### Server-side join readiness
 
 The connection owner starts `Loading` after queuing the accepted welcome. Loading expires after 120 seconds, and a current-session/world/connection confirmation starts the 30-second synchronization window. Use monotonic wall time. An event at the exact deadline expires the peer before applying that event. The owner can poll idle peers and receives the stage-specific failure once for connection and roster cleanup.
 
 During `Synchronizing`, the owner declares one staged barrier for the current identity. The peer acknowledgement matches session, world, connection, baseline ID, barrier ID, snapshot tick, and event watermark exactly. A successful match moves the peer to `ReadySpectator` once. The world owner handles activation and spawning after that transition.
 
-A same-map round advance must increase the world epoch without wrapping. It invalidates the old barrier and preserves the outstanding loading or synchronization deadline. A loading confirmation must match the new epoch. A peer already waiting as a ready spectator returns to synchronization with a fresh synchronization deadline. Peer messages cannot advance the epoch. The portable tracker operates on checked values. The client confirmation layouts are defined in the wire contract. Record validation and same-round rebasing follow their snapshot work items. [Tracker](../../src/xrNetServer/Multiplayer/PeerJoin.h), [join tests](../../src/test/multiplayer/portable/PeerJoinTests.cpp).
+A same-map round advance must increase the world epoch without wrapping. It invalidates the old barrier and preserves the outstanding loading or synchronization deadline. A loading confirmation must match the new epoch. A peer already waiting as a ready spectator returns to synchronization with a fresh synchronization deadline. Peer messages cannot advance the epoch. The portable tracker operates on checked values. The client confirmation layouts are defined in the wire contract. Concrete record layouts and same-round rebasing follow their snapshot work items. [Tracker](../../src/xrNetServer/Multiplayer/PeerJoin.h), [join tests](../../src/test/multiplayer/portable/PeerJoinTests.cpp).
 
 ## 5. Round and spawn behavior
 

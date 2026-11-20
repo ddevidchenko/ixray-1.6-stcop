@@ -8,7 +8,9 @@ add_library(xrNetServerMultiplayer OBJECT
     ServerWelcome.cpp ServerWelcome.h
     AdmissionReject.cpp AdmissionReject.h
     PendingAdmission.cpp PendingAdmission.h
+    JoinTypes.h
     PeerJoin.cpp PeerJoin.h
+    ClientJoin.cpp ClientJoin.h
 )
 target_include_directories(xrNetServerMultiplayer PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 set_target_properties(xrNetServerMultiplayer PROPERTIES

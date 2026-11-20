@@ -15,7 +15,7 @@ static PeerJoin::Clock::time_point DeadlineAfter(PeerJoin::Clock::time_point Now
 
 PeerJoin::PeerJoin(JoinIdentity Identity, Clock::time_point AdmittedAt) noexcept
 	: Identity(Identity), Deadline(DeadlineAfter(AdmittedAt, LoadingTimeout)),
-	  State(Identity.ServerSession != 0 && Identity.ConnectionEpoch != 0 ? PeerJoinState::Loading : PeerJoinState::Closing)
+	  State(Identity.IsBound() ? PeerJoinState::Loading : PeerJoinState::Closing)
 {
 }
 

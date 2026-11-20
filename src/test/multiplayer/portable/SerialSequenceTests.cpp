@@ -64,6 +64,11 @@ namespace PeerJoinTests
 bool Run();
 }
 
+namespace ClientJoinTests
+{
+bool Run();
+}
+
 namespace SerialSequenceTests
 {
 struct SequenceCase
@@ -153,6 +158,10 @@ int main(int ArgumentCount, char** Arguments)
 	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--peer-join") == 0)
 	{
 		return PeerJoinTests::Run() ? EXIT_SUCCESS : EXIT_FAILURE;
+	}
+	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--client-join") == 0)
+	{
+		return ClientJoinTests::Run() ? EXIT_SUCCESS : EXIT_FAILURE;
 	}
 	if (ArgumentCount != 1)
 	{

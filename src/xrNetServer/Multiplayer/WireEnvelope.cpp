@@ -29,6 +29,8 @@ static bool IsSupportedType(MessageType Type) noexcept
 	case MessageType::ClientHello:
 	case MessageType::ServerWelcome:
 	case MessageType::AdmissionReject:
+	case MessageType::ClientMapLoaded:
+	case MessageType::ReadyAcknowledgement:
 		return true;
 	}
 	return false;

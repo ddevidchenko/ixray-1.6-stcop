@@ -1,6 +1,6 @@
 # Multiplayer TDD work items
 
-The operator reports that W0 passed on Windows. The exact revision and result bundle are pending attachment. MP-010, MP-011a, MP-011b, MP-012, MP-020a, MP-020b, MP-020c, MP-020d, MP-020e, MP-022a, MP-022b, MP-022c and MP-022d have macOS evidence.
+The operator reports that W0 passed on Windows. The exact revision and result bundle are pending attachment. MP-010, MP-011a, MP-011b, MP-012, MP-020a, MP-020b, MP-020c, MP-020d, MP-020e, MP-020f, MP-022a, MP-022b, MP-022c and MP-022d have macOS evidence.
 
 Implements the [modern multiplayer plan](multiplayer-modernization-plan.md): 32 total human/bot combatants, simple DM, direct IP over GameNetworkingSockets first, human-like bots, authoritative simulation, prediction, lag compensation, and immediate local effects. Windows x64 is the initial runtime target; macOS remains usable for source work and portable tests. Hitscan, ballistics, and hybrid gunplay remain alternatives until the comparison gate.
 
@@ -195,6 +195,12 @@ The [peer runbook](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch
 - The codec carries one stable reason byte in an unbound envelope and shares the unbound identity check with `ClientHello`. The client can display local text for each reason. [Admission reject wire layout](multiplayer-implementation-contracts.md#admission-reject), [codec](../../src/xrNetServer/Multiplayer/AdmissionReject.h).
 - **Mac checks passed / Windows pending.** The initial golden datagram failed before implementation. The reviewed suite verifies all 256 reason bytes, header and payload boundaries, unbound identity, preserved server sequence, and atomic encoding. Fixtures use literal data. [Tests](../../src/test/multiplayer/portable/AdmissionRejectTests.cpp).
 - [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) collects a passing `admission-reject.xml` on Windows.
+
+#### MP-020f — Encode and validate client join confirmations
+
+- Assign bound tags for the empty map-loaded confirmation and the ready acknowledgement carrying the exact barrier. Reuse the join identity and barrier types in the codec and readiness tracker. [Wire layout](multiplayer-implementation-contracts.md#client-join-confirmations).
+- **Mac checks passed / Windows pending.** Independent golden frames failed before implementation. The reviewed tests cover all truncated prefixes, exact payload sizes, bound identities, distinct tags, owned decoded fields, and atomic writes. A decoded acknowledgement from a different connection or earlier world cannot advance `PeerJoin`. [Tests](../../src/test/multiplayer/portable/ClientJoinTests.cpp).
+- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) collects a passing `client-join.xml` on Windows.
 
 ### MP-021 — Bound legacy envelope parsing and decompression
 

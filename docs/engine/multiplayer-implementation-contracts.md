@@ -64,13 +64,15 @@ Version-one common envelope in byte order.
 | Connection epoch | `u32` |
 | Message sequence | `u32`, scoped to direction/message stream; not a substitute for command/action/state-event IDs |
 
-MP-020a assigns the following envelope tags. Additional tags become valid as their message families are specified. The receiver rejects every other tag.
+The following tags are assigned for version one. Additional tags become valid as their message families are specified. The receiver rejects every other tag.
 
 | Message type | Tag |
 | --- | --- |
 | `ClientHello` | `0x01` |
 | `ServerWelcome` | `0x02` |
 | `AdmissionReject` | `0x03` |
+| `ClientMapLoaded` | `0x04` |
+| `ReadyAcknowledgement` | `0x05` |
 
 The envelope codec checks the complete message size and framing. Payload decoders and the admission state machine validate fields and identity before dispatch. The returned payload view borrows the receive buffer for the duration of decoding. [Codec](../../src/xrNetServer/Multiplayer/WireEnvelope.h), [independent golden frames](../../src/test/multiplayer/portable/WireEnvelopeTests.cpp).
 
@@ -106,7 +108,7 @@ Per-peer limits also require a server-wide allocation/work cap derived from the 
 | --- | --- | --- |
 | Client hello/admission, server welcome/reject | Build/protocol, content/rules identity, requested display name, bounded admission data; assigned session/connection, map, effective rates and rules | Reliable, bounded deadlines; transport/simulation admission state machine |
 | Initial-state begin/chunk/end | Baseline ID, session/epoch, capture tick, event watermark, checked record/chunk counts and total byte count | Reliable, bounded staging; no gameplay side effects from partial state |
-| Ready acknowledgement / activation | Baseline/barrier ID, accepted snapshot tick and state-event watermark, current session/epoch | Reliable; only the server activates a participant |
+| Map loaded / ready acknowledgement / activation | Bound map-loaded confirmation, baseline/barrier ID, accepted snapshot tick and state-event watermark | Reliable; only the server activates a participant |
 | Player input | Command sequence/tick, move/look/held buttons, repeated unacknowledged discrete action records | Unreliable with bounded redundancy; simulation validates and retires each command/action once |
 | Action result | Action ID, accepted/rejected/expired, execution tick, reason and resulting shot ID where applicable | Reliable result; same result on duplicate requests |
 | Runtime entity-state batch | Snapshot ID/tick, current monotonic server clock anchor, required state-event watermark, typed length-bounded self-contained entity records | Unreliable; latest useful state per entity/life, no waiting for a lost previous batch |
@@ -164,6 +166,23 @@ An `AdmissionReject` uses envelope tag `0x03` during unbound admission. The serv
 | `InvalidState` | `0x0a` | The request is invalid in the current admission state. |
 
 All other reason bytes are reserved and rejected. Client presentation maps these codes to local text. When peers have no shared envelope version, connection failure diagnostics surface the incompatibility. MP-022 owns the state transitions and selects the reason. [Codec](../../src/xrNetServer/Multiplayer/AdmissionReject.h), [independent golden datagram](../../src/test/multiplayer/portable/AdmissionRejectTests.cpp).
+
+### Client join confirmations
+
+Both messages travel from the client on the reliable control stream. The envelope carries the message sequence and the server-assigned session, world epoch, and connection epoch. Session and connection must be nonzero. World epoch zero is valid.
+
+`ClientMapLoaded` uses tag `0x04` and has an empty payload. The client sends it after loading the arena assigned by `ServerWelcome`.
+
+`ReadyAcknowledgement` uses tag `0x05` and has a 16-byte payload in this order.
+
+| Payload field | Encoding |
+| --- | --- |
+| Baseline ID | `u32` |
+| Barrier ID | `u32` |
+| Accepted snapshot tick | `u32` |
+| State-event watermark | `u32` |
+
+The decoders require the exact payload size and return owned values. Bind a decoded confirmation to the tracker for the receiving transport connection. `PeerJoin` checks the current identity and compares the acknowledgement with the server-declared barrier. [Codec](../../src/xrNetServer/Multiplayer/ClientJoin.h), [independent datagrams and readiness handoff](../../src/test/multiplayer/portable/ClientJoinTests.cpp).
 
 ### Pending admission decision
 
@@ -234,7 +253,7 @@ The connection owner starts `Loading` after queuing the accepted welcome. Loadin
 
 During `Synchronizing`, the owner declares one staged barrier for the current identity. The peer acknowledgement matches session, world, connection, baseline ID, barrier ID, snapshot tick, and event watermark exactly. A successful match moves the peer to `ReadySpectator` once. The world owner handles activation and spawning after that transition.
 
-A same-map round advance must increase the world epoch without wrapping. It invalidates the old barrier and preserves the outstanding loading or synchronization deadline. A loading confirmation must match the new epoch. A peer already waiting as a ready spectator returns to synchronization with a fresh synchronization deadline. Peer messages cannot advance the epoch. The portable tracker operates on checked values. Message layouts, baseline staging, and same-round rebasing follow their protocol and snapshot work items. [Tracker](../../src/xrNetServer/Multiplayer/PeerJoin.h), [join tests](../../src/test/multiplayer/portable/PeerJoinTests.cpp).
+A same-map round advance must increase the world epoch without wrapping. It invalidates the old barrier and preserves the outstanding loading or synchronization deadline. A loading confirmation must match the new epoch. A peer already waiting as a ready spectator returns to synchronization with a fresh synchronization deadline. Peer messages cannot advance the epoch. The portable tracker operates on checked values. The client confirmation layouts are defined in the wire contract. Baseline staging and same-round rebasing follow their snapshot work items. [Tracker](../../src/xrNetServer/Multiplayer/PeerJoin.h), [join tests](../../src/test/multiplayer/portable/PeerJoinTests.cpp).
 
 ## 5. Round and spawn behavior
 

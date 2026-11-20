@@ -1,7 +1,7 @@
 {
     "id": "W0",
     "Portable": {
-        "workItems": ["MP-010", "MP-011a", "MP-011b", "MP-012", "MP-020a", "MP-020b", "MP-020c", "MP-020d", "MP-020e", "MP-022a", "MP-022b", "MP-022c", "MP-022d"],
+        "workItems": ["MP-010", "MP-011a", "MP-011b", "MP-012", "MP-020a", "MP-020b", "MP-020c", "MP-020d", "MP-020e", "MP-020f", "MP-022a", "MP-022b", "MP-022c", "MP-022d"],
         "configuration": "RelWithDebInfo",
         "sourceDirectory": "src/test/multiplayer/portable",
         "architecture": "x64",
@@ -68,6 +68,11 @@
                 "name": "Multiplayer.PeerJoin",
                 "successMessage": "Peer join checks passed",
                 "step": "peer-join"
+            },
+            {
+                "name": "Multiplayer.ClientJoin",
+                "successMessage": "Client join codec checks passed",
+                "step": "client-join"
             }
         ],
         "deliberateFailureTest": "Multiplayer.Sequence.DeliberateFailure",
@@ -77,7 +82,7 @@
         "testTimeoutSeconds": 30
     },
     "Peers": {
-        "workItems": ["MP-010", "MP-011a", "MP-011b", "MP-012", "MP-020a", "MP-020b", "MP-020c", "MP-020d", "MP-020e", "MP-022a", "MP-022b", "MP-022c", "MP-022d"],
+        "workItems": ["MP-010", "MP-011a", "MP-011b", "MP-012", "MP-020a", "MP-020b", "MP-020c", "MP-020d", "MP-020e", "MP-020f", "MP-022a", "MP-022b", "MP-022c", "MP-022d"],
         "configuration": "RelWithDebInfo",
         "targets": ["TestMultiplayerUnit", "TestMultiplayerGns"],
         "test": {

@@ -101,7 +101,7 @@ Additional initial engineering defaults, configurable within validated limits an
 | Initial-state staging | At most 4 MiB and 8,192 records per peer; at most 4,096 chunks, each carrying at most 1,024 baseline-data bytes |
 | Catch-up state events | At most 4,096 queued relevant events per synchronizing peer; overflow triggers a newer baseline |
 | Snapshot waiting/unknown references | At most eight pending batches and 256 entity references per peer; keep latest useful state and request repair/rebase rather than growing indefinitely |
-| Rebase attempts | At most three within 60 seconds, then close with a synchronization failure reason |
+| Rebase attempts | Three accepted attempts per connection in a rolling 60-second window. The next valid attempt closes with a synchronization failure reason. |
 
 Per-peer limits also require a server-wide allocation/work cap derived from the selected arena and maximum concurrent loading peers. These defaults bound an individual peer; they do not promise that multiplying every maximum by every connection is an acceptable memory/CPU load. MP-022/037 must record that aggregate cap before their stress gates pass.
 
@@ -305,9 +305,15 @@ Successful validation returns an ordered cursor over the reserved immutable buff
 
 The connection owner starts `Loading` after queuing the accepted welcome. Loading expires after 120 seconds, and a current-session/world/connection confirmation starts the 30-second synchronization window. Use monotonic wall time. An event at the exact deadline expires the peer before applying that event. The owner can poll idle peers and receives the stage-specific failure once for connection and roster cleanup.
 
-During `Synchronizing`, the owner declares one staged barrier for the current identity. The peer acknowledgement matches session, world, connection, baseline ID, barrier ID, snapshot tick, and event watermark exactly. A successful match moves the peer to `ReadySpectator` once. The world owner handles activation and spawning after that transition.
+During `Synchronizing`, the owner selects an initial baseline for the current identity, then declares its staged barrier. The barrier must name the selected baseline and cover its capture tick and event watermark. The peer acknowledgement matches session, world, connection, baseline ID, barrier ID, snapshot tick, and event watermark exactly. A successful match moves the peer to `ReadySpectator` once. The world owner handles activation and spawning after that transition.
 
-A same-map round advance must increase the world epoch without wrapping. It invalidates the old barrier and preserves the outstanding loading or synchronization deadline. A loading confirmation must match the new epoch. A peer already waiting as a ready spectator returns to synchronization with a fresh synchronization deadline. Peer messages cannot advance the epoch. The portable tracker operates on checked values. The client confirmation layouts are defined in the wire contract. Concrete record layouts and server-side rebase scheduling follow their snapshot work items. [Tracker](../../src/xrNetServer/Multiplayer/PeerJoin.h), [join tests](../../src/test/multiplayer/portable/PeerJoinTests.cpp).
+A same-map round advance must increase the world epoch without wrapping. It clears the selected baseline and the old barrier and preserves the outstanding loading or synchronization deadline. A loading confirmation must match the new epoch. A peer already waiting as a ready spectator returns to synchronization with a fresh synchronization deadline. Peer messages cannot advance the epoch. The portable tracker operates on checked values. The client confirmation layouts are defined in the wire contract. Snapshot capture, catch-up delivery, and live integration follow their snapshot work items. [Tracker](../../src/xrNetServer/Multiplayer/PeerJoin.h), [join tests](../../src/test/multiplayer/portable/PeerJoinTests.cpp).
+
+### Server-side baseline rebase
+
+During synchronization the server owner can select a replacement capture before or after declaring a barrier. The server and receiver use the same baseline ID, capture tick, and event watermark freshness checks. A successful rebase clears the earlier barrier and preserves the synchronization deadline. Declare a fresh barrier for the replacement before accepting readiness.
+
+Only accepted replacements spend retry places. The tracker keeps the last three accepted attempt times across same-map round changes. A place opens at exactly 60 seconds after the corresponding attempt. A fourth valid attempt with all three places still charged moves the peer to `Closing` and reports `RebaseLimitExceeded` once. The synchronization deadline takes precedence at equality. The server owner uses the terminal reason to close the connection and return its resources. [Join tracker](../../src/xrNetServer/Multiplayer/PeerJoin.h), [server rebase tests](../../src/test/multiplayer/portable/PeerRebaseTests.cpp).
 
 ## 5. Round and spawn behavior
 

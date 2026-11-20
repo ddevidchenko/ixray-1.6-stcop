@@ -183,7 +183,9 @@ static bool CheckReadinessHandoff()
 	bool Passed = Expect("decoded map-loaded matches the connection owner's identity", Peer.ConfirmLoaded(Map->Identity, Now).has_value());
 	Passed &= Expect("decoded acknowledgement cannot declare its own barrier", !Peer.AcknowledgeBarrier(Old->Identity, Old->Barrier, Now) &&
 		Peer.GetState() == PeerJoinState::Synchronizing);
-	Passed &= Expect("owner stages the barrier for the admitted peer", Peer.DeclareBarrier(Identity, Ready.Barrier, Now).has_value());
+	constexpr BaselineBoundary Baseline{Ready.Barrier.BaselineId, Ready.Barrier.SnapshotTick, Ready.Barrier.EventWatermark};
+	Passed &= Expect("owner stages the barrier for the admitted peer", Peer.SelectBaseline(Identity, Baseline, Now).has_value() &&
+		Peer.DeclareBarrier(Identity, Ready.Barrier, Now).has_value());
 
 	auto WrongConnection = std::to_array(GoldenReady);
 	++WrongConnection[ConnectionOffset];
@@ -198,7 +200,7 @@ static bool CheckReadinessHandoff()
 	auto NewIdentity = Identity;
 	++NewIdentity.WorldEpoch;
 	Passed &= Expect("owner can declare the same numeric barrier for the next world", Peer.AdvanceWorld(NewIdentity.WorldEpoch, Now + 2s).has_value() &&
-		Peer.DeclareBarrier(NewIdentity, Ready.Barrier, Now + 2s).has_value());
+		Peer.SelectBaseline(NewIdentity, Baseline, Now + 2s).has_value() && Peer.DeclareBarrier(NewIdentity, Ready.Barrier, Now + 2s).has_value());
 	const auto Stale = Peer.AcknowledgeBarrier(Old->Identity, Old->Barrier, Now + 3s);
 	Passed &= Expect("readiness gate rejects a correctly encoded acknowledgement for the old world", !Stale && Stale.error() == PeerJoinError::IdentityMismatch &&
 		Peer.GetState() == PeerJoinState::Synchronizing);

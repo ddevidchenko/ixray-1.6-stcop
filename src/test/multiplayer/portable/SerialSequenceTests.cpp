@@ -94,6 +94,11 @@ namespace BaselineRebaseTests
 bool Run();
 }
 
+namespace PeerRebaseTests
+{
+bool Run();
+}
+
 namespace SerialSequenceTests
 {
 struct SequenceCase
@@ -207,6 +212,10 @@ int main(int ArgumentCount, char** Arguments)
 	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--baseline-rebase") == 0)
 	{
 		return BaselineRebaseTests::Run() ? EXIT_SUCCESS : EXIT_FAILURE;
+	}
+	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--peer-rebase") == 0)
+	{
+		return PeerRebaseTests::Run() ? EXIT_SUCCESS : EXIT_FAILURE;
 	}
 	if (ArgumentCount != 1)
 	{

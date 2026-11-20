@@ -1,7 +1,7 @@
 {
     "id": "W0",
     "Portable": {
-        "workItems": ["MP-010", "MP-011a", "MP-011b", "MP-012", "MP-020a", "MP-020b", "MP-020c", "MP-020d", "MP-020e", "MP-020f", "MP-020g", "MP-022a", "MP-022b", "MP-022c", "MP-022d", "MP-037a", "MP-037b", "MP-037c", "MP-037d"],
+        "workItems": ["MP-010", "MP-011a", "MP-011b", "MP-012", "MP-020a", "MP-020b", "MP-020c", "MP-020d", "MP-020e", "MP-020f", "MP-020g", "MP-022a", "MP-022b", "MP-022c", "MP-022d", "MP-037a", "MP-037b", "MP-037c", "MP-037d", "MP-037e"],
         "configuration": "RelWithDebInfo",
         "sourceDirectory": "src/test/multiplayer/portable",
         "architecture": "x64",
@@ -98,6 +98,11 @@
                 "name": "Multiplayer.BaselineRebase",
                 "successMessage": "Baseline rebase checks passed",
                 "step": "baseline-rebase"
+            },
+            {
+                "name": "Multiplayer.PeerRebase",
+                "successMessage": "Peer rebase checks passed",
+                "step": "peer-rebase"
             }
         ],
         "deliberateFailureTest": "Multiplayer.Sequence.DeliberateFailure",
@@ -107,7 +112,7 @@
         "testTimeoutSeconds": 30
     },
     "Peers": {
-        "workItems": ["MP-010", "MP-011a", "MP-011b", "MP-012", "MP-020a", "MP-020b", "MP-020c", "MP-020d", "MP-020e", "MP-020f", "MP-020g", "MP-022a", "MP-022b", "MP-022c", "MP-022d", "MP-037a", "MP-037b", "MP-037c", "MP-037d"],
+        "workItems": ["MP-010", "MP-011a", "MP-011b", "MP-012", "MP-020a", "MP-020b", "MP-020c", "MP-020d", "MP-020e", "MP-020f", "MP-020g", "MP-022a", "MP-022b", "MP-022c", "MP-022d", "MP-037a", "MP-037b", "MP-037c", "MP-037d", "MP-037e"],
         "configuration": "RelWithDebInfo",
         "targets": ["TestMultiplayerUnit", "TestMultiplayerGns"],
         "test": {

@@ -1,6 +1,6 @@
 # Multiplayer TDD work items
 
-The operator reports that W0 passed on Windows. The exact revision and result bundle are pending attachment. MP-010, MP-011a, MP-011b, MP-012, MP-020a, MP-020b, MP-020c, MP-020d, MP-020e, MP-020f, MP-020g, MP-022a, MP-022b, MP-022c, MP-022d, MP-037a, MP-037b, MP-037c and MP-037d have macOS evidence.
+The operator reports that W0 passed on Windows. The exact revision and result bundle are pending attachment. MP-010, MP-011a, MP-011b, MP-012, MP-020a, MP-020b, MP-020c, MP-020d, MP-020e, MP-020f, MP-020g, MP-022a, MP-022b, MP-022c, MP-022d, MP-037a, MP-037b, MP-037c, MP-037d and MP-037e have macOS evidence.
 
 Implements the [modern multiplayer plan](multiplayer-modernization-plan.md): 32 total human/bot combatants, simple DM, direct IP over GameNetworkingSockets first, human-like bots, authoritative simulation, prediction, lag compensation, and immediate local effects. Windows x64 is the initial runtime target; macOS remains usable for source work and portable tests. Hitscan, ballistics, and hybrid gunplay remain alternatives until the comparison gate.
 
@@ -375,8 +375,14 @@ The [peer runbook](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch
 #### MP-037d — Replace a staged baseline within its round
 
 - Accept an owner-selected declaration with a newer baseline ID and capture tick and a current or newer event watermark. Validate identity, manifest, and storage before clearing the previous receipts. Reuse the existing reservation and require the selected baseline ID at record validation. [Replacement contract](multiplayer-implementation-contracts.md#same-round-baseline-replacement).
-- **Mac checks passed / Windows pending.** Reviewed tests failed before replacement and baseline ID validation existed. They cover stale data, invalid replacements preserving in-progress and completed transfers, storage reuse, wrap and half-range serials, and world reset. Server retry limits and readiness coordination follow separately. [Tests](../../src/test/multiplayer/portable/BaselineRebaseTests.cpp).
+- **Mac checks passed / Windows pending.** Reviewed tests failed before replacement and baseline ID validation existed. They cover stale data, invalid replacements preserving in-progress and completed transfers, storage reuse, wrap and half-range serials, and world reset. MP-037e covers server retry limits and readiness coordination. [Tests](../../src/test/multiplayer/portable/BaselineRebaseTests.cpp).
 - [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) collects a passing `baseline-rebase.xml` on Windows.
+
+#### MP-037e — Gate server rebases and retire stale barriers
+
+- Select a baseline before declaring readiness. Share freshness checks with the receiver. Replace the selection and clear the old barrier while preserving the synchronization deadline. Close on a fourth valid rebase in a rolling 60-second window. [Server rebase contract](multiplayer-implementation-contracts.md#server-side-baseline-rebase).
+- **Mac checks passed / Windows pending.** Reviewed tests failed before server replacement existed. They cover selection, stale barriers, rejected requests preserving retry places, exact synchronization and rolling-window deadlines, history across round resets, and wrapped server/receiver handoffs. Live catch-up scheduling and transport integration remain open. [Tests](../../src/test/multiplayer/portable/PeerRebaseTests.cpp).
+- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) collects a passing `peer-rebase.xml` on Windows.
 
 ### MP-038 — Make death, score, round flow, and spectator state authoritative
 

@@ -18,6 +18,15 @@ struct JoinIdentity
 	bool operator==(const JoinIdentity&) const = default;
 };
 
+struct BaselineBoundary
+{
+	u32 BaselineId;
+	u32 CaptureTick;
+	u32 EventWatermark;
+};
+
+[[nodiscard]] bool IsNewerBaseline(BaselineBoundary Candidate, BaselineBoundary Current) noexcept;
+
 struct JoinBarrier
 {
 	u32 BaselineId;

@@ -1,5 +1,4 @@
 #include "BaselineStaging.h"
-#include "SerialSequence.h"
 
 #include <algorithm>
 #include <cstring>
@@ -86,8 +85,7 @@ std::expected<void, BaselineStagingError> BaselineStaging::Rebase(const Wire::Ba
 	}
 
 	const auto& Next = Message.Manifest;
-	const bool WatermarkIsCurrentOrNewer = Next.EventWatermark == Manifest->EventWatermark || IsSequenceNewer(Next.EventWatermark, Manifest->EventWatermark);
-	if (!IsSequenceNewer(Next.BaselineId, Manifest->BaselineId) || !IsSequenceNewer(Next.CaptureTick, Manifest->CaptureTick) || !WatermarkIsCurrentOrNewer)
+	if (!IsNewerBaseline(Next.GetBoundary(), Manifest->GetBoundary()))
 	{
 		return std::unexpected(BaselineStagingError::StaleBaseline);
 	}

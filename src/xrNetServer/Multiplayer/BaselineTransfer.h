@@ -18,6 +18,8 @@ struct BaselineManifest
 	u16 RecordCount;
 	u16 ChunkCount;
 
+	[[nodiscard]] constexpr BaselineBoundary GetBoundary() const noexcept { return {BaselineId, CaptureTick, EventWatermark}; }
+
 	bool operator==(const BaselineManifest&) const = default;
 };
 

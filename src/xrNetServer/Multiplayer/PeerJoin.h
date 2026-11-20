@@ -1,6 +1,7 @@
 #pragma once
 
 #include "JoinTypes.h"
+#include "../../xrCore/_stl_extensions_nonalloc.h"
 
 #include <chrono>
 #include <expected>
@@ -23,6 +24,9 @@ enum class PeerJoinError
 	BarrierMismatch,
 	LoadingTimedOut,
 	SynchronizationTimedOut,
+	BaselineMismatch,
+	StaleBaseline,
+	RebaseLimitExceeded,
 };
 
 // The connection owner serializes events and supplies monotonic times.
@@ -40,6 +44,10 @@ public:
 	// Expiry takes precedence at equality and reports a terminal reason once.
 	[[nodiscard]] std::optional<PeerJoinError> Expire(Clock::time_point Now) noexcept;
 	[[nodiscard]] std::expected<void, PeerJoinError> ConfirmLoaded(JoinIdentity Peer, Clock::time_point Now) noexcept;
+	// The server owner selects the initial capture before declaring a barrier.
+	[[nodiscard]] std::expected<void, PeerJoinError> SelectBaseline(JoinIdentity Peer, BaselineBoundary Boundary, Clock::time_point Now) noexcept;
+	// A successful replacement clears the barrier and preserves the synchronization deadline.
+	[[nodiscard]] std::expected<void, PeerJoinError> Rebase(JoinIdentity Peer, BaselineBoundary Boundary, Clock::time_point Now) noexcept;
 	// The server owner declares the outstanding barrier after staging it for this peer.
 	[[nodiscard]] std::expected<void, PeerJoinError> DeclareBarrier(JoinIdentity World, JoinBarrier Barrier, Clock::time_point Now) noexcept;
 	[[nodiscard]] std::expected<void, PeerJoinError> AcknowledgeBarrier(JoinIdentity Peer, JoinBarrier Barrier, Clock::time_point Now) noexcept;
@@ -49,9 +57,14 @@ public:
 private:
 	[[nodiscard]] std::optional<PeerJoinError> CheckPhase(PeerJoinState Required, JoinIdentity Subject, Clock::time_point Now) noexcept;
 
+	void ClearBaseline() noexcept;
+
 	JoinIdentity Identity;
 	Clock::time_point Deadline;
 	PeerJoinState State;
+	std::optional<BaselineBoundary> SelectedBaseline;
 	std::optional<JoinBarrier> DeclaredBarrier;
+	xr_array<std::optional<Clock::time_point>, 3> RebaseTimes{};
+	std::size_t NextRebaseSlot = 0;
 };
 }

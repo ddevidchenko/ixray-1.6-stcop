@@ -10,6 +10,7 @@ using namespace std::chrono_literals;
 
 constexpr JoinIdentity Identity{0x8877665544332211, 7, 17};
 constexpr JoinBarrier Barrier{25, 42, 0xfffffffcu, 9};
+constexpr BaselineBoundary Baseline{25, 0xfffffffcu, 9};
 constexpr auto AdmittedAt = PeerJoin::Clock::time_point{} + 11s;
 constexpr auto LoadedAt = AdmittedAt + 100s;
 constexpr auto LoadDeadline = AdmittedAt + 120s;
@@ -41,7 +42,8 @@ static bool CheckReady()
 	bool Passed = Expect("admitted peer first loads the arena", Peer.GetState() == PeerJoinState::Loading);
 	Passed &= Expect("current-world loading confirmation begins synchronization", Peer.ConfirmLoaded(Identity, LoadedAt).has_value() &&
 		Peer.GetState() == PeerJoinState::Synchronizing);
-	Passed &= Expect("owner can declare a barrier", Peer.DeclareBarrier(Identity, Barrier, LoadedAt + 5s).has_value());
+	Passed &= Expect("owner can declare a barrier", Peer.SelectBaseline(Identity, Baseline, LoadedAt).has_value() &&
+		Peer.DeclareBarrier(Identity, Barrier, LoadedAt + 5s).has_value());
 	Passed &= Expect("exact acknowledgement makes a ready spectator", Peer.AcknowledgeBarrier(Identity, Barrier, LoadedAt + 29s).has_value() &&
 		Peer.GetState() == PeerJoinState::ReadySpectator);
 	Passed &= ExpectError("a repeated acknowledgement cannot report readiness twice",
@@ -68,7 +70,8 @@ static bool CheckExactAcknowledgement()
 	Passed &= Expect("bound loading confirmation starts synchronization", Peer.ConfirmLoaded(Identity, LoadedAt).has_value());
 	Passed &= ExpectError("peer cannot supply its own barrier", Peer.AcknowledgeBarrier(Identity, Barrier, LoadedAt), PeerJoinError::InvalidState);
 	Passed &= ExpectError("stale owner work cannot declare a barrier", Peer.DeclareBarrier(NextWorld, Barrier, LoadedAt), PeerJoinError::IdentityMismatch);
-	Passed &= Expect("owner declares the current barrier", Peer.DeclareBarrier(Identity, Barrier, LoadedAt).has_value());
+	Passed &= Expect("owner declares the current barrier", Peer.SelectBaseline(Identity, Baseline, LoadedAt).has_value() &&
+		Peer.DeclareBarrier(Identity, Barrier, LoadedAt).has_value());
 	auto OtherBarrier = Barrier;
 	++OtherBarrier.BarrierId;
 	Passed &= ExpectError("second declaration cannot silently replace an outstanding barrier",
@@ -107,7 +110,8 @@ static bool CheckDeadlines()
 	Passed &= Expect("sync deadline fixture finishes loading", Syncing.ConfirmLoaded(Identity, LoadedAt).has_value());
 	Passed &= ExpectError("duplicate confirmation cannot renew the synchronization deadline",
 		Syncing.ConfirmLoaded(Identity, LoadedAt + 5s), PeerJoinError::InvalidState);
-	Passed &= Expect("barrier declaration just before expiry still succeeds", Syncing.DeclareBarrier(Identity, Barrier, SyncDeadline - 1ms).has_value());
+	Passed &= Expect("barrier declaration just before expiry still succeeds", Syncing.SelectBaseline(Identity, Baseline, LoadedAt + 5s).has_value() &&
+		Syncing.DeclareBarrier(Identity, Barrier, SyncDeadline - 1ms).has_value());
 	Passed &= Expect("synchronization keeps waiting just before its deadline", !Syncing.Expire(SyncDeadline - 1ms));
 	Passed &= ExpectError("exact valid acknowledgement at the sync deadline expires",
 		Syncing.AcknowledgeBarrier(Identity, Barrier, SyncDeadline), PeerJoinError::SynchronizationTimedOut);
@@ -131,7 +135,8 @@ static bool CheckWorldAdvanceDuringLoad()
 	Passed &= ExpectError("old-world loading confirmation cannot start synchronization",
 		Peer.ConfirmLoaded(Identity, LoadedAt + 1s), PeerJoinError::IdentityMismatch);
 	Passed &= Expect("current-world loading confirmation still works", Peer.ConfirmLoaded(NextWorld, LoadedAt + 1s).has_value());
-	Passed &= Expect("new-world barrier may reuse earlier numeric IDs", Peer.DeclareBarrier(NextWorld, Barrier, LoadedAt + 2s).has_value());
+	Passed &= Expect("new-world barrier may reuse earlier numeric IDs", Peer.SelectBaseline(NextWorld, Baseline, LoadedAt + 2s).has_value() &&
+		Peer.DeclareBarrier(NextWorld, Barrier, LoadedAt + 2s).has_value());
 	Passed &= ExpectError("old-world ready acknowledgement cannot match the current barrier even with identical numbers",
 		Peer.AcknowledgeBarrier(Identity, Barrier, LoadedAt + 3s), PeerJoinError::IdentityMismatch);
 	Passed &= Expect("current-world acknowledgement establishes readiness", Peer.AcknowledgeBarrier(NextWorld, Barrier, LoadedAt + 3s).has_value() &&
@@ -148,7 +153,7 @@ static bool CheckWorldAdvanceAfterLoad()
 {
 	PeerJoin Peer(Identity, AdmittedAt);
 	bool Passed = Expect("round advance fixture declares a barrier", Peer.ConfirmLoaded(Identity, LoadedAt).has_value() &&
-		Peer.DeclareBarrier(Identity, Barrier, LoadedAt).has_value());
+		Peer.SelectBaseline(Identity, Baseline, LoadedAt).has_value() && Peer.DeclareBarrier(Identity, Barrier, LoadedAt).has_value());
 	Passed &= ExpectError("duplicate world epoch cannot clear the outstanding barrier", Peer.AdvanceWorld(Identity.WorldEpoch, LoadedAt + 1s), PeerJoinError::IdentityMismatch);
 	Passed &= ExpectError("earlier world epoch cannot roll back identity", Peer.AdvanceWorld(Identity.WorldEpoch - 1, LoadedAt + 1s), PeerJoinError::IdentityMismatch);
 	auto WrongBarrier = Barrier;
@@ -162,7 +167,7 @@ static bool CheckWorldAdvanceAfterLoad()
 	Passed &= ExpectError("delayed owner work cannot redeclare the old world's barrier",
 		Peer.DeclareBarrier(Identity, Barrier, LoadedAt + 2s), PeerJoinError::IdentityMismatch);
 	Passed &= Expect("fresh declaration and acknowledgement succeed before the original deadline",
-		Peer.DeclareBarrier(NextWorld, Barrier, SyncDeadline - 1ms).has_value() &&
+		Peer.SelectBaseline(NextWorld, Baseline, SyncDeadline - 1ms).has_value() && Peer.DeclareBarrier(NextWorld, Barrier, SyncDeadline - 1ms).has_value() &&
 		Peer.AcknowledgeBarrier(NextWorld, Barrier, SyncDeadline - 1ms).has_value());
 	constexpr JoinIdentity ThirdWorld{Identity.ServerSession, NextWorld.WorldEpoch + 1, Identity.ConnectionEpoch};
 	Passed &= Expect("a spectator awaiting activation returns to synchronization when its world ends",

@@ -1012,10 +1012,10 @@ These items expand MP-071. Follow the [navigation pipeline](multiplayer-navigati
 
 ### MP-106 — Package nav beside the exact matching map and reject stale data
 
-- **Kind / runs / depends:** TDD; `P/W`; MP-020, MP-101, MP-103–105.
-- **Red:** missing `level.ai`/package, changed collision chunk/material/agent profile or consumed ladder/spawn/game record, wrong map name/version, changed AI GUID, invalid offsets/counts and bad traversal references fail before navigation is published. A partially written package cannot replace a valid one; VFS overrides resolve consistently.
-- **Green / seam:** versioned `level.navlinks` attachment with identity, hashes, and typed edges referencing native `level.ai` nodes. Implement a checked validator, atomic install/staging procedure and run/deployment manifest. Keep authoring inputs rebuildable and source-controlled separately from generated output.
-- [ ] **Complete when:** the selected map's `$level$` resolves a valid matching pair, deliberate stale/corrupt artifacts are rejected with map/file/reason diagnostics, and the runbook lists real output paths and commands.
+- **Kind / runs / depends:** TDD; `P/W`. The packer consumes the cooked grid and optional MP-105 link source. MP-101 measures the agent capabilities and MP-109 validates live ladder geometry.
+- **Red:** verify missing and corrupt packages, wrong map/version/profile, stale grid GUID, changed effective collision descriptor or part, changed materials/spawn/respawns, invalid part counts, truncated payloads, and invalid node references. The validator and staging checks failed before implementation. The staging review also exercised cleanup on failure and preserving an existing package.
+- **Implemented:** the v2 package ties each input and the traversal payload to SHA-256. The dedicated loader resolves asset bytes through the map and material VFS aliases before publishing navigation. `ArenaNavPack` shares the runtime validator, and W1 stages the package and hash manifest in a temporary sibling directory before installing the map. The split collision cache now changes when a consumed part changes. The agent field identifies the current `stalker-v1` capability profile. [Portable tests](../../src/test/multiplayer/portable/ArenaNavigationPackageTests.cpp), [staging tests](../../src/test/multiplayer/checkpoints/TestW1Fixture.ps1)
+- [ ] **Complete when:** the [Windows package check](multiplayer-checkpoints/w0.md#mp-106-package-validation) records a matching pair loading under the selected map's effective VFS and a corrupt or stale fixture failing with the map, file, and reason in the dedicated log. Portable and synthetic staging checks passed locally. The Windows engine run is pending.
 
 ### MP-107 — Bootstrap nav on the authoritative dedicated server
 

@@ -63,7 +63,8 @@ bool CLevel::Load_GameSpecific_Before()
 		!FS.exist(fn_game, "$level$", "alife.spawn") && FS.exist(fn_game, "$level$", "level.ai");
 	if (W1Navigation || ArenaClient)
 	{
-		const bool Loaded = ai().LoadArenaNavigation(W1Navigation);
+		const bool Loaded = ai().LoadArenaNavigation(W1Navigation,
+			map_data.m_name.c_str(), map_data.m_map_version.c_str());
 		if (W1Navigation)
 		{
 			if (Loaded)

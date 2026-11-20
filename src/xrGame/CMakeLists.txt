@@ -236,6 +236,8 @@ if (IXRAY_MP)
 	if (WIN32)
 		target_link_libraries(xrGame PRIVATE "shlwapi.lib")
 	endif()
+else()
+	target_link_libraries(xrGame PRIVATE crypto)
 endif()
 
 # Move precompiled header

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.26)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-    project(MultiplayerPortableTests LANGUAGES CXX)
+    project(MultiplayerPortableTests LANGUAGES C CXX)
     enable_testing()
     add_subdirectory("../../../xrNetServer/Multiplayer" xrNetServerMultiplayer)
 endif()
@@ -39,6 +39,7 @@ add_executable(TestMultiplayerUnit
     ClientCatchUpTests.cpp
     StalkerPrerequisitesTests.cpp
     ArenaLadderTests.cpp
+    ArenaNavigationPackageTests.cpp
     CombatantRegistryTests.cpp
     ParticipantConnectionTests.cpp
     CatchUpDespawnTests.cpp
@@ -116,3 +117,18 @@ endif()
 
 add_test(NAME Multiplayer.ArenaLadders COMMAND TestMultiplayerUnit --arena-ladders)
 set_tests_properties(Multiplayer.ArenaLadders PROPERTIES LABELS multiplayer)
+
+set(ArenaCryptoRoot "${CMAKE_CURRENT_SOURCE_DIR}/../../../3rd-party/crypto/openssl")
+add_library(ArenaNavigationFormat STATIC
+    ../../../xrGame/Multiplayer/ArenaNavigationPackage.cpp
+    ${ArenaCryptoRoot}/src/sha256.c
+    ${ArenaCryptoRoot}/src/mem_clr.c
+)
+target_include_directories(ArenaNavigationFormat PRIVATE "${ArenaCryptoRoot}")
+target_compile_features(ArenaNavigationFormat PUBLIC cxx_std_23)
+target_link_libraries(TestMultiplayerUnit PRIVATE ArenaNavigationFormat)
+add_test(NAME Multiplayer.ArenaNavigationPackage COMMAND TestMultiplayerUnit --arena-nav-package)
+set_tests_properties(Multiplayer.ArenaNavigationPackage PROPERTIES LABELS multiplayer)
+
+add_executable(ArenaNavPack ../../../utils/ArenaNavPack/main.cpp)
+target_link_libraries(ArenaNavPack PRIVATE ArenaNavigationFormat)

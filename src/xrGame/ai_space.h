@@ -45,7 +45,7 @@ private:
 
 private:
 			bool						load					(const char* level_name);
-	[[nodiscard]] bool LoadArenaNavigation(bool LoadLadders);
+	[[nodiscard]] bool LoadArenaNavigation(bool LoadLadders, xr_string_view Map, xr_string_view Version);
 	void StartLevelNavigation();
 	bool ArenaNavigation = false;
 	u32 ArenaGeneration = 0;

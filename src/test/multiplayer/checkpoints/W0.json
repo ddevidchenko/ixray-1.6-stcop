@@ -130,6 +130,11 @@
                 "step": "arena-ladders"
             },
             {
+                "name": "Multiplayer.ArenaNavigationPackage",
+                "successMessage": "Arena navigation package checks passed",
+                "step": "arena-nav-package"
+            },
+            {
                 "name": "Multiplayer.StalkerAuthority",
                 "successMessage": "Stalker authority checks passed",
                 "step": "stalker-authority"
@@ -302,8 +307,8 @@
         "clientTimeoutSeconds": 180,
         "logTimeoutSeconds": 15,
         "stalkerNavigation": {
-            "workItems": ["MP-005c", "MP-005d"],
-            "files": ["level.ai"],
+            "workItems": ["MP-005c", "MP-005d", "MP-106"],
+            "files": ["level.ai", "level.game", "level.navlinks"],
             "serverOption": "w1_stalker_navigation=1"
         },
         "observation": {

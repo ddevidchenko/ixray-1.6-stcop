@@ -8,7 +8,9 @@
 
 #include "StdAfx.h"
 #include "level_graph.h"
-#include "Multiplayer/StalkerNavigation.h"
+#ifndef AI_COMPILER
+#include "Multiplayer/ArenaNavigationPackage.h"
+#endif
 #include "../xrEngine/Editor/XrEditorSceneInterface.h"
 
 #pragma pack(push,1)
@@ -95,51 +97,40 @@ static xr_unique_ptr<IReader> OpenLevelGrid()
 	return xr_unique_ptr<IReader>(FS.r_open(file_name));
 }
 
+#ifndef AI_COMPILER
 xr_unique_ptr<CLevelGraph> CLevelGraph::OpenArena()
 {
+	using namespace Multiplayer::ArenaNavigation;
+	static_assert(sizeof(CHeader) == GridHeaderSize);
+	static_assert(sizeof(SOCNodeCompressed) == 21 && sizeof(NodeCompressed10) == 23 &&
+		sizeof(NodeCompressed) == 24 && sizeof(CVertex) == 25);
 	auto Reader = OpenLevelGrid();
-	if (!Reader || Reader->length() < static_cast<intptr_t>(sizeof(CHeader)))
+	if (!Reader || Reader->length() <= 0 ||
+		!ReadGridIdentity({static_cast<const u8*>(Reader->pointer()), std::size_t(Reader->length())}))
 	{
 		return {};
 	}
 
-	const auto& Header = *reinterpret_cast<const CHeader*>(Reader->pointer());
-	std::size_t NodeSize = 0;
-	switch (Header.version())
+	xr_unique_ptr<CLevelGraph> Grid(new CLevelGraph(std::move(Reader)));
+	const u32 Limit = Grid->m_row_length * Grid->m_column_length;
+	u32 Previous = 0;
+	for (u32 Index = 0; Index < Grid->header().vertex_count(); ++Index)
 	{
-		case XRAI_SOC_VERSION:
-			NodeSize = sizeof(SOCNodeCompressed);
-			break;
-		case XRAI_MINIMAL_VERSION:
-			NodeSize = sizeof(NodeCompressed10);
-			break;
-		case XRAI_CURRENT_VERSION:
-			NodeSize = sizeof(NodeCompressed);
-			break;
-		case XRAI_LARGE_VERSION:
-			NodeSize = sizeof(CVertex);
-			break;
+		const u32 Position = Grid->vertex(Index)->position().xz();
+		if (Position >= Limit || Position < Previous)
+		{
+			return {};
+		}
+		Previous = Position;
 	}
-	if (!StalkerNavigation::ArenaGridFits(static_cast<std::size_t>(Reader->length()), sizeof(CHeader), Header.vertex_count(),
-		NodeSize, Header.cell_size(), Header.factor_y()))
-	{
-		return {};
-	}
-
-	const auto& Bounds = Header.box();
-	if (!_valid(Bounds.min) || !_valid(Bounds.max) ||
-		Bounds.max.x < Bounds.min.x || Bounds.max.y < Bounds.min.y || Bounds.max.z < Bounds.min.z)
-	{
-		return {};
-	}
-	const auto Rows = (f64{Bounds.max.z} - Bounds.min.z) / Header.cell_size() + 2.0;
-	const auto Columns = (f64{Bounds.max.x} - Bounds.min.x) / Header.cell_size() + 2.0;
-	if (Rows * Columns >= (1u << 24))
-	{
-		return {};
-	}
-	return xr_unique_ptr<CLevelGraph>(new CLevelGraph(std::move(Reader)));
+	return Grid;
 }
+
+xr_span<const u8> CLevelGraph::ArenaBytes() const
+{
+	return {reinterpret_cast<const u8*>(m_header), std::size_t(m_reader->length())};
+}
+#endif
 
 CLevelGraph::CLevelGraph() : CLevelGraph(OpenLevelGrid())
 {

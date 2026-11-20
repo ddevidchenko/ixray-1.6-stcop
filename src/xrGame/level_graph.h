@@ -23,6 +23,7 @@ private:
 	explicit CLevelGraph(xr_unique_ptr<IReader> Reader);
 public:
 	[[nodiscard]] static xr_unique_ptr<CLevelGraph> OpenArena();
+	[[nodiscard]] xr_span<const u8> ArenaBytes() const;
 					CLevelGraph					();
 	virtual			~CLevelGraph				();
 

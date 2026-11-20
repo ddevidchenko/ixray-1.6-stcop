@@ -1,6 +1,7 @@
 #include "StdAfx.h"
 #include "ArenaLadderNavigation.h"
 #include "ArenaLadderRoute.h"
+#include "ArenaNavigationPackage.h"
 #include "../ClimableObject.h"
 #include "../Level.h"
 #include "../restricted_object.h"
@@ -17,35 +18,72 @@ bool Suitable(const Fvector& Landing, const Fvector& End)
 }
 }
 
-bool ArenaLadderNavigation::Load()
+bool ArenaLadderNavigation::Load(xr_string_view Map, xr_string_view Version, xr_span<const u8> GridBytes)
 {
-	string_path Path;
-	if (!FS.exist(Path, "$level$", AttachmentName))
+	using namespace ArenaNavigation;
+	const auto Report = [&](Result Error)
 	{
-		return true;
-	}
-	IReader* Reader = FS.r_open(Path);
-	if (!Reader)
-	{
-		Msg("! Arena ladders: cannot open %s", Path);
+		Msg("! Arena navigation: map=%.*s version=%.*s file=%s reason=%s",
+			int(Map.size()), Map.data(), int(Version.size()), Version.data(), Error.File.data(), Describe(Error.Code));
 		return false;
-	}
-	const xr_scope_exit Close([&] { FS.r_close(Reader); });
-	const auto Size = Reader->length();
-	if (Size <= 0 || Size > MaxAttachmentBytes)
+	};
+
+	if (!FS.exist("$level$", PackageName))
 	{
-		Msg("! Arena ladders: invalid attachment size in %s", Path);
-		return false;
+		return Report(Issue(Status::MissingPackage));
+	}
+	auto Package = FS.rg_open("$level$", PackageName);
+	if (!Package)
+	{
+		return Report(Issue(Status::UnreadableAsset));
+	}
+	if (Package->length() <= 0 || Package->length() > MaxPackageBytes)
+	{
+		return Report(Issue(Status::InvalidSize));
 	}
 
-	xr_string Text(Size, '\0');
-	Reader->r(Text.data(), Size);
-	xr_vector<Record> Records;
-	const auto& Header = Grid.header();
-	if (!ReadAttachment(Text, {{Header.guid().g[0], Header.guid().g[1]}}, Header.vertex_count(), Records))
+	auto Collision = FS.rg_open("$level$", "level.cform");
+	if (!Collision || Collision->length() <= 0)
 	{
-		Msg("! Arena ladders: invalid attachment or level.ai GUID mismatch in %s", Path);
-		return false;
+		return Report(Issue(Status::UnreadableAsset, "level.cform"));
+	}
+	static_assert(sizeof(hdrCFORM) == CollisionHeaderSize);
+	const Bytes CollisionBytes{static_cast<const u8*>(Collision->pointer()), std::size_t(Collision->length())};
+	const auto Parts = ReadCollisionParts(CollisionBytes);
+	if (!Parts)
+	{
+		return Report(Issue(Status::InvalidPartCount, "level.cform"));
+	}
+
+	const auto& Header = Grid.header();
+	const Identity Expected{Map, Version, AgentProfile,
+		{{Header.guid().g[0], Header.guid().g[1]}, Header.vertex_count()}, *Parts};
+	xr_vector<Record> Records;
+	const xr_string_view Text(static_cast<const char*>(Package->pointer()), std::size_t(Package->length()));
+	const auto Checked = Validate(Text, Expected, Records, [&](xr_string_view Name)
+	{
+		if (Name == "level.ai" || Name == "level.cform")
+		{
+			return AssetDigest{AssetState::Present, Sha256(Name == "level.ai" ? GridBytes : CollisionBytes)};
+		}
+
+		const char* Alias = Name == "gamemtl.xr" ? _game_data_ : "$level$";
+		// The validator passes only schema-defined, NUL-terminated file names.
+		if (!FS.exist(Alias, Name.data()))
+		{
+			return AssetDigest{};
+		}
+		auto Input = FS.rg_open(Alias, Name.data());
+		if (!Input || Input->length() <= 0)
+		{
+			return AssetDigest{AssetState::Unreadable};
+		}
+		return AssetDigest{AssetState::Present,
+			Sha256({static_cast<const u8*>(Input->pointer()), std::size_t(Input->length())})};
+	});
+	if (Checked.Code != Status::Ready)
+	{
+		return Report(Checked);
 	}
 
 	for (const auto& Record : Records)
@@ -65,7 +103,9 @@ bool ArenaLadderNavigation::Load()
 	{
 		return Left.Entry < Right.Entry;
 	});
-	Msg("Arena ladders: loaded %u directed links from %s", u32(Links.size()), Path);
+	Msg("Arena navigation: map=%.*s version=%.*s profile=%s file=%s links=%u",
+		int(Map.size()), Map.data(), int(Version.size()), Version.data(), ArenaNavigation::AgentProfile.data(),
+		ArenaNavigation::PackageName, u32(Links.size()));
 	return true;
 }
 

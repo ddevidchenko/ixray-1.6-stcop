@@ -164,6 +164,9 @@ bool CForm::CFormatVanillaChunked::Read(xr_string_view FileName)
         {
             return false;
         }
+        // The collision cache key must include the parts that supplied the geometry.
+        const u32 PartHash = elem.GetFileHash();
+        FileHash = crc32(&PartHash, sizeof(PartHash), FileHash);
     }
 
     return true;

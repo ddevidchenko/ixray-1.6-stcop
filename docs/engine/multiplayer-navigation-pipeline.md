@@ -128,7 +128,7 @@ A CLI entry point and build integration for this new route must be added as part
 
 MP uses one arena graph. Native `level.ai` supplies nodes, walk links, and cover. Ladder links attach to those same node IDs as directed traversal edges. The route planner returns ordered walking segments and typed traversal steps. The movement controller walks to the entry, reserves the ladder, mounts, climbs, and dismounts onto the exit node. A blocked entry, occupied ladder, or invalidated exit triggers a bounded retry or replan.
 
-The graph-free dedicated W1 path loads the native `level.ai` and optional `level.navlinks`. MP-105 uses a text attachment with a schema version, the native grid GUID, and named directed ladder links. The server resolves each name against the live climbable objects from `level.spawn`. A walk-only arena may omit the attachment. The production bake and freshness work extends the format with the collision, ladder, and agent identity. Both assets form one logical graph and preserve the native walk records. [MP-105 fixture and format](multiplayer-checkpoints/w0.md#mp-105-ladder-routing-and-traversal)
+The dedicated W1 path requires the native `level.ai` and a matching v2 `level.navlinks`. The package includes the map name and version, agent profile ID, native grid GUID, and SHA-256 digests of the grid, collision descriptor and every consumed part, `level.game`, `gamemtl.xr`, optional `level.spawn`, and the traversal payload. Walk-only arenas carry an empty link table. The server binds named records against live climbable objects from `level.spawn`. Both assets form one logical graph and preserve the native walk records. [Windows package validation](multiplayer-checkpoints/w0.md#mp-106-package-validation)
 
 ```text
 gamedata/levels/<map>/
@@ -139,7 +139,7 @@ gamedata/levels/<map>/
     level.navlinks              versioned traversal edges and freshness metadata
 ```
 
-Resolve runtime assets through the selected `$level$` alias. Bind links to the exact native grid GUID, map and effective collision/material inputs, ladder semantics, and NPC capability profile. Each link carries a stable ladder identity, entry and exit nodes, direction, and expected execution cost. Validate counts, node bounds, adjacency to the corresponding landings, and the actual reachable floor layers. Authoring bounds, seeds, and annotations stay in the editor or bake inputs. A Windows route test must execute the physical climb before marking a traversal link usable.
+The loader resolves the map through `$level$` and the game materials through `$game_data$`. An effective override that changes a bound file invalidates the package. `stalker-v1` is the current profile ID. A change to the supported capability profile requires a new ID and a rebake. Each link carries a stable ladder identity, entry and exit nodes, direction, and expected execution cost. Validate counts, node bounds, adjacency to the corresponding landings, and the actual reachable floor layers. Authoring bounds, seeds, and annotations stay in the editor or bake inputs. A Windows route test must execute the physical climb before marking a traversal link usable.
 
 ### Server load and unload contract
 

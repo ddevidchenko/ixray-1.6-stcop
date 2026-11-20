@@ -40,6 +40,15 @@ function Initialize-W0Runtime {
             }
             $MapFiles += $Asset.FullName
         }
+        if ($Config.stalkerNavigation.files -contains 'level.navlinks') {
+            $MapFiles += @(Get-ChildItem -LiteralPath $MapDirectory -File | Where-Object {
+                $_.Name -in @('level.spawn', 'w1-fixture.json') -or $_.Name -match '^level_\d+\.cform$'
+            } | ForEach-Object FullName)
+            $Materials = Join-Path $Install 'gamedata/gamemtl.xr'
+            if (Test-Path -LiteralPath $Materials -PathType Leaf) {
+                $MapFiles += $Materials
+            }
+        }
     }
 
     $Runtime = (New-Item -ItemType Directory -Path (Join-Path $Workspace 'runtime')).FullName

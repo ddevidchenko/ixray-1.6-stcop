@@ -30,7 +30,7 @@ public:
 
 	ArenaLadderNavigation(const ILevelGraph& Grid, u32 Generation) : Grid(Grid), MapGeneration(Generation) {}
 
-	bool Load();
+	bool Load(xr_string_view Map, xr_string_view Version, xr_span<const u8> GridBytes);
 	u32 Generation() const { return MapGeneration; }
 	u32 BindingRevision(u32 Index) const { return Bindings[Links[Index].BindingId].Revision; }
 	bool HasLinks() const { return !Links.empty(); }

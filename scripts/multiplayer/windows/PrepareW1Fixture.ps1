@@ -3,7 +3,11 @@
 param(
     [Parameter(Mandatory)][string] $EditorRoot,
     [Parameter(Mandatory)][string] $GameDataRoot,
-    [ValidatePattern('^[a-z0-9_-]{1,63}$')][string] $Map = 'w1_arena'
+    [Parameter(Mandatory)][string] $NavigationPacker,
+    [ValidatePattern('^[a-z0-9_-]{1,63}$')][string] $Map = 'w1_arena',
+    [ValidatePattern('^[a-zA-Z0-9._-]{1,31}$')][string] $MapVersion = '1.0',
+    [string] $MaterialFile,
+    [string] $LadderSource
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -81,25 +85,53 @@ foreach ($Name in 'level', 'level.ltx', 'level.geom', 'level.cform', 'level.game
     $File = Get-Item -LiteralPath (Join-Path $Source $Name) -ErrorAction SilentlyContinue
     if ($File -isnot [IO.FileInfo] -or $File.Length -eq 0) { throw "Missing or empty $Name in $Source. Finish the editor/compiler steps first." }
 }
-$SpawnCount = Get-W1RespawnCount (Join-Path $Source 'level.game')
+$Packer = (Get-Item -LiteralPath $NavigationPacker).FullName
+if (!$MaterialFile) {
+    $MaterialFile = Join-Path $GameDataRoot 'gamedata/gamemtl.xr'
+}
+$Materials = Get-Item -LiteralPath $MaterialFile -ErrorAction SilentlyContinue
+if ($Materials -isnot [IO.FileInfo] -or !$Materials.Length) {
+    throw "Provide the matching gamemtl.xr used by the game and SDK. Missing or empty file at $MaterialFile."
+}
+if ($LadderSource) {
+    $LadderSource = (Get-Item -LiteralPath $LadderSource).FullName
+}
 
 $null = New-Item -ItemType Directory -Path $Parent -Force
 $Pending = Join-Path $Parent ('.w1-' + [guid]::NewGuid().ToString('N'))
 $null = New-Item -ItemType Directory -Path $Pending
 try {
-    $Files = @(Get-ChildItem -LiteralPath $Source -File | Where-Object {
-        $_.Name -eq 'level' -or $_.Name -like 'lmap#*.dds' -or
-        ($_.Name -like 'level.*' -and $_.Name -ne 'level.spawn')
-    } | Sort-Object Name | ForEach-Object {
-        Copy-Item -LiteralPath $_.FullName -Destination $Pending
-        $Hash = (Get-FileHash -LiteralPath (Join-Path $Pending $_.Name) -Algorithm SHA256).Hash
-        [ordered] @{ name = $_.Name; sha256 = $Hash }
+    Get-ChildItem -LiteralPath $Source -File | Where-Object {
+        $_.Name -eq 'level' -or $_.Name -like 'lmap#*.dds' -or $_.Name -match '^level_\d+\.cform$' -or
+        ($_.Name -like 'level.*' -and $_.Name -ne 'level.navlinks' -and ($_.Name -ne 'level.spawn' -or $LadderSource))
+    } | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $Pending }
+
+    $SpawnCount = Get-W1RespawnCount (Join-Path $Pending 'level.game')
+    $PackArgs = @($Pending, $Materials.FullName, $Map, $MapVersion)
+    if ($LadderSource) { $PackArgs += $LadderSource }
+    $PSNativeCommandUseErrorActionPreference = $false
+    $PackOutput = & $Packer @PackArgs 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "Navigation packaging failed for $Map. $PackOutput" }
+
+    $MaterialHash = (Get-FileHash -LiteralPath $Materials.FullName -Algorithm SHA256).Hash
+    if ($PackOutput -cne $MaterialHash.ToLowerInvariant()) {
+        throw "gamemtl.xr changed during navigation packaging for $Map. Retry with the matching file."
+    }
+
+    $Files = @(Get-ChildItem -LiteralPath $Pending -File | Sort-Object Name | ForEach-Object {
+        [ordered] @{ name = $_.Name; sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash }
     })
-    [ordered] @{ map = $Map; deathmatchSpawnCount = $SpawnCount; files = $Files } |
+    [ordered] @{
+        map = $Map
+        mapVersion = $MapVersion
+        deathmatchSpawnCount = $SpawnCount
+        materials = [ordered] @{ name = 'gamemtl.xr'; sha256 = $MaterialHash }
+        files = $Files
+    } |
         ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $Pending 'w1-fixture.json') -Encoding utf8
     [IO.Directory]::Move($Pending, $Target)
 }
 finally {
-    if (Test-Path -LiteralPath $Pending) { Remove-Item -LiteralPath $Pending -Recurse }
+    if (Test-Path -LiteralPath $Pending) { Remove-Item -LiteralPath $Pending -Force -Recurse }
 }
 Write-Output (Join-Path $Target 'w1-fixture.json')

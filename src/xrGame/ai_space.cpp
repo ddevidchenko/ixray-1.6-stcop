@@ -132,7 +132,7 @@ bool CAI_Space::load				(const char* level_name)
 	return true;
 }
 
-bool CAI_Space::LoadArenaNavigation(bool LoadLadders)
+bool CAI_Space::LoadArenaNavigation(bool LoadLadders, xr_string_view Map, xr_string_view Version)
 {
 	if (Device.IsEditorMode() || m_game_graph || m_alife_simulator)
 	{
@@ -141,13 +141,15 @@ bool CAI_Space::LoadArenaNavigation(bool LoadLadders)
 	auto Grid = CLevelGraph::OpenArena();
 	if (!Grid)
 	{
+		Msg("! Arena navigation: map=%.*s file=level.ai reason=missing or invalid native grid",
+			int(Map.size()), Map.data());
 		return false;
 	}
 	xr_unique_ptr<Multiplayer::ArenaLadderNavigation> Ladders;
 	if (LoadLadders)
 	{
 		Ladders.reset(new Multiplayer::ArenaLadderNavigation(*Grid, ArenaGeneration + 1));
-		if (!Ladders->Load())
+		if (!Ladders->Load(Map, Version, Grid->ArenaBytes()))
 		{
 			return false;
 		}

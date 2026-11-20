@@ -229,6 +229,12 @@ The [peer runbook](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch
 - **Mac checks passed / Windows pending.** The first golden declaration failed to encode and decode. The reviewed tests also failed at the serialized catch-up handoff on base `ac83766c0` with a compile-only codec stub. The fixed suite covers exact bytes, malformed frames, wrong-direction tags, unbound identities, owned fields, zero and full-width counters, and atomic writes. The handoff rejects a declaration from the previous round and acknowledges the current one after applying its event and staged snapshot. All 22 portable cases passed in Debug, Release, and ASan/UBSan on macOS arm64. Fixtures use literal bytes and no seed or content pack. [Codec tests](../../src/test/multiplayer/portable/ClientJoinTests.cpp), [handoff test](../../src/test/multiplayer/portable/ClientCatchUpTests.cpp).
 - [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) collects passing `client-join.xml` and `client-catch-up.xml` on Windows for the fixed candidate.
 
+#### MP-020i — Encode combatant despawns in catch-up state events
+
+- Assign catch-up state event tag `0x0a` and despawn kind `0x01`. Carry the selected baseline, state-event sequence, durable event ID, server tick, and the participant and body identity. The decoded event supplies the retained frame and the metadata for the existing catch-up trackers. [Wire contract](multiplayer-implementation-contracts.md#catch-up-state-event).
+- **Mac checks passed / Windows pending.** The independent golden frame failed to encode and decode before implementation on base `87003582a`. The reviewed tests cover framing and typed truncation, wrong tags, unbound scopes, unsupported kinds, invalid and boundary field values, atomic writes, and reuse of receive storage. The handoff exercises the queue, combatant registry, and readiness trackers with sequence wrap and rejects stale scope, life and participant references before acknowledging the exact despawn. All 28 portable tests passed in Debug, Release, and ASan/UBSan on macOS arm64. Fixtures use literal input and no seed or game assets. [Tests](../../src/test/multiplayer/portable/CatchUpDespawnTests.cpp).
+- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) records a passing `catch-up-despawn.xml` on Windows. Additional event kinds, live delivery and world application remain open in MP-037.
+
 ### MP-021 — Bound legacy envelope parsing and decompression
 
 - **Kind / runs / depends:** TDD; `P` where extracted, `W`; MP-003, MP-010, MP-020.
@@ -420,7 +426,7 @@ The [peer runbook](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch
 #### MP-037f — Retain a bounded server catch-up stream
 
 - Bind a portable queue to the selected baseline and receiver. Copy serialized events into caller-owned storage, enforce contiguous sequences and count and byte limits, and retire only after reliable submission. Report rebase on overflow and preserve the observed watermark for the replacement capture. [Retention contract](multiplayer-implementation-contracts.md#server-catch-up-event-retention).
-- **Mac checks passed / Windows pending.** The reviewed tests failed before queue retention existed. They cover exact capacities, scope and sequence rejection, failed submissions, both storage rings, overflow, and an owner handoff to a replacement baseline. Event schemas and live capture, scheduling, and application remain open. [Tests](../../src/test/multiplayer/portable/CatchUpEventQueueTests.cpp).
+- **Mac checks passed / Windows pending.** The reviewed tests failed before queue retention existed. They cover exact capacities, scope and sequence rejection, failed submissions, both storage rings, overflow, and an owner handoff to a replacement baseline. The first event codec is MP-020i. Live capture, scheduling, and application remain open. [Tests](../../src/test/multiplayer/portable/CatchUpEventQueueTests.cpp).
 - [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) collects a passing `catch-up-event-queue.xml` on Windows.
 
 #### MP-037g — Gate client readiness on applied catch-up state

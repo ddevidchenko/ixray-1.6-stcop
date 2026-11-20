@@ -18,6 +18,7 @@ add_library(xrNetServerMultiplayer OBJECT
     BaselineStagingBudget.cpp BaselineStagingBudget.h
     BaselineRecords.cpp BaselineRecords.h
     CatchUpEvent.h
+    CatchUpDespawn.cpp CatchUpDespawn.h
     CatchUpEventQueue.cpp CatchUpEventQueue.h
     ClientCatchUp.cpp ClientCatchUp.h
 )

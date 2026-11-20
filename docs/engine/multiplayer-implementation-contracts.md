@@ -93,6 +93,7 @@ The following tags are assigned for version one. Additional tags become valid as
 | `BaselineChunk` | `0x07` |
 | `BaselineEnd` | `0x08` |
 | `ServerJoinBarrier` | `0x09` |
+| `CatchUpStateEvent` | `0x0a` |
 
 The envelope codec checks the complete message size and framing. Payload decoders and the admission state machine validate fields and identity before dispatch. The returned payload view borrows the receive buffer for the duration of decoding. [Codec](../../src/xrNetServer/Multiplayer/WireEnvelope.h), [independent golden frames](../../src/test/multiplayer/portable/WireEnvelopeTests.cpp).
 
@@ -209,6 +210,24 @@ The decoders require the exact payload size and return owned values. Bind a deco
 The server sends `ServerJoinBarrier` on the ordered reliable control/state stream, scoped to the receiving peer by the bound envelope. Its exact 16-byte payload uses the four fields in the [ready acknowledgement layout](#client-join-confirmations) in the same order. The server and client use their own envelope message sequences. The barrier ID names the staged snapshot and the event watermark identifies the last event the client must apply before that snapshot. The server queues the declaration before any event beyond its watermark. Snapshot data and its framing follow the replication work items.
 
 The declaration and acknowledgement have distinct tags and decoders. A declaration only supplies the barrier values. The client checks the current identity and baseline, applies the required state, and sends the acknowledgement. [Codec](../../src/xrNetServer/Multiplayer/ClientJoin.h), [handoff test](../../src/test/multiplayer/portable/ClientCatchUpTests.cpp).
+
+### Catch-up state event
+
+The server sends `CatchUpStateEvent` on the ordered reliable control/state stream. The envelope binds the receiver's session, world, and connection. Its message sequence is independent of the per-recipient state-event sequence. The first event kind, `0x01`, retires one combatant body. It carries exactly 35 payload bytes.
+
+| Payload field in order | Encoding |
+| --- | --- |
+| Selected baseline ID | `u32` |
+| State-event sequence | `u32` |
+| Durable event ID | Nonzero `u64` |
+| Server tick | `u32` |
+| Event kind | `u8` equal to `0x01` for combatant despawn |
+| Participant ID | Nonzero `u32` |
+| Engine object slot | `u16` from 0 through 65,534 |
+| Object generation | Nonzero `u32` |
+| Life ID | Nonzero `u32` |
+
+World epoch, baseline ID, ticks and sequences allow zero. The durable event ID identifies the same event when sent to different recipients. The decoder returns owned event fields and a view of the checked frame for catch-up retention and application. Keep the datagram alive and unchanged until the queue copies the bytes or the client finishes applying them. The world adapter resolves the exact body in the current world and checks its participant before retiring it. Other event kinds, live delivery, and runtime world application follow separately. [Codec](../../src/xrNetServer/Multiplayer/CatchUpDespawn.h), [wire and handoff tests](../../src/test/multiplayer/portable/CatchUpDespawnTests.cpp).
 
 ### Initial-state baseline transfer
 

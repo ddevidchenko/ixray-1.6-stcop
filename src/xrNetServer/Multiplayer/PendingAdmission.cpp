@@ -2,12 +2,41 @@
 #include "ClientHello.h"
 #include "WireEnvelope.h"
 
+#include <utility>
+
 namespace Multiplayer
 {
 using Wire::AdmissionRejectReason;
 
-PendingAdmission::PendingAdmission(Clock::time_point Expiration) noexcept : Deadline(Expiration)
+PendingAdmission::PendingAdmission(PendingAdmissionLimit& Owner, Clock::time_point Expiration) noexcept
+	: Deadline(Expiration), Limit(&Owner)
 {
+}
+
+PendingAdmission::PendingAdmission(PendingAdmission&& Other) noexcept
+	: Deadline(Other.Deadline), State(std::exchange(Other.State, PendingAdmissionState::Closing)),
+	  VerifiedContent(Other.VerifiedContent), VerifiedRules(Other.VerifiedRules), Limit(std::exchange(Other.Limit, nullptr))
+{
+}
+
+PendingAdmission::~PendingAdmission()
+{
+	ReleaseCapacity();
+}
+
+void PendingAdmission::LeavePending(PendingAdmissionState Result) noexcept
+{
+	State = Result;
+	ReleaseCapacity();
+}
+
+void PendingAdmission::ReleaseCapacity() noexcept
+{
+	if (Limit)
+	{
+		--Limit->PendingCount;
+		Limit = nullptr;
+	}
 }
 
 std::optional<AdmissionRejectReason> PendingAdmission::Expire(Clock::time_point Now) noexcept
@@ -16,7 +45,7 @@ std::optional<AdmissionRejectReason> PendingAdmission::Expire(Clock::time_point 
 	{
 		return std::nullopt;
 	}
-	State = PendingAdmissionState::Closing;
+	LeavePending(PendingAdmissionState::Closing);
 	return AdmissionRejectReason::AdmissionTimedOut;
 }
 
@@ -34,7 +63,7 @@ std::expected<VerifiedHello, PendingAdmissionFailure> PendingAdmission::ReceiveH
 
 	const auto Reject = [this](AdmissionRejectReason Reason)
 	{
-		State = PendingAdmissionState::Closing;
+		LeavePending(PendingAdmissionState::Closing);
 		return std::unexpected(PendingAdmissionFailure{Reason, true});
 	};
 	const auto Hello = Wire::DecodeClientHello(Bytes);
@@ -87,7 +116,7 @@ std::expected<void, AdmissionCompletionError> PendingAdmission::Complete(const W
 
 	const auto Close = [this](AdmissionCompletionError Error)
 	{
-		State = PendingAdmissionState::Closing;
+		LeavePending(PendingAdmissionState::Closing);
 		return std::unexpected(Error);
 	};
 	if (Welcome.ContentId != VerifiedContent || Welcome.RulesId != VerifiedRules)
@@ -111,7 +140,21 @@ std::expected<void, AdmissionCompletionError> PendingAdmission::Complete(const W
 	}
 
 	Slot.Commit();
-	State = PendingAdmissionState::Admitted;
+	LeavePending(PendingAdmissionState::Admitted);
 	return {};
+}
+
+PendingAdmissionLimit::PendingAdmissionLimit(std::size_t Capacity) noexcept : Capacity(Capacity)
+{
+}
+
+std::expected<PendingAdmission, AdmissionRejectReason> PendingAdmissionLimit::TryBegin(PendingAdmission::Clock::time_point Expiration) noexcept
+{
+	if (PendingCount == Capacity)
+	{
+		return std::unexpected(AdmissionRejectReason::ServerBusy);
+	}
+	++PendingCount;
+	return PendingAdmission(*this, Expiration);
 }
 }

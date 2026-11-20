@@ -1,6 +1,6 @@
 # Multiplayer TDD work items
 
-The operator reports that W0 passed on Windows. The exact revision and result bundle are pending attachment. MP-010, MP-011a, MP-011b, MP-012, MP-020a, MP-020b, MP-020c, MP-020d, MP-020e, MP-022a and MP-022b have macOS evidence.
+The operator reports that W0 passed on Windows. The exact revision and result bundle are pending attachment. MP-010, MP-011a, MP-011b, MP-012, MP-020a, MP-020b, MP-020c, MP-020d, MP-020e, MP-022a, MP-022b and MP-022c have macOS evidence.
 
 Implements the [modern multiplayer plan](multiplayer-modernization-plan.md): 32 total human/bot combatants, simple DM, direct IP over GameNetworkingSockets first, human-like bots, authoritative simulation, prediction, lag compensation, and immediate local effects. Windows x64 is the initial runtime target; macOS remains usable for source work and portable tests. Hitscan, ballistics, and hybrid gunplay remain alternatives until the comparison gate.
 
@@ -221,6 +221,12 @@ The [peer runbook](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch
 - Complete the portable handoff on the owner turn. Validate the bound welcome before touching capacity, queue reliably while a slot is held, and commit admission only when the queue accepts the packet. A rejected queue operation cancels the reservation. The connection owner supplies identities and the roster adapter owns eligibility, bot replacement, and committed-slot cleanup. [Admission completion contract](multiplayer-implementation-contracts.md#admission-completion).
 - **Mac checks passed / Windows pending.** The initial welcome failed before implementation. The reviewed tests cover competing peers, capacity reuse, queue rollback, duplicate completion, expiry at the exact deadline, unassigned identities, and inconsistent welcome settings. Pending-peer limits, loading and engine integration are later slices. [Tests](../../src/test/multiplayer/portable/AdmissionCompletionTests.cpp).
 - [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) collects a passing `admission-completion.xml` on Windows.
+
+#### MP-022c — Bound pending admission
+
+- Start each tracker through a per-owner pending limit. `AwaitingHello` and `AwaitingSlot` both consume capacity. Overflow yields `ServerBusy`, while admission, terminal rejection, timeout, and disconnect return capacity. The move transfers ownership of the charged place. [Pending capacity contract](multiplayer-implementation-contracts.md#pending-admission-capacity).
+- **Mac checks passed / Windows pending.** The reviewed tests failed with an unbounded start. They exercise zero and finite capacity, repeated overflow, isolation between owners, capacity reuse, all terminal outcomes, and cleanup after a move. Transport deduplication and the live connection owner are part of the engine integration. [Tests](../../src/test/multiplayer/portable/PendingAdmissionLimitTests.cpp).
+- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) collects a passing `pending-admission-limit.xml` on Windows.
 
 ### MP-023 — Separate connection, participant, entity, and life identity
 

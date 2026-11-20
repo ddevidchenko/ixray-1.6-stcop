@@ -1,7 +1,7 @@
 {
     "id": "W0",
     "Portable": {
-        "workItems": ["MP-010", "MP-011a", "MP-011b", "MP-012", "MP-020a", "MP-020b", "MP-020c", "MP-020d", "MP-020e", "MP-022a", "MP-022b"],
+        "workItems": ["MP-010", "MP-011a", "MP-011b", "MP-012", "MP-020a", "MP-020b", "MP-020c", "MP-020d", "MP-020e", "MP-022a", "MP-022b", "MP-022c"],
         "configuration": "RelWithDebInfo",
         "sourceDirectory": "src/test/multiplayer/portable",
         "architecture": "x64",
@@ -58,6 +58,11 @@
                 "name": "Multiplayer.AdmissionCompletion",
                 "successMessage": "Admission completion checks passed",
                 "step": "admission-completion"
+            },
+            {
+                "name": "Multiplayer.PendingAdmissionLimit",
+                "successMessage": "Pending admission limit checks passed",
+                "step": "pending-admission-limit"
             }
         ],
         "deliberateFailureTest": "Multiplayer.Sequence.DeliberateFailure",
@@ -67,7 +72,7 @@
         "testTimeoutSeconds": 30
     },
     "Peers": {
-        "workItems": ["MP-010", "MP-011a", "MP-011b", "MP-012", "MP-020a", "MP-020b", "MP-020c", "MP-020d", "MP-020e", "MP-022a", "MP-022b"],
+        "workItems": ["MP-010", "MP-011a", "MP-011b", "MP-012", "MP-020a", "MP-020b", "MP-020c", "MP-020d", "MP-020e", "MP-022a", "MP-022b", "MP-022c"],
         "configuration": "RelWithDebInfo",
         "targets": ["TestMultiplayerUnit", "TestMultiplayerGns"],
         "test": {

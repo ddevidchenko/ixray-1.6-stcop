@@ -167,11 +167,17 @@ All other reason bytes are reserved and rejected. Client presentation maps these
 
 ### Pending admission decision
 
-The connection owner creates one pending tracker with an absolute monotonic deadline, initially 10 seconds after connect. A hello received at or after the deadline expires before validation. The same deadline applies while waiting for a slot. Expiry reports a reason once when the peer enters `Closing`.
+The connection owner starts one pending tracker per connection with an absolute monotonic deadline, initially 10 seconds after connect. A hello received at or after the deadline expires before validation. The same deadline applies while waiting for a slot. Expiry reports a reason once when the peer enters `Closing`.
 
 The tracker validates the complete unbound hello and compares build, content, and rules IDs in that order against server requirements. A protected server requires nonempty credentials and calls its verifier with the borrowed bytes. An open server skips credential verification. The first verified hello produces a slot request carrying the message sequence and borrowed display name. The connection owner supplies the assigned identity for the welcome and the roster supplies the reservation.
 
 The peer remains `AwaitingSlot` if another hello arrives before expiry. Such a hello yields `InvalidState` for diagnostics and leaves the original request intact. The initial terminal failure tells the caller to send one rejection. Calls after `Closing` yield `InvalidState` without another rejection. [Portable tracker](../../src/xrNetServer/Multiplayer/PendingAdmission.h), [deterministic tests](../../src/test/multiplayer/portable/PendingAdmissionTests.cpp).
+
+### Pending admission capacity
+
+The connection owner starts each peer through one configured pending limit before processing a hello or consuming match resources. `TryBegin` returns `ServerBusy` at capacity without creating a tracker. Zero capacity rejects every attempt. Each `AwaitingHello` or `AwaitingSlot` tracker consumes one place, and neither a repeated hello nor a premature completion releases it.
+
+The initial admission place is returned on `Admitted`, `Closing`, or destruction while still pending. Moving a tracker transfers its place. The connection owner deduplicates starts per connection, serializes tracker operations and keeps the limit alive until all pending trackers release it. Poll deadlines even when no packets arrive and process expiry before new starts on the same turn. The transport owner closes rejected peers promptly. The pending limit and the roster capacity govern different stages of admission. [Tracker and limit](../../src/xrNetServer/Multiplayer/PendingAdmission.h), [capacity tests](../../src/test/multiplayer/portable/PendingAdmissionLimitTests.cpp).
 
 ### Admission completion
 

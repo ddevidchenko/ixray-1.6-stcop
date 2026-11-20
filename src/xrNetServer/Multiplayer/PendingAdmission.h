@@ -5,6 +5,7 @@
 #include "ServerWelcome.h"
 
 #include <chrono>
+#include <cstddef>
 #include <expected>
 #include <optional>
 
@@ -22,7 +23,7 @@ class IAdmissionCredentialVerifier
 {
 public:
 	virtual ~IAdmissionCredentialVerifier() = default;
-	// The credential view is valid for this call.
+	// The credential view is valid for this call. Verification must not reenter the tracker.
 	virtual bool Verify(xr_span<const u8> Credentials) const noexcept = 0;
 };
 
@@ -74,13 +75,17 @@ struct VerifiedHello
 	xr_string_view DisplayName;
 };
 
+class PendingAdmissionLimit;
+
+// The connection owner serializes tracker operations, moves and destruction.
 class PendingAdmission
 {
 public:
 	using Clock = std::chrono::steady_clock;
 
-	explicit PendingAdmission(Clock::time_point Expiration) noexcept;
+	~PendingAdmission();
 	PendingAdmission(const PendingAdmission&) = delete;
+	PendingAdmission(PendingAdmission&& Other) noexcept;
 	PendingAdmission& operator=(const PendingAdmission&) = delete;
 
 	[[nodiscard]] PendingAdmissionState GetState() const noexcept { return State; }
@@ -97,9 +102,33 @@ public:
 		IAdmissionSlotReservation& Slot, IAdmissionWelcomeQueue& Queue, Clock::time_point Now) noexcept;
 
 private:
+	friend class PendingAdmissionLimit;
+
+	PendingAdmission(PendingAdmissionLimit& Owner, Clock::time_point Expiration) noexcept;
+	void LeavePending(PendingAdmissionState Result) noexcept;
+	void ReleaseCapacity() noexcept;
+
 	const Clock::time_point Deadline;
 	PendingAdmissionState State = PendingAdmissionState::AwaitingHello;
 	Wire::CompatibilityId VerifiedContent{};
 	Wire::CompatibilityId VerifiedRules{};
+	PendingAdmissionLimit* Limit;
+};
+
+class PendingAdmissionLimit
+{
+public:
+	explicit PendingAdmissionLimit(std::size_t Capacity) noexcept;
+	PendingAdmissionLimit(const PendingAdmissionLimit&) = delete;
+	PendingAdmissionLimit& operator=(const PendingAdmissionLimit&) = delete;
+
+	// Call once per connection on the serialized owner turn. This limit must outlive its pending trackers.
+	[[nodiscard]] std::expected<PendingAdmission, Wire::AdmissionRejectReason> TryBegin(PendingAdmission::Clock::time_point Expiration) noexcept;
+
+private:
+	friend class PendingAdmission;
+
+	const std::size_t Capacity;
+	std::size_t PendingCount = 0;
 };
 }

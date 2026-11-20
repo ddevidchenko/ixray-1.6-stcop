@@ -147,7 +147,8 @@ static Wire::ServerWelcome MakeWelcome(u32 ConnectionEpoch)
 
 static bool CheckWelcome()
 {
-	PendingAdmission Peer(Deadline);
+	PendingAdmissionLimit Limit(1);
+	auto Peer = Limit.TryBegin(Deadline).value();
 	if (!VerifyHello(Peer))
 	{
 		return false;
@@ -180,9 +181,10 @@ static bool CheckWelcome()
 
 static bool CheckFullThenDisconnect()
 {
-	PendingAdmission First(Deadline);
-	PendingAdmission Second(Deadline);
-	PendingAdmission Third(Deadline);
+	PendingAdmissionLimit Limit(3);
+	auto First = Limit.TryBegin(Deadline).value();
+	auto Second = Limit.TryBegin(Deadline).value();
+	auto Third = Limit.TryBegin(Deadline).value();
 	if (!VerifyHello(First) || !VerifyHello(Second) || !VerifyHello(Third))
 	{
 		return false;
@@ -215,8 +217,9 @@ static bool CheckFullThenDisconnect()
 
 static bool CheckQueueFailure()
 {
-	PendingAdmission First(Deadline);
-	PendingAdmission Second(Deadline);
+	PendingAdmissionLimit Limit(2);
+	auto First = Limit.TryBegin(Deadline).value();
+	auto Second = Limit.TryBegin(Deadline).value();
 	if (!VerifyHello(First) || !VerifyHello(Second))
 	{
 		return false;
@@ -250,7 +253,8 @@ static bool CheckStateAndDeadline()
 	SlotReservation Slot(Slots);
 	WelcomeQueue Queue(Slot);
 	const auto Welcome = MakeWelcome(13);
-	PendingAdmission Peer(Deadline);
+	PendingAdmissionLimit Limit(2);
+	auto Peer = Limit.TryBegin(Deadline).value();
 	bool Passed = ExpectError("welcome requires a verified hello", Peer.Complete(Welcome, Slot, Queue, OnTime), AdmissionCompletionError::InvalidState);
 	Passed &= Expect("premature completion leaves the peer awaiting a hello", Peer.GetState() == PendingAdmissionState::AwaitingHello);
 	if (!VerifyHello(Peer))
@@ -262,7 +266,7 @@ static bool CheckStateAndDeadline()
 	Passed &= ExpectError("completion timeout is reported once", Peer.Complete(Welcome, Slot, Queue, Deadline + 1ms), AdmissionCompletionError::InvalidState);
 	Passed &= Expect("expired reservation stays closed and unchanged", Peer.GetState() == PendingAdmissionState::Closing && !Peer.Expire(Deadline + 1ms));
 
-	PendingAdmission AlreadyExpired(Deadline);
+	auto AlreadyExpired = Limit.TryBegin(Deadline).value();
 	if (!VerifyHello(AlreadyExpired))
 	{
 		return false;
@@ -279,7 +283,8 @@ static bool CheckInvalidWelcome()
 {
 	const auto NoSideEffects = [](const Wire::ServerWelcome& Welcome, const char* Step)
 	{
-		PendingAdmission Peer(Deadline);
+		PendingAdmissionLimit Limit(1);
+		auto Peer = Limit.TryBegin(Deadline).value();
 		if (!VerifyHello(Peer))
 		{
 			return false;

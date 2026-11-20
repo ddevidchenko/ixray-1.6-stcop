@@ -54,6 +54,11 @@ namespace AdmissionCompletionTests
 bool Run();
 }
 
+namespace PendingAdmissionLimitTests
+{
+bool Run();
+}
+
 namespace SerialSequenceTests
 {
 struct SequenceCase
@@ -135,6 +140,10 @@ int main(int ArgumentCount, char** Arguments)
 	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--admission-completion") == 0)
 	{
 		return AdmissionCompletionTests::Run() ? EXIT_SUCCESS : EXIT_FAILURE;
+	}
+	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--pending-admission-limit") == 0)
+	{
+		return PendingAdmissionLimitTests::Run() ? EXIT_SUCCESS : EXIT_FAILURE;
 	}
 	if (ArgumentCount != 1)
 	{

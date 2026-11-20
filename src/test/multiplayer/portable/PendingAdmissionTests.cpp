@@ -85,8 +85,9 @@ static bool ExpectError(const char* Step, const std::expected<VerifiedHello, Pen
 
 static bool CheckCompatiblePeers(const ClientHello& Hello, const EncodedHello& Packet, const AdmissionRequirements& Requirements)
 {
-	PendingAdmission First(Deadline);
-	PendingAdmission Second(Deadline);
+	PendingAdmissionLimit Limit(2);
+	auto First = Limit.TryBegin(Deadline).value();
+	auto Second = Limit.TryBegin(Deadline).value();
 	const FixtureVerifier Verifier;
 	bool Passed = Expect("new peer waits for hello", First.GetState() == PendingAdmissionState::AwaitingHello && Second.GetState() == PendingAdmissionState::AwaitingHello);
 	const auto FirstResult = First.ReceiveHello(Packet.View(), Requirements, Verifier, Connected);
@@ -113,7 +114,8 @@ static bool CheckWireFailures(const EncodedHello& Packet, const AdmissionRequire
 	const auto RejectPacket = [&Passed, &Requirements](xr_span<const u8> Bytes, AdmissionRejectReason Reason)
 	{
 		const FixtureVerifier Verifier;
-		PendingAdmission Peer(Deadline);
+		PendingAdmissionLimit Limit(1);
+		auto Peer = Limit.TryBegin(Deadline).value();
 		Passed &= ExpectError("invalid wire hello has the specified admission reason", Peer.ReceiveHello(Bytes, Requirements, Verifier, Connected), Reason);
 		Passed &= Expect("wire rejection closes the peer before credentials", Peer.GetState() == PendingAdmissionState::Closing && Verifier.Calls == 0);
 	};
@@ -156,7 +158,8 @@ static bool CheckIdentityMismatches(const EncodedHello& Packet, const AdmissionR
 		auto Mismatch = Requirements;
 		(Mismatch.*Case.Field).back() ^= 0x80;
 		const FixtureVerifier Verifier;
-		PendingAdmission Peer(Deadline);
+		PendingAdmissionLimit Limit(1);
+		auto Peer = Limit.TryBegin(Deadline).value();
 		Passed &= ExpectError("compatibility check detects the final byte difference", Peer.ReceiveHello(Packet.View(), Mismatch, Verifier, Connected), Case.Reason);
 		Passed &= Expect("incompatible peer closes without credential verification", Peer.GetState() == PendingAdmissionState::Closing && Verifier.Calls == 0);
 	}
@@ -189,7 +192,8 @@ static bool CheckCredentials(const ClientHello& Hello, const EncodedHello& Valid
 		auto Policy = Requirements;
 		Policy.RequireCredentials = Case.Required;
 		const FixtureVerifier Verifier;
-		PendingAdmission Peer(Deadline);
+		PendingAdmissionLimit Limit(1);
+		auto Peer = Limit.TryBegin(Deadline).value();
 		const auto Result = Peer.ReceiveHello(Packet.View(), Policy, Verifier, Connected);
 		if (Case.Accepted)
 		{
@@ -209,20 +213,21 @@ static bool CheckCredentials(const ClientHello& Hello, const EncodedHello& Valid
 static bool CheckDeadlines(const EncodedHello& Packet, const AdmissionRequirements& Requirements)
 {
 	const FixtureVerifier Verifier;
-	PendingAdmission Awaiting(Deadline);
+	PendingAdmissionLimit Limit(4);
+	auto Awaiting = Limit.TryBegin(Deadline).value();
 	bool Passed = Expect("hello wait starts unexpired", !Awaiting.Expire(Deadline - 1ms) && Awaiting.GetState() == PendingAdmissionState::AwaitingHello);
 	Passed &= Expect("poll expires pending hello at equality", Awaiting.Expire(Deadline) == AdmissionRejectReason::AdmissionTimedOut &&
 		Awaiting.GetState() == PendingAdmissionState::Closing);
 	Passed &= Expect("expiry emits only once", !Awaiting.Expire(Deadline + 1ms));
 	Passed &= ExpectError("expired peer cannot accept a later hello", Awaiting.ReceiveHello(Packet.View(), Requirements, Verifier, Deadline + 1ms), AdmissionRejectReason::InvalidState, false);
 
-	PendingAdmission Exact(Deadline);
+	auto Exact = Limit.TryBegin(Deadline).value();
 	Passed &= ExpectError("hello at deadline loses to timeout", Exact.ReceiveHello(Packet.View(), Requirements, Verifier, Deadline), AdmissionRejectReason::AdmissionTimedOut);
 	Passed &= Expect("timeout precedes verification", Exact.GetState() == PendingAdmissionState::Closing && Verifier.Calls == 0);
-	PendingAdmission Late(Deadline);
+	auto Late = Limit.TryBegin(Deadline).value();
 	Passed &= ExpectError("late malformed datagram loses to timeout", Late.ReceiveHello({}, Requirements, Verifier, Deadline + 1ms), AdmissionRejectReason::AdmissionTimedOut);
 
-	PendingAdmission AwaitingSlot(Deadline);
+	auto AwaitingSlot = Limit.TryBegin(Deadline).value();
 	const auto Timely = AwaitingSlot.ReceiveHello(Packet.View(), Requirements, Verifier, Deadline - 1ms);
 	Passed &= Expect("hello one millisecond early is accepted for slot reservation", Timely && AwaitingSlot.GetState() == PendingAdmissionState::AwaitingSlot);
 	Passed &= Expect("slot wait still shares the original deadline", AwaitingSlot.Expire(Deadline) == AdmissionRejectReason::AdmissionTimedOut &&

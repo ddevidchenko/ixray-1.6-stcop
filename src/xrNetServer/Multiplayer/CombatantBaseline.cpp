@@ -97,7 +97,7 @@ std::expected<Wire::BaselineManifest, CombatantBaselineEncodeError> EncodeCombat
 		return std::unexpected(CombatantBaselineEncodeError::OutputTooSmall);
 	}
 	const auto ByteCount = static_cast<u32>(Bytes.size());
-	const auto Chunks = static_cast<u16>((ByteCount + Wire::MaxBaselineChunkBytes - 1) / Wire::MaxBaselineChunkBytes);
+	const auto Chunks = static_cast<u16>(Wire::GetBaselineChunkCount(ByteCount));
 	return Wire::BaselineManifest{Boundary.BaselineId, Boundary.CaptureTick, Boundary.EventWatermark, ByteCount,
 		static_cast<u16>(Records.size()), Chunks};
 }

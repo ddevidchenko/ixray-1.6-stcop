@@ -9,6 +9,11 @@ inline constexpr u16 MaxBaselineChunks = 4096;
 inline constexpr u16 MaxBaselineRecords = 8192;
 inline constexpr u32 MaxBaselineBytes = MaxBaselineChunkBytes * MaxBaselineChunks;
 
+[[nodiscard]] constexpr u32 GetBaselineChunkCount(u32 ByteCount) noexcept
+{
+	return ByteCount / MaxBaselineChunkBytes + (ByteCount % MaxBaselineChunkBytes != 0);
+}
+
 struct BaselineManifest
 {
 	u32 BaselineId;

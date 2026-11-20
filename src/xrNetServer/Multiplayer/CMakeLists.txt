@@ -12,7 +12,7 @@ add_library(xrNetServerMultiplayer OBJECT
     CombatantIdentity.h
     PeerJoin.cpp PeerJoin.h
     BoundMessage.cpp BoundMessage.h
-    ClientJoin.cpp ClientJoin.h
+    ClientJoin.cpp ClientJoin.h JoinBarrierFields.h
     BaselineTransfer.cpp BaselineTransfer.h
     BaselineStaging.cpp BaselineStaging.h
     BaselineStagingBudget.cpp BaselineStagingBudget.h
@@ -22,6 +22,7 @@ add_library(xrNetServerMultiplayer OBJECT
     SnapshotBatch.cpp SnapshotBatch.h
     CombatantSnapshot.cpp CombatantSnapshot.h
     CombatantBaseline.cpp CombatantBaseline.h
+    CombatantBarrier.cpp CombatantBarrier.h
     CatchUpEventQueue.cpp CatchUpEventQueue.h
     ClientCatchUp.cpp ClientCatchUp.h
 )

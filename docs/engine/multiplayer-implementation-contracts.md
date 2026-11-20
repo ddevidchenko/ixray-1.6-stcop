@@ -95,6 +95,7 @@ The following tags are assigned for version one. Additional tags become valid as
 | `ServerJoinBarrier` | `0x09` |
 | `CatchUpStateEvent` | `0x0a` |
 | `SnapshotBatch` | `0x0b` |
+| `CombatantBarrierChunk` | `0x0c` |
 
 The envelope codec checks the complete message size and framing. Payload decoders and the admission state machine validate fields and identity before dispatch. The returned payload view borrows the receive buffer for the duration of decoding. [Codec](../../src/xrNetServer/Multiplayer/WireEnvelope.h), [independent golden frames](../../src/test/multiplayer/portable/WireEnvelopeTests.cpp).
 
@@ -208,9 +209,22 @@ The decoders require the exact payload size and return owned values. Bind a deco
 
 ### Server join barrier
 
-The server sends `ServerJoinBarrier` on the ordered reliable control/state stream, scoped to the receiving peer by the bound envelope. Its exact 16-byte payload uses the four fields in the [ready acknowledgement layout](#client-join-confirmations) in the same order. The server and client use their own envelope message sequences. The barrier ID names the staged snapshot and the event watermark identifies the last event the client must apply before that snapshot. The server queues the declaration before any event beyond its watermark. Snapshot data and its framing follow the replication work items.
+The server sends `ServerJoinBarrier` on the ordered reliable control/state stream, scoped to the receiving peer by the bound envelope. Its exact 16-byte payload uses the four fields in the [ready acknowledgement layout](#client-join-confirmations) in the same order. The server and client use their own envelope message sequences. The barrier ID names the staged snapshot and the event watermark identifies the last event the client must apply before that snapshot. The server queues the declaration before any event beyond its watermark. The public roster transfer uses the [combatant barrier chunk layout](#public-combatant-barrier-chunks).
 
 The declaration and acknowledgement have distinct tags and decoders. A declaration only supplies the barrier values. The client checks the current identity and baseline, applies the required state, and sends the acknowledgement. [Codec](../../src/xrNetServer/Multiplayer/ClientJoin.h), [handoff test](../../src/test/multiplayer/portable/ClientCatchUpTests.cpp).
+
+### Public combatant barrier chunks
+
+The server sends bound `CombatantBarrierChunk` frames on the ordered reliable control/state stream after the declaration. Each frame starts with the same 16-byte barrier identity, followed by these fields.
+
+| Payload field in order after the barrier | Encoding |
+| --- | --- |
+| Total public record bytes | `u32` |
+| Total public record count | `u16` from 0 through 32 |
+| Chunk index | Zero-based `u16` |
+| Record stream bytes | The canonical chunk of the complete public roster |
+
+Every chunk repeats the same declaration and totals. The byte count must be possible for the declared number of [public combatant records](#public-combatant-record-bodies), including their framing. A nonempty roster uses up to three chunks at successive 1,024-byte offsets with the exact remaining tail, as in the baseline transfer. A full frame is 1,078 bytes. An empty roster uses one header-only chunk with both totals and the index set to zero. [Chunk codec](../../src/xrNetServer/Multiplayer/CombatantBarrier.h), [golden and transfer tests](../../src/test/multiplayer/portable/CombatantBarrierTests.cpp).
 
 ### Catch-up state event
 
@@ -424,6 +438,12 @@ The client owner binds a tracker to the selected baseline and receiver identity.
 A barrier may arrive before import. It must cover the selected capture tick and the current event watermark. The client applies events through the exact declared watermark and defers later events until the staged barrier snapshot is applied. Successful snapshot application yields the exact ready acknowledgement. A transport retry can reuse that acknowledgement while keeping the barrier applied once. Later events can proceed after snapshot application.
 
 For a same-round rebase, the replacement must cover the applied event watermark and any applied barrier tick. A successful rebase resets import confirmation and the previous barrier. The owner replaces the tracker on an accepted world change. Concrete world application and transport integration remain with the engine owners. [Client tracker](../../src/xrNetServer/Multiplayer/ClientCatchUp.h), [application tests](../../src/test/multiplayer/portable/ClientCatchUpTests.cpp).
+
+### Client public combatant barrier staging
+
+The client owner constructs a stager for the declared barrier after the catch-up tracker accepts it. The stager uses the same exclusive buffer reservation and canonical chunk assembly as baseline staging. All three receiver identity fields and all four barrier fields must match before any bytes are recorded. An identical duplicate is idempotent during assembly. Conflicting totals or fragments leave accepted bytes intact. The owner replaces the stager when its trusted connection, world, or barrier selection changes.
+
+Completion requires every canonical chunk or the explicit empty chunk. It validates the complete public roster and returns an owned snapshot with the exact receiver and barrier. Invalid typed records prevent publication. The completed snapshot survives reuse of the transfer buffer. The world owner still applies it at the exact catch-up watermark before acknowledging readiness. [Stager](../../src/xrNetServer/Multiplayer/CombatantBarrier.h), [staging tests](../../src/test/multiplayer/portable/CombatantBarrierTests.cpp).
 
 ### Public combatant baseline import
 

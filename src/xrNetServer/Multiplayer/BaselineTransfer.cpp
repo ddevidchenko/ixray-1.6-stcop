@@ -28,8 +28,7 @@ bool IsValidBaselineManifest(const BaselineManifest& Manifest) noexcept
 	{
 		return false;
 	}
-	const u32 RequiredChunks = (Manifest.ByteCount + MaxBaselineChunkBytes - 1) / MaxBaselineChunkBytes;
-	return Manifest.ChunkCount == RequiredChunks;
+	return Manifest.ChunkCount == GetBaselineChunkCount(Manifest.ByteCount);
 }
 
 std::expected<BaselineBegin, BoundMessageError> DecodeBaselineBegin(xr_span<const u8> Bytes) noexcept

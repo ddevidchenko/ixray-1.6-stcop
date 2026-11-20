@@ -2,7 +2,9 @@
 
 #include "../../../xrNetServer/Multiplayer/GnsEndpoint.h"
 #include "../../../xrNetServer/Multiplayer/GnsRuntime.h"
+#include "../../../xrNetServer/Multiplayer/GnsReceive.h"
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -335,9 +337,40 @@ static bool CheckEndpointLifecycle()
 	}
 	return true;
 }
+struct InboxLock
+{
+	std::atomic_flag Held;
+};
+
+class InboxGuard
+{
+public:
+	explicit InboxGuard(InboxLock* Lock) noexcept : Lock(Lock)
+	{
+		while (Lock->Held.test_and_set(std::memory_order_acquire))
+		{
+			std::this_thread::yield();
+		}
+	}
+	~InboxGuard() { Lock->Held.clear(std::memory_order_release); }
+
+private:
+	InboxLock* Lock;
+};
+
+using EventInbox = TransportInbox<InboxLock, InboxGuard>;
+constexpr u64 PeerGeneration = 17;
+
+struct ReceiveFixture
+{
+	EventInbox& Inbox;
+	std::atomic<bool> Failed = false;
+};
+
 struct AcceptedPeer
 {
 	GnsEndpointView Server;
+	EventInbox& Inbox;
 	HSteamNetConnection Connection = k_HSteamNetConnection_Invalid;
 	bool Failed = false;
 };
@@ -347,19 +380,51 @@ static thread_local AcceptedPeer* g_AcceptedPeer = nullptr;
 static void AcceptPeer(SteamNetConnectionStatusChangedCallback_t* Event)
 {
 	auto* Target = g_AcceptedPeer;
-	if (!Target || Event->m_info.m_hListenSocket != Target->Server.Listener ||
-		Event->m_info.m_eState != k_ESteamNetworkingConnectionState_Connecting)
+	if (!Target || Event->m_info.m_hListenSocket != Target->Server.Listener)
 	{
 		return;
 	}
 	auto& Sockets = *Target->Server.Sockets;
-	if (Sockets.AcceptConnection(Event->m_hConn) != k_EResultOK ||
-		!Sockets.SetConnectionPollGroup(Event->m_hConn, Target->Server.PollGroup))
+	const TransportPeer Peer{Event->m_hConn, PeerGeneration};
+	if (Event->m_info.m_eState == k_ESteamNetworkingConnectionState_Connecting)
 	{
-		Target->Failed = true;
-		return;
+		if (!Sockets.SetConnectionUserData(Event->m_hConn, PeerGeneration) || Sockets.AcceptConnection(Event->m_hConn) != k_EResultOK ||
+			!Target->Inbox.PushConnected(Peer) || !Sockets.SetConnectionPollGroup(Event->m_hConn, Target->Server.PollGroup))
+		{
+			Target->Failed = true;
+			return;
+		}
+		Target->Connection = Event->m_hConn;
 	}
-	Target->Connection = Event->m_hConn;
+	else if (Event->m_info.m_eState == k_ESteamNetworkingConnectionState_ClosedByPeer && Event->m_hConn == Target->Connection)
+	{
+		Target->Failed = !Target->Inbox.PushDisconnected(Peer, static_cast<u32>(Event->m_info.m_eEndReason));
+	}
+}
+
+static void PumpCallbacks(AcceptedPeer& Peer)
+{
+	g_AcceptedPeer = &Peer;
+	Peer.Server.Sockets->RunCallbacks();
+	g_AcceptedPeer = nullptr;
+}
+
+static void RunReceive(std::stop_token Stop, GnsEndpointView View, void* Context) noexcept
+{
+	auto& Fixture = *static_cast<ReceiveFixture*>(Context);
+	while (!Stop.stop_requested())
+	{
+		const auto Received = ReceiveGnsPacket(View, Fixture.Inbox);
+		if (!Received)
+		{
+			Fixture.Failed.store(true);
+			return;
+		}
+		if (!*Received)
+		{
+			std::this_thread::sleep_for(1ms);
+		}
+	}
 }
 
 static void RunUntilStopped(std::stop_token Stop, GnsEndpointView, void*) noexcept
@@ -370,10 +435,13 @@ static void RunUntilStopped(std::stop_token Stop, GnsEndpointView, void*) noexce
 	}
 }
 
-static bool CheckRealEndpoints()
+static bool CheckRealEndpoints(bool CloseServerFirst)
 {
 	ProcessRuntime Runtime;
 	SteamNetworkingErrMsg Error{};
+	xr_array<TransportEvent, 3> Storage;
+	EventInbox Inbox(Storage);
+	ReceiveFixture Receive{Inbox};
 	GnsEndpoint<ProcessRuntime::Lease> Server;
 	GnsEndpoint<ProcessRuntime::Lease> Client;
 	SteamNetworkingIPAddr Address{};
@@ -383,7 +451,7 @@ static bool CheckRealEndpoints()
 	for (u16 Port = 48700; Port < 48732; ++Port)
 	{
 		Address.SetIPv4(0x7f000001u, Port);
-		const auto Opened = Server.OpenServer(Runtime.AcquireServer(Error), Address, std::span(&Callback, 1), RunUntilStopped, nullptr);
+		const auto Opened = Server.OpenServer(Runtime.AcquireServer(Error), Address, std::span(&Callback, 1), RunReceive, &Receive);
 		if (Opened || Opened.error() != GnsEndpointError::ListenerFailed)
 		{
 			break;
@@ -402,15 +470,13 @@ static bool CheckRealEndpoints()
 		std::fputs("could not connect an owned GNS client to the listener\n", stderr);
 		return false;
 	}
-	AcceptedPeer Peer{Listen};
+	AcceptedPeer Peer{Listen, Inbox};
 	const auto Connection = Client.Get().Connection;
 	const auto Deadline = std::chrono::steady_clock::now() + 2s;
 	bool Connected = false;
 	do
 	{
-		g_AcceptedPeer = &Peer;
-		Listen.Sockets->RunCallbacks();
-		g_AcceptedPeer = nullptr;
+		PumpCallbacks(Peer);
 		SteamNetConnectionInfo_t Info{};
 		Connected = Peer.Connection != k_HSteamNetConnection_Invalid && Listen.Sockets->GetConnectionInfo(Connection, &Info) &&
 			Info.m_eState == k_ESteamNetworkingConnectionState_Connected;
@@ -429,32 +495,78 @@ static bool CheckRealEndpoints()
 		return false;
 	}
 
-	SteamNetworkingMessage_t* Raw = nullptr;
-	const auto ReceiveDeadline = std::chrono::steady_clock::now() + 2s;
-	while (Listen.Sockets->ReceiveMessagesOnPollGroup(Listen.PollGroup, &Raw, 1) == 0 &&
-		std::chrono::steady_clock::now() < ReceiveDeadline)
+	const auto Joined = Inbox.Pop();
+	if (!Joined || !*Joined || (*Joined)->Kind != TransportEventKind::Connected ||
+		(*Joined)->Peer != TransportPeer{Peer.Connection, PeerGeneration})
 	{
-		std::this_thread::sleep_for(1ms);
-	}
-	const auto Release = [](SteamNetworkingMessage_t* Packet) { Packet->Release(); };
-	std::unique_ptr<SteamNetworkingMessage_t, decltype(Release)> Packet(Raw, Release);
-	if (!Packet || Packet->m_conn != Peer.Connection || Packet->m_cbSize != sizeof(Message) ||
-		std::memcmp(Packet->m_pData, Message, sizeof(Message)) != 0)
-	{
-		std::fputs("owned poll group did not receive the exact reliable message\n", stderr);
+		std::fputs("the owner must receive the native connect event first\n", stderr);
 		return false;
 	}
 
-	Packet.reset();
-	Server.Close();
-	SteamNetConnectionInfo_t ClosedInfo{};
-	if (SteamNetworkingSockets() != Listen.Sockets || Client.Get().Connection != Connection ||
-		Listen.Sockets->GetConnectionInfo(Peer.Connection, &ClosedInfo))
+	std::optional<TransportEvent> Packet;
+	const auto ReceiveDeadline = std::chrono::steady_clock::now() + 2s;
+	do
 	{
-		std::fputs("closing the listener releases accepted peers and preserves the client's runtime lease\n", stderr);
+		const auto Next = Inbox.Pop();
+		if (!Next || Receive.Failed.load())
+		{
+			break;
+		}
+		if (*Next)
+		{
+			Packet = **Next;
+			break;
+		}
+		std::this_thread::sleep_for(1ms);
+	}
+	while (std::chrono::steady_clock::now() < ReceiveDeadline);
+	if (!Packet || Packet->Kind != TransportEventKind::Packet || Packet->Peer != (*Joined)->Peer ||
+		!std::ranges::equal(Packet->GetPayload(), Message))
+	{
+		std::fputs("the receive worker must publish owned bytes and the native connection generation\n", stderr);
 		return false;
 	}
-	Client.Close();
+
+	if (CloseServerFirst)
+	{
+		Server.Close();
+		SteamNetConnectionInfo_t ClosedInfo{};
+		if (SteamNetworkingSockets() != Listen.Sockets || Client.Get().Connection != Connection ||
+			Listen.Sockets->GetConnectionInfo(Peer.Connection, &ClosedInfo))
+		{
+			std::fputs("closing the listener releases accepted peers and preserves the client's runtime lease\n", stderr);
+			return false;
+		}
+		Client.Close();
+	}
+	else
+	{
+		Client.Close();
+		std::optional<TransportEvent> Disconnected;
+		const auto CloseDeadline = std::chrono::steady_clock::now() + 2s;
+		do
+		{
+			PumpCallbacks(Peer);
+			const auto Next = Inbox.Pop();
+			if (!Next || Peer.Failed)
+			{
+				break;
+			}
+			if (*Next)
+			{
+				Disconnected = **Next;
+				break;
+			}
+			std::this_thread::sleep_for(1ms);
+		}
+		while (std::chrono::steady_clock::now() < CloseDeadline);
+		if (!Disconnected || Disconnected->Kind != TransportEventKind::Disconnected || Disconnected->Peer != (*Joined)->Peer)
+		{
+			std::fputs("the owner must receive the close for the same transport generation after its packet\n", stderr);
+			return false;
+		}
+		Server.Close();
+	}
 	return SteamNetworkingSockets() == nullptr;
 }
 
@@ -603,7 +715,8 @@ int main()
 	Passed &= CheckFailureAndRetry();
 	Passed &= CheckProcessIdentity();
 	Passed &= EndpointTests::CheckEndpointLifecycle();
-	Passed &= EndpointTests::CheckRealEndpoints();
+	Passed &= EndpointTests::CheckRealEndpoints(true);
+	Passed &= EndpointTests::CheckRealEndpoints(false);
 	if (!Passed)
 	{
 		return EXIT_FAILURE;

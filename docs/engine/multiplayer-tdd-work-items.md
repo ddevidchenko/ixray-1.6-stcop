@@ -337,6 +337,12 @@ The [peer runbook](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch
 - **Green / seam:** bounded event queues around [BaseServer.cpp](../../src/xrNetServer/BaseServer.cpp), [INetQueue](../../src/xrNetServer/INetQueue.h), and endpoint callbacks. Define overflow and disconnect-event handling rather than silently dropping necessary cleanup.
 - [ ] **Complete when:** owner-thread instrumentation and stress scenarios show no world/Lua/render execution from callbacks, with bounded memory and work per drain.
 
+#### MP-026a — Queue locally identified transport events
+
+- Copy connect, packet, and disconnect events into a bounded FIFO using the native handle and locally assigned transport generation. Drain at most the owner's event budget. The first overflow invalidates the inbox and requires endpoint shutdown and peer cleanup before reuse. [Inbox](../../src/xrNetServer/Multiplayer/TransportInbox.h), [GNS worker ingress](../../src/xrNetServer/Multiplayer/GnsReceive.h).
+- **Mac checks passed / Windows pending.** Portable coverage includes reused handles, copied bytes, a saturated queue, concurrent production, and bounded drains. The real GNS fixture queues connect and disconnect callbacks and copies packet data from the owned receive worker.
+- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) records passing `transport-inbox.xml` and `gns-loopback.xml` on Windows. Installing the inbox at the loading and simulation boundaries remains under MP-026.
+
 ### MP-027 — Separate traffic classes and handle backpressure
 
 - **Kind / runs / depends:** TDD; `P/N`; MP-012, MP-020, MP-025.

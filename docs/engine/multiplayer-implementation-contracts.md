@@ -62,6 +62,14 @@ The transport owner captures the local admission identity from the receiving con
 
 Disconnect checks the local identity and releases that participant and any active body mapping together. It can arrive across a round change in the same session. Round advance preserves connection bindings and invalidates old-world packets. A new admission may reuse a freed handle with a newer connection epoch and its own participant ID. [Local connection identity](../../src/xrNetServer/Multiplayer/JoinTypes.h), [registry](../../src/xrGame/Multiplayer/CombatantRegistry.h).
 
+### Transport event inbox
+
+The endpoint assigns each connection a positive local transport generation that fits GNS's signed 64-bit connection user data. Keep that generation fixed for the life of the native connection. Record it before publishing any event for that connection. Publish connect before enabling packet receipt on the server poll group. The receive worker takes the generation from the returned GNS message, copies the bytes, and releases the native buffer. Connect and disconnect producers use the generation of the connection that caused the event. The transport generation identifies the native connection before admission and is independent of the admission epoch carried on the wire.
+
+The endpoint inbox uses a fixed number of caller-owned slots. Each slot holds one event and up to the wire datagram limit of packet data. A single owner drains in enqueue order under an event budget, with application outside the queue lock. The owner registers the generation on connect and matches the handle and generation for packets and disconnects. A retired connection's packet may reach the queue after its disconnect and is rejected by that check.
+
+When enqueueing would exceed capacity, the inbox discards its backlog and reports overflow on subsequent reads and writes. The game owner closes the affected endpoint, retires all its peers, and then resets the inbox. This recovery also applies if an overflowing event is a disconnect. [Bounded inbox](../../src/xrNetServer/Multiplayer/TransportInbox.h), [GNS receive bridge](../../src/xrNetServer/Multiplayer/GnsReceive.h).
+
 ## 3. Version-one wire contract
 
 Use explicit little-endian primitives, UTF-8 length-prefixed strings and checked reads/writes. A wire table is not a packed C++ structure. Freeze numeric message tags, field order and independent golden byte vectors in MP-020 before implementing each message family; update this contract alongside those vectors.

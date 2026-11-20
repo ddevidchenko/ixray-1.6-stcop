@@ -11,6 +11,7 @@ add_executable(TestMultiplayerUnit
     MapSyncWaitTests.cpp
     WeaponSpreadTests.cpp
     ScriptedTransportTests.cpp
+    TransportInboxTests.cpp
     WireEnvelopeTests.cpp
     WirePayloadTests.cpp
     ClientHelloTests.cpp
@@ -50,6 +51,8 @@ add_test(NAME Multiplayer.Sequence COMMAND TestMultiplayerUnit)
 add_test(NAME Multiplayer.MapSyncDeadline COMMAND TestMultiplayerUnit --map-sync)
 add_test(NAME Multiplayer.WeaponSpread COMMAND TestMultiplayerUnit --weapon-spread)
 add_test(NAME Multiplayer.ScriptedTransport COMMAND TestMultiplayerUnit --scripted-transport)
+add_test(NAME Multiplayer.TransportInbox COMMAND TestMultiplayerUnit --transport-inbox)
+set_tests_properties(Multiplayer.TransportInbox PROPERTIES TIMEOUT 10)
 add_test(NAME Multiplayer.WireEnvelope COMMAND TestMultiplayerUnit --wire-envelope)
 add_test(NAME Multiplayer.WirePayload COMMAND TestMultiplayerUnit --wire-payload)
 add_test(NAME Multiplayer.ClientHello COMMAND TestMultiplayerUnit --client-hello)
@@ -85,7 +88,7 @@ add_test(NAME Multiplayer.CombatantBaselineImport COMMAND TestMultiplayerUnit --
 add_test(NAME Multiplayer.CombatantBarrier COMMAND TestMultiplayerUnit --combatant-barrier)
 add_test(NAME Multiplayer.CombatantBarrierApply COMMAND TestMultiplayerUnit --combatant-barrier-apply)
 set_tests_properties(
-    Multiplayer.Sequence Multiplayer.MapSyncDeadline Multiplayer.WeaponSpread Multiplayer.ScriptedTransport Multiplayer.WireEnvelope Multiplayer.WirePayload Multiplayer.ClientHello Multiplayer.ServerWelcome Multiplayer.AdmissionReject Multiplayer.PendingAdmission Multiplayer.AdmissionCompletion Multiplayer.PendingAdmissionLimit Multiplayer.PeerJoin Multiplayer.ClientJoin Multiplayer.BaselineTransfer Multiplayer.BaselineStaging Multiplayer.BaselineRecords Multiplayer.BaselineStagingBudget Multiplayer.BaselineRebase Multiplayer.PeerRebase Multiplayer.CatchUpEventQueue Multiplayer.ClientCatchUp Multiplayer.StalkerNavigation Multiplayer.StalkerAuthority Multiplayer.W1NavigationOption Multiplayer.CombatantRegistry Multiplayer.ParticipantConnection Multiplayer.CatchUpDespawn Multiplayer.CombatantReplicas Multiplayer.ReplicaSnapshot Multiplayer.SnapshotBatch Multiplayer.CombatantSnapshot Multiplayer.ReplicaSnapshotDispatch Multiplayer.ReplicaSnapshotQueue Multiplayer.CombatantBaseline Multiplayer.CombatantBaselineImport Multiplayer.CombatantBarrier Multiplayer.CombatantBarrierApply
+    Multiplayer.Sequence Multiplayer.MapSyncDeadline Multiplayer.WeaponSpread Multiplayer.ScriptedTransport Multiplayer.TransportInbox Multiplayer.WireEnvelope Multiplayer.WirePayload Multiplayer.ClientHello Multiplayer.ServerWelcome Multiplayer.AdmissionReject Multiplayer.PendingAdmission Multiplayer.AdmissionCompletion Multiplayer.PendingAdmissionLimit Multiplayer.PeerJoin Multiplayer.ClientJoin Multiplayer.BaselineTransfer Multiplayer.BaselineStaging Multiplayer.BaselineRecords Multiplayer.BaselineStagingBudget Multiplayer.BaselineRebase Multiplayer.PeerRebase Multiplayer.CatchUpEventQueue Multiplayer.ClientCatchUp Multiplayer.StalkerNavigation Multiplayer.StalkerAuthority Multiplayer.W1NavigationOption Multiplayer.CombatantRegistry Multiplayer.ParticipantConnection Multiplayer.CatchUpDespawn Multiplayer.CombatantReplicas Multiplayer.ReplicaSnapshot Multiplayer.SnapshotBatch Multiplayer.CombatantSnapshot Multiplayer.ReplicaSnapshotDispatch Multiplayer.ReplicaSnapshotQueue Multiplayer.CombatantBaseline Multiplayer.CombatantBaselineImport Multiplayer.CombatantBarrier Multiplayer.CombatantBarrierApply
     PROPERTIES LABELS multiplayer
 )
 

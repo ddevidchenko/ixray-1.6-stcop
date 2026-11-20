@@ -20,6 +20,7 @@ add_library(xrNetServerMultiplayer OBJECT
     CatchUpEvent.h
     CatchUpDespawn.cpp CatchUpDespawn.h
     SnapshotBatch.cpp SnapshotBatch.h
+    CombatantSnapshot.cpp CombatantSnapshot.h
     CatchUpEventQueue.cpp CatchUpEventQueue.h
     ClientCatchUp.cpp ClientCatchUp.h
 )

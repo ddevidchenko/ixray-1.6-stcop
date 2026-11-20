@@ -245,7 +245,7 @@ The server sends `SnapshotBatch` on the unreliable state stream using the bound 
 
 The current framing assigns `0x01` to public human combatants and `0x02` to public stalker combatants. It rejects unknown kinds, empty bodies, missing records and trailing bytes before returning a cursor. The 1,100-byte frame cap includes all headers and records. Zero is valid for the clock anchor, snapshot ID, tick and watermark. Batches can share a tick and arrive in any order.
 
-The header is copied. Record views borrow the unchanged datagram. Typed codecs define and validate record bodies before the receiver applies any record in the batch. Current connection and world checks, body lifetime, tick ordering and applied-event gating belong to the receiver. [Batch codec](../../src/xrNetServer/Multiplayer/SnapshotBatch.h), [framing tests](../../src/test/multiplayer/portable/SnapshotBatchTests.cpp).
+The header is copied. Record views borrow the unchanged datagram. The typed decoder validates the [public combatant record bodies](#public-combatant-record-bodies) in the whole batch before the receiver applies any record. Current connection and world checks, body lifetime, tick ordering and applied-event gating belong to the receiver. [Batch codec](../../src/xrNetServer/Multiplayer/SnapshotBatch.h), [framing tests](../../src/test/multiplayer/portable/SnapshotBatchTests.cpp).
 
 ### Initial-state baseline transfer
 
@@ -315,6 +315,34 @@ Spawn/baseline metadata maps stable body/animation profile IDs to resources. Mat
 Clients interpolate the root and visual state. Client animation/root motion cannot move authoritative collision. The server evaluates the actual NPC pose required for muzzle/vision/hit volumes under the dedicated renderer; sending animation state does not remove that cost. If pose cannot be reproduced closely enough, fix the mapping or add a bounded corrective representation based on the measured mismatch.
 
 Live batches may update complete entities independently rather than require every batch of a tick to arrive. Gate them on the applied state-event watermark; retain tombstones and reject old-life/old-tick records so a late snapshot cannot resurrect a despawned body. Unknown references can wait only in a bounded buffer or request repair; do not create an authoritative participant from an unsolicited snapshot fragment.
+
+#### Public combatant record bodies
+
+The `0x01` human record has exactly 63 body bytes. The `0x02` stalker record starts with those shared fields and has exactly 89 body bytes including its extension.
+
+| Shared field in order | Encoding |
+| --- | --- |
+| Participant and body | Nonzero `u32` participant ID, `u16` slot from 0 through 65,534, nonzero `u32` generation and nonzero `u32` life ID |
+| Body profile | Nonzero `u32` content profile ID |
+| Position and velocity | Three finite `f32` coordinates for each vector, in X, Y, Z order |
+| Body yaw and aim yaw | Two `u16` values, 65,536 units per turn |
+| Aim pitch | `s16` in −16,384 through 16,384 inclusive, where the endpoints represent −90° and 90° |
+| Stance | `u8` with 0 for standing and 1 for crouched |
+| Public flags | `u8` with bits 0 for airborne, 1 for sprinting and 2 for spawn protection. Other bits are reserved. |
+| Equipped weapon profile | `u32` content profile ID, with 0 for unarmed |
+| Public weapon action | `u8` with 0 for idle, 1 for firing, 2 for reloading, 3 for equipping and 4 for holstering. Unarmed bodies use idle. |
+| Weapon action start tick | `u32` |
+| Spawn protection end tick | `u32`. The public flag records whether protection is active, including when the end tick wraps to zero. |
+
+| Stalker extension in order | Encoding |
+| --- | --- |
+| Animation profile | Nonzero `u32` content profile ID |
+| Locomotion and action channels | Each has a `u16` semantic ID, a `u16` normalized phase in units of 1/65,535, and a `u32` start tick. A zero semantic ID leaves that channel inactive and requires its phase and tick to be zero. |
+| Root-motion mode | `u8` with 0 for simulation and 1 for animation-driven. Animation-driven motion requires an active channel. Simulation can use the profile's default pose with both channels inactive. |
+| Traversal state | `u8` with 0 for none, 1 for climbing up and 2 for climbing down |
+| Traversal link | `u32`, nonzero for climbing and zero otherwise |
+
+These encodings are portable protocol values. The game maps native engine states to them and resolves body, weapon, animation, and traversal IDs against the loaded content and current world before applying state. The wire codec validates field widths, finite transforms, reserved values, and legal field combinations. The typed batch decoder owns its result and rejects a repeated participant or object slot anywhere in the same datagram. [Typed codec](../../src/xrNetServer/Multiplayer/CombatantSnapshot.h), [golden and batch tests](../../src/test/multiplayer/portable/CombatantSnapshotTests.cpp).
 
 ## 4. Coherent active-match joining
 

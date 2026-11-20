@@ -239,7 +239,13 @@ The [peer runbook](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch
 
 - Assign bound tag `0x0b` and encode the snapshot ID, server tick, monotonic clock anchor and required applied-event watermark. Validate the complete count and typed record framing before publishing a cursor. Share checked record framing with baseline decoding. [Wire contract](multiplayer-implementation-contracts.md#live-snapshot-batch).
 - **Mac checks passed / Windows pending.** The independent golden datagram failed to encode and decode before implementation on base `aab5c2afb`. Reviewed tests cover malformed final records, all truncated prefixes with and without corrected envelope lengths, byte and count caps, unbound scopes, borrowed record data and atomic encoding with overlapping buffers. All 31 portable tests passed in Debug, Release, and ASan/UBSan on macOS arm64. Fixtures use literal bytes and no seed or game assets. [Tests](../../src/test/multiplayer/portable/SnapshotBatchTests.cpp).
-- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) records a passing `snapshot-batch.xml` on Windows. Typed combatant bodies and runtime delivery remain open.
+- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) records a passing `snapshot-batch.xml` on Windows. Typed combatant bodies continue in MP-020k.
+
+#### MP-020k — Encode typed public combatant snapshot records
+
+- Freeze the shared public combatant layout and stalker extension. Validate exact lengths, finite transforms, bounded angles, public state, channel and ladder fields. Decode the complete typed batch into owned values and reject repeat participants and slots. [Record contract](multiplayer-implementation-contracts.md#public-combatant-record-bodies).
+- **Mac checks passed / Windows pending.** Independent human and stalker golden records failed to encode and decode on base `634334057`. Reviewed tests cover all truncated prefixes, wrong kinds, reserved values, wrap-boundary ticks, stalker animation modes, atomic writes, and invalid later records in a mixed batch. All 32 portable tests passed in Debug, Release, and ASan/UBSan on macOS arm64. Fixtures use literal inputs and no seed or game assets. [Tests](../../src/test/multiplayer/portable/CombatantSnapshotTests.cpp).
+- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) records a passing `combatant-snapshot.xml` on Windows. Runtime capture, held batch delivery, content ID resolution, and world application remain open in MP-037.
 
 ### MP-021 — Bound legacy envelope parsing and decompression
 
@@ -451,7 +457,7 @@ The [peer runbook](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch
 
 - Seed the per-body tick from trusted imported state. Require the current receiver and world, exact body identity, a newer tick, and a locally applied event frontier that covers the update. Record the tick after successful application only. [Live snapshot contract](multiplayer-implementation-contracts.md#live-replica-snapshot-application).
 - **Mac checks passed / Windows pending.** The first tests on base `ac8bfd2cc` exposed out-of-order and duplicate updates overwriting state. Reviewed coverage includes recovery after loss, per-body ticks, applied-event gating with the real catch-up tracker, failed application and retry, serial wrap and ambiguity, old lives, and a new world epoch. All 30 portable tests passed in Debug, Release, and ASan/UBSan on macOS arm64. Fixtures use literal data and no seed or assets. [Snapshot tests](../../src/test/multiplayer/portable/ReplicaSnapshotTests.cpp).
-- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) records a passing `replica-snapshot.xml` on Windows. Batch framing continues in MP-020j. Typed payload decoding, baseline world import, and runtime integration remain open.
+- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) records a passing `replica-snapshot.xml` on Windows. Batch framing and typed public bodies are covered by MP-020j and MP-020k. Baseline world import and runtime integration remain open.
 
 ### MP-038 — Make death, score, round flow, and spectator state authoritative
 

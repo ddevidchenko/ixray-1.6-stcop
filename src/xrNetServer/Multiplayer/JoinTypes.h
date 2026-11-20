@@ -18,6 +18,16 @@ struct JoinIdentity
 	bool operator==(const JoinIdentity&) const = default;
 };
 
+// The transport owner captures this local value before queuing data or a disconnect.
+struct AdmittedConnection
+{
+	u64 ServerSession = 0;
+	u32 ConnectionEpoch = 0;
+	u32 Handle = 0;
+
+	bool operator==(const AdmittedConnection&) const = default;
+};
+
 struct BaselineBoundary
 {
 	u32 BaselineId;

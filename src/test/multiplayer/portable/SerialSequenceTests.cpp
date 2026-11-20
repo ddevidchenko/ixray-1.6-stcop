@@ -121,6 +121,11 @@ namespace CombatantRegistryTests
 bool Run();
 }
 
+namespace ParticipantConnectionTests
+{
+bool Run();
+}
+
 namespace SerialSequenceTests
 {
 struct SequenceCase
@@ -262,6 +267,10 @@ int main(int ArgumentCount, char** Arguments)
 	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--combatant-registry") == 0)
 	{
 		return CombatantRegistryTests::Run() ? EXIT_SUCCESS : EXIT_FAILURE;
+	}
+	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--participant-connection") == 0)
+	{
+		return ParticipantConnectionTests::Run() ? EXIT_SUCCESS : EXIT_FAILURE;
 	}
 	if (ArgumentCount != 1)
 	{

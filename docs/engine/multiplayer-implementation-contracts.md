@@ -48,11 +48,19 @@ Initial handshake messages have an explicit unbound state. They may establish id
 
 ### Combatant identity registry
 
-The match owner serializes a fixed registry of 32 combatants. Adding a combatant assigns a nonzero participant ID for the server session. The same operation serves humans and bots. Connection admission, combatant eligibility, and spectator capacity are managed by their respective owners.
+The match owner serializes a fixed registry of 32 combatants. Adding a combatant assigns a nonzero participant ID for the server session. The registry serves humans and bots. Bots acquire a participant ID without a connection. Connection admission, combatant eligibility, and spectator capacity are managed by their respective owners.
 
 The owner binds a free engine slot to a combatant after creating its body. Each successful bind starts that participant's next life in the current round and takes the next generation from a counter shared by all slots in that round. This keeps reuse safe without retaining old slot entries. A combatant can have at most one active body. Lookup and retirement require the exact session, world epoch, slot, generation, and life. A rejected operation leaves the registry intact.
 
 Retiring a body leaves the participant available for respawn. Removing a participant checks its session and releases both the body mapping and its capacity place. Removing a participant remains valid across rounds in the same session. A round advance retires all body mappings and resets generation and life counters while preserving the registered participants. Participant, generation, and life counters issue nonzero values and stop at exhaustion. A newer round supplies fresh body counters and a fresh server session supplies a fresh participant counter. The world epoch never wraps within a session. [Identity types](../../src/xrNetServer/Multiplayer/CombatantIdentity.h), [registry](../../src/xrGame/Multiplayer/CombatantRegistry.h).
+
+### Admitted connection binding
+
+The match owner records an accepted human admission in the combatant registry on its serialized turn. The operation creates a fresh participant and stores the transport handle, server session, and admission epoch on the same entry. The admission owner supplies its assigned epochs in commit order. Duplicate live handles, zero handles, stale or unassigned epochs, foreign sessions, and full capacity leave the registry intact. Connection epochs remain distinct across rounds and stop at exhaustion.
+
+The transport owner captures the local admission identity from the receiving connection before queuing data or a disconnect. At application time, the exact local identity must still match the registry. The packet must also claim the current session, current world epoch, and the same connection epoch. After lookup, the command handler checks readiness and the active body.
+
+Disconnect checks the local identity and releases that participant and any active body mapping together. It can arrive across a round change in the same session. Round advance preserves connection bindings and invalidates old-world packets. A new admission may reuse a freed handle with a newer connection epoch and its own participant ID. [Local connection identity](../../src/xrNetServer/Multiplayer/JoinTypes.h), [registry](../../src/xrGame/Multiplayer/CombatantRegistry.h).
 
 ## 3. Version-one wire contract
 

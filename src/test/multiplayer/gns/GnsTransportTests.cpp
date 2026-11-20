@@ -1,12 +1,15 @@
 #include "../transport/TransportScenario.h"
 
+#include "../../../xrNetServer/Multiplayer/GnsEndpoint.h"
 #include "../../../xrNetServer/Multiplayer/GnsRuntime.h"
 
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
+#include <system_error>
 #include <thread>
 #include <utility>
 
@@ -185,6 +188,278 @@ static bool CheckProcessIdentity()
 	return true;
 }
 
+namespace EndpointTests
+{
+using namespace Multiplayer;
+
+enum class Attempt
+{
+	None,
+	Listener,
+	PollGroup,
+	Connection,
+	Worker,
+	WorkerThrows,
+};
+
+struct Resources
+{
+	Attempt Failure = Attempt::None;
+	int Listeners = 0;
+	int PollGroups = 0;
+	int Connections = 0;
+	bool ClosedEarly = false;
+	std::atomic<bool> Started = false;
+	std::atomic<bool> Exited = false;
+};
+
+static Resources g_Resources;
+
+static void RunWorker(std::stop_token Stop, GnsEndpointView, void*) noexcept
+{
+	g_Resources.Started.store(true);
+	while (!Stop.stop_requested())
+	{
+		std::this_thread::sleep_for(1ms);
+	}
+	g_Resources.Exited.store(true);
+}
+
+static const GnsEndpointApi FixtureApi{
+	[](ISteamNetworkingSockets&, const SteamNetworkingIPAddr&, std::span<const SteamNetworkingConfigValue_t>)
+	{
+		if (g_Resources.Failure == Attempt::Listener)
+		{
+			return k_HSteamListenSocket_Invalid;
+		}
+		++g_Resources.Listeners;
+		return HSteamListenSocket{1};
+	},
+	[](ISteamNetworkingSockets&)
+	{
+		if (g_Resources.Failure == Attempt::PollGroup)
+		{
+			return k_HSteamNetPollGroup_Invalid;
+		}
+		++g_Resources.PollGroups;
+		return HSteamNetPollGroup{2};
+	},
+	[](ISteamNetworkingSockets&, const SteamNetworkingIPAddr&, std::span<const SteamNetworkingConfigValue_t>)
+	{
+		if (g_Resources.Failure == Attempt::Connection)
+		{
+			return k_HSteamNetConnection_Invalid;
+		}
+		++g_Resources.Connections;
+		return HSteamNetConnection{3};
+	},
+	[](ISteamNetworkingSockets&, HSteamListenSocket) { --g_Resources.Listeners; },
+	[](ISteamNetworkingSockets&, HSteamNetPollGroup) { --g_Resources.PollGroups; },
+	[](ISteamNetworkingSockets&, HSteamNetConnection)
+	{
+		g_Resources.ClosedEarly = g_Resources.Started.load() && !g_Resources.Exited.load();
+		--g_Resources.Connections;
+	},
+	[](GnsEndpointRun Run, GnsEndpointView View, void* Context)
+	{
+		if (g_Resources.Failure == Attempt::Worker)
+		{
+			return std::jthread{};
+		}
+		if (g_Resources.Failure == Attempt::WorkerThrows)
+		{
+			throw std::system_error(std::make_error_code(std::errc::resource_unavailable_try_again));
+		}
+		return std::jthread(Run, View, Context);
+	},
+};
+
+static bool CheckEndpointLifecycle()
+{
+	ProcessRuntime Runtime;
+	SteamNetworkingIPAddr Address{};
+	SteamNetworkingErrMsg Error{};
+	GnsEndpoint<ProcessRuntime::Lease> Endpoint(FixtureApi);
+	if (Endpoint.OpenClient({}, Address, {}, RunWorker, nullptr) != std::unexpected(GnsEndpointError::RuntimeUnavailable))
+	{
+		std::fputs("an endpoint cannot open without owning a runtime lease\n", stderr);
+		return false;
+	}
+	for (const auto Failure : {Attempt::Listener, Attempt::PollGroup, Attempt::Worker, Attempt::WorkerThrows})
+	{
+		g_Resources.Failure = Failure;
+		const auto Opened = Endpoint.OpenServer(Runtime.AcquireServer(Error), Address, {}, RunWorker, nullptr);
+		const GnsEndpointError Expected = Failure == Attempt::Listener ? GnsEndpointError::ListenerFailed :
+			Failure == Attempt::PollGroup ? GnsEndpointError::PollGroupFailed : GnsEndpointError::WorkerFailed;
+		if (Opened != std::unexpected(Expected) || Endpoint.Get().Sockets || g_Resources.Listeners != 0 ||
+			g_Resources.PollGroups != 0 || SteamNetworkingSockets() != nullptr)
+		{
+			std::fputs("server startup failure must release each acquired resource and the runtime exactly once\n", stderr);
+			return false;
+		}
+	}
+
+	g_Resources.Failure = Attempt::Connection;
+	const auto Failed = Endpoint.OpenClient(Runtime.AcquireClient("fixture", Error), Address, {}, RunWorker, nullptr);
+	if (Failed != std::unexpected(GnsEndpointError::ConnectionFailed) || Endpoint.Get().Sockets ||
+		g_Resources.Connections != 0 || SteamNetworkingSockets() != nullptr)
+	{
+		std::fputs("client connection failure must release its runtime lease\n", stderr);
+		return false;
+	}
+
+	g_Resources.Failure = Attempt::None;
+	if (!Endpoint.OpenClient(Runtime.AcquireClient("fixture", Error), Address, {}, RunWorker, nullptr))
+	{
+		std::fputs("endpoint must allow retry after creation failures\n", stderr);
+		return false;
+	}
+	if (Endpoint.OpenClient(Runtime.AcquireClient("fixture", Error), Address, {}, RunWorker, nullptr) !=
+		std::unexpected(GnsEndpointError::AlreadyOpen) || g_Resources.Connections != 1 || !Endpoint.Get().Sockets)
+	{
+		std::fputs("duplicate open must preserve the active endpoint\n", stderr);
+		return false;
+	}
+	const auto Deadline = std::chrono::steady_clock::now() + 2s;
+	while (!g_Resources.Started.load() && std::chrono::steady_clock::now() < Deadline)
+	{
+		std::this_thread::sleep_for(1ms);
+	}
+	Endpoint.Close();
+	Endpoint.Close();
+	if (g_Resources.ClosedEarly || !g_Resources.Started.load() || !g_Resources.Exited.load() ||
+		g_Resources.Connections != 0 || Endpoint.Get().Sockets || SteamNetworkingSockets() != nullptr)
+	{
+		std::fputs("closing an active endpoint must join the worker before closing its connection\n", stderr);
+		return false;
+	}
+	return true;
+}
+struct AcceptedPeer
+{
+	GnsEndpointView Server;
+	HSteamNetConnection Connection = k_HSteamNetConnection_Invalid;
+	bool Failed = false;
+};
+
+static thread_local AcceptedPeer* g_AcceptedPeer = nullptr;
+
+static void AcceptPeer(SteamNetConnectionStatusChangedCallback_t* Event)
+{
+	auto* Target = g_AcceptedPeer;
+	if (!Target || Event->m_info.m_hListenSocket != Target->Server.Listener ||
+		Event->m_info.m_eState != k_ESteamNetworkingConnectionState_Connecting)
+	{
+		return;
+	}
+	auto& Sockets = *Target->Server.Sockets;
+	if (Sockets.AcceptConnection(Event->m_hConn) != k_EResultOK ||
+		!Sockets.SetConnectionPollGroup(Event->m_hConn, Target->Server.PollGroup))
+	{
+		Target->Failed = true;
+		return;
+	}
+	Target->Connection = Event->m_hConn;
+}
+
+static void RunUntilStopped(std::stop_token Stop, GnsEndpointView, void*) noexcept
+{
+	while (!Stop.stop_requested())
+	{
+		std::this_thread::sleep_for(1ms);
+	}
+}
+
+static bool CheckRealEndpoints()
+{
+	ProcessRuntime Runtime;
+	SteamNetworkingErrMsg Error{};
+	GnsEndpoint<ProcessRuntime::Lease> Server;
+	GnsEndpoint<ProcessRuntime::Lease> Client;
+	SteamNetworkingIPAddr Address{};
+	SteamNetworkingConfigValue_t Callback;
+	Callback.SetPtr(k_ESteamNetworkingConfig_Callback_ConnectionStatusChanged, reinterpret_cast<void*>(&AcceptPeer));
+	// GNS requires a nonzero direct-IP listen port.
+	for (u16 Port = 48700; Port < 48732; ++Port)
+	{
+		Address.SetIPv4(0x7f000001u, Port);
+		const auto Opened = Server.OpenServer(Runtime.AcquireServer(Error), Address, std::span(&Callback, 1), RunUntilStopped, nullptr);
+		if (Opened || Opened.error() != GnsEndpointError::ListenerFailed)
+		{
+			break;
+		}
+	}
+	if (!Server.Get().Sockets)
+	{
+		std::fputs("could not start an owned GNS listener and poll group\n", stderr);
+		return false;
+	}
+
+	const auto Listen = Server.Get();
+	if (!Listen.Sockets->GetListenSocketAddress(Listen.Listener, &Address) ||
+		!Client.OpenClient(Runtime.AcquireClient("loopback", Error), Address, {}, RunUntilStopped, nullptr))
+	{
+		std::fputs("could not connect an owned GNS client to the listener\n", stderr);
+		return false;
+	}
+	AcceptedPeer Peer{Listen};
+	const auto Connection = Client.Get().Connection;
+	const auto Deadline = std::chrono::steady_clock::now() + 2s;
+	bool Connected = false;
+	do
+	{
+		g_AcceptedPeer = &Peer;
+		Listen.Sockets->RunCallbacks();
+		g_AcceptedPeer = nullptr;
+		SteamNetConnectionInfo_t Info{};
+		Connected = Peer.Connection != k_HSteamNetConnection_Invalid && Listen.Sockets->GetConnectionInfo(Connection, &Info) &&
+			Info.m_eState == k_ESteamNetworkingConnectionState_Connected;
+		if (Connected || Peer.Failed)
+		{
+			break;
+		}
+		std::this_thread::sleep_for(1ms);
+	}
+	while (std::chrono::steady_clock::now() < Deadline);
+	constexpr u8 Message[]{0x41, 0, 0xa3};
+	if (!Connected || Listen.Sockets->SendMessageToConnection(Connection, Message, sizeof(Message),
+			k_nSteamNetworkingSend_ReliableNoNagle, nullptr) != k_EResultOK)
+	{
+		std::fputs("owned GNS endpoints could not exchange a reliable message\n", stderr);
+		return false;
+	}
+
+	SteamNetworkingMessage_t* Raw = nullptr;
+	const auto ReceiveDeadline = std::chrono::steady_clock::now() + 2s;
+	while (Listen.Sockets->ReceiveMessagesOnPollGroup(Listen.PollGroup, &Raw, 1) == 0 &&
+		std::chrono::steady_clock::now() < ReceiveDeadline)
+	{
+		std::this_thread::sleep_for(1ms);
+	}
+	const auto Release = [](SteamNetworkingMessage_t* Packet) { Packet->Release(); };
+	std::unique_ptr<SteamNetworkingMessage_t, decltype(Release)> Packet(Raw, Release);
+	if (!Packet || Packet->m_conn != Peer.Connection || Packet->m_cbSize != sizeof(Message) ||
+		std::memcmp(Packet->m_pData, Message, sizeof(Message)) != 0)
+	{
+		std::fputs("owned poll group did not receive the exact reliable message\n", stderr);
+		return false;
+	}
+
+	Packet.reset();
+	Server.Close();
+	SteamNetConnectionInfo_t ClosedInfo{};
+	if (SteamNetworkingSockets() != Listen.Sockets || Client.Get().Connection != Connection ||
+		Listen.Sockets->GetConnectionInfo(Peer.Connection, &ClosedInfo))
+	{
+		std::fputs("closing the listener releases accepted peers and preserves the client's runtime lease\n", stderr);
+		return false;
+	}
+	Client.Close();
+	return SteamNetworkingSockets() == nullptr;
+}
+
+}
+
 class GnsTransport
 {
 public:
@@ -327,6 +602,8 @@ int main()
 	bool Passed = CheckSharedRuntime();
 	Passed &= CheckFailureAndRetry();
 	Passed &= CheckProcessIdentity();
+	Passed &= EndpointTests::CheckEndpointLifecycle();
+	Passed &= EndpointTests::CheckRealEndpoints();
 	if (!Passed)
 	{
 		return EXIT_FAILURE;

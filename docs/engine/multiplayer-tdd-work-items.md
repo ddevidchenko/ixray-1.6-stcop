@@ -324,6 +324,12 @@ The [peer runbook](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch
 - **Green / seam:** endpoint state/lifetime objects in [SteamNetClient.cpp](../../src/xrNetServer/SteamNetClient.cpp) and [SteamNetServer.cpp](../../src/xrNetServer/SteamNetServer.cpp), RAII received-message release, explicit worker stop/join, and safe callback association.
 - [ ] **Complete when:** failure injection and 100 real peer connect/close cycles show bounded resource counts and no surviving endpoint worker.
 
+#### MP-025a — Own the GNS endpoint startup and worker teardown
+
+- Acquire an endpoint lease before creating a listener and poll group or a client connection. A failed open releases acquired handles and the lease. Close requests worker stop, joins it, and then releases its GNS handles. [Endpoint owner](../../src/xrNetServer/Multiplayer/GnsEndpoint.h).
+- **Mac checks passed / Windows pending.** The GNS fixture checks failure at each native creation step, worker creation failure, duplicate open, repeated close, and shutdown while a worker is running. It also connects the owned endpoints over loopback and verifies that the client lease survives server close.
+- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) records the endpoint cases in `gns-loopback.xml` on Windows. Legacy startup and the separate clock-sync thread are still outside this owner.
+
 ### MP-026 — Apply network events only at the simulation boundary
 
 - **Kind / runs / depends:** TDD; `P/W`; MP-022–025.

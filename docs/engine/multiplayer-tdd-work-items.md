@@ -1,6 +1,6 @@
 # Multiplayer TDD work items
 
-The operator reports that W0 passed on Windows. The exact revision and result bundle are pending attachment. MP-010, MP-011a, MP-011b, MP-012, MP-020a, MP-020b, MP-020c, MP-020d, MP-020e, MP-020f, MP-020g, MP-022a, MP-022b, MP-022c, MP-022d, MP-037a, MP-037b, MP-037c, MP-037d, MP-037e and MP-037f have macOS evidence.
+The operator reports that W0 passed on Windows. The exact revision and result bundle are pending attachment. MP-010, MP-011a, MP-011b, MP-012, MP-020a, MP-020b, MP-020c, MP-020d, MP-020e, MP-020f, MP-020g, MP-022a, MP-022b, MP-022c, MP-022d, MP-037a, MP-037b, MP-037c, MP-037d, MP-037e, MP-037f and MP-037g have macOS evidence.
 
 Implements the [modern multiplayer plan](multiplayer-modernization-plan.md): 32 total human/bot combatants, simple DM, direct IP over GameNetworkingSockets first, human-like bots, authoritative simulation, prediction, lag compensation, and immediate local effects. Windows x64 is the initial runtime target; macOS remains usable for source work and portable tests. Hitscan, ballistics, and hybrid gunplay remain alternatives until the comparison gate.
 
@@ -389,6 +389,12 @@ The [peer runbook](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch
 - Bind a portable queue to the selected baseline and receiver. Copy serialized events into caller-owned storage, enforce contiguous sequences and count and byte limits, and retire only after reliable submission. Report rebase on overflow and preserve the observed watermark for the replacement capture. [Retention contract](multiplayer-implementation-contracts.md#server-catch-up-event-retention).
 - **Mac checks passed / Windows pending.** The reviewed tests failed before queue retention existed. They cover exact capacities, scope and sequence rejection, failed submissions, both storage rings, overflow, and an owner handoff to a replacement baseline. Event schemas and live capture, scheduling, and application remain open. [Tests](../../src/test/multiplayer/portable/CatchUpEventQueueTests.cpp).
 - [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) collects a passing `catch-up-event-queue.xml` on Windows.
+
+#### MP-037g — Gate client readiness on applied catch-up state
+
+- Confirm the selected baseline import, advance the applied watermark through consecutive events, and hold later events at the declared barrier. Return its exact acknowledgement after snapshot application. A retry reuses the applied barrier, and replacement captures cover the applied frontier. [Client catch-up contract](multiplayer-implementation-contracts.md#client-catch-up-and-barrier-application).
+- **Mac checks passed / Windows pending.** Reviewed tests failed before client application tracking existed. Review also reproduced a replacement that predated an already applied snapshot. The suite covers early and failed application, stale scopes and duplicates, finite barrier and retry behavior, zero-event catch-up, wrap, rebase, and a typed acknowledgement handoff to the server. [Tests](../../src/test/multiplayer/portable/ClientCatchUpTests.cpp).
+- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) collects a passing `client-catch-up.xml` on Windows.
 
 ### MP-038 — Make death, score, round flow, and spectator state authoritative
 

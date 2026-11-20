@@ -311,7 +311,7 @@ A same-map round advance must increase the world epoch without wrapping. It clea
 
 ### Server-side baseline rebase
 
-During synchronization the server owner can select a replacement capture before or after declaring a barrier. The server and receiver use the same baseline ID, capture tick, and event watermark freshness checks. A successful rebase clears the earlier barrier and preserves the synchronization deadline. Declare a fresh barrier for the replacement before accepting readiness.
+During synchronization the server owner can select a replacement capture before or after declaring a barrier. The server and receiver use the same baseline ID, capture tick, and event watermark freshness checks. A replacement capture must cover the tick and watermark of any declared barrier because the acknowledgement may still be in flight. A successful rebase clears the earlier barrier and preserves the synchronization deadline. Declare a fresh barrier for the replacement before accepting readiness.
 
 Only accepted replacements spend retry places. The tracker keeps the last three accepted attempt times across same-map round changes. A place opens at exactly 60 seconds after the corresponding attempt. A fourth valid attempt with all three places still charged moves the peer to `Closing` and reports `RebaseLimitExceeded` once. The synchronization deadline takes precedence at equality. The server owner uses the terminal reason to close the connection and return its resources. [Join tracker](../../src/xrNetServer/Multiplayer/PeerJoin.h), [server rebase tests](../../src/test/multiplayer/portable/PeerRebaseTests.cpp).
 
@@ -322,6 +322,14 @@ The server owner binds a queue to one receiver identity and selected baseline. T
 Peek copies the oldest event into the caller's send buffer. The owner commits its sequence on the same turn the reliable transport queue accepts that event. Only then does the submitted watermark advance and the storage return to the catch-up queue. Failed submissions can peek and retry the same event. Short output buffers leave both the queue and the output intact.
 
 A valid event that exceeds the count or byte capacity makes the queue report `RebaseRequired`. The owner selects a replacement capture covering the latest observed event sequence before replacing the queue. The old queue stops sending and retiring events while continuing to track consecutive observations. The replacement starts from its new capture watermark in fresh logical state. Live capture, event codecs, and transport scheduling follow their snapshot work items. [Queue](../../src/xrNetServer/Multiplayer/CatchUpEventQueue.h), [retention tests](../../src/test/multiplayer/portable/CatchUpEventQueueTests.cpp).
+
+### Client catch-up and barrier application
+
+The client owner binds a tracker to the selected baseline and receiver identity. After checked baseline import succeeds, confirm the exact capture to initialize the applied event watermark. Each next event must match the identity and baseline and carry the consecutive sequence in the receiver's stream. The world adapter applies each checked event atomically and reports success before the watermark advances. The transport owner retains events awaiting import or application.
+
+A barrier may arrive before import. It must cover the selected capture tick and the current event watermark. The client applies events through the exact declared watermark and defers later events until the staged barrier snapshot is applied. Successful snapshot application yields the exact ready acknowledgement. A transport retry can reuse that acknowledgement while keeping the barrier applied once. Later events can proceed after snapshot application.
+
+For a same-round rebase, the replacement must cover the applied event watermark and any applied barrier tick. A successful rebase resets import confirmation and the previous barrier. The owner replaces the tracker on an accepted world change. Concrete world application and transport integration remain with the engine owners. [Client tracker](../../src/xrNetServer/Multiplayer/ClientCatchUp.h), [application tests](../../src/test/multiplayer/portable/ClientCatchUpTests.cpp).
 
 ## 5. Round and spawn behavior
 

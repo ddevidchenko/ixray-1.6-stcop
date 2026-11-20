@@ -1,21 +1,12 @@
 #pragma once
 
-#include "JoinTypes.h"
-#include "../../xrCore/_stl_extensions_nonalloc.h"
+#include "CatchUpEvent.h"
 
 #include <expected>
 #include <optional>
 
 namespace Multiplayer
 {
-struct CatchUpEvent
-{
-	JoinIdentity Identity;
-	u32 BaselineId;
-	u32 Sequence;
-	xr_span<const u8> Bytes;
-};
-
 enum class CatchUpEventError
 {
 	IdentityMismatch,

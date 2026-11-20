@@ -23,6 +23,8 @@ struct BaselineBoundary
 	u32 BaselineId;
 	u32 CaptureTick;
 	u32 EventWatermark;
+
+	bool operator==(const BaselineBoundary&) const = default;
 };
 
 [[nodiscard]] bool IsNewerBaseline(BaselineBoundary Candidate, BaselineBoundary Current) noexcept;

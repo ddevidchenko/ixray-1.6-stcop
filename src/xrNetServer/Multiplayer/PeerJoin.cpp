@@ -85,7 +85,10 @@ std::expected<void, PeerJoinError> PeerJoin::Rebase(JoinIdentity Peer, BaselineB
 	{
 		return std::unexpected(PeerJoinError::InvalidState);
 	}
-	if (!IsNewerBaseline(Boundary, *SelectedBaseline))
+	// The client may have applied a declared barrier while its acknowledgement is in flight.
+	const bool CoversBarrier = !DeclaredBarrier || (IsSequenceCurrentOrNewer(Boundary.CaptureTick, DeclaredBarrier->SnapshotTick) &&
+		IsSequenceCurrentOrNewer(Boundary.EventWatermark, DeclaredBarrier->EventWatermark));
+	if (!IsNewerBaseline(Boundary, *SelectedBaseline) || !CoversBarrier)
 	{
 		return std::unexpected(PeerJoinError::StaleBaseline);
 	}

@@ -14,7 +14,7 @@ constexpr auto AdmittedAt = PeerJoin::Clock::time_point{} + 11s;
 constexpr auto LoadedAt = AdmittedAt + 10s;
 constexpr BaselineBoundary Initial{21, 100, 45};
 constexpr BaselineBoundary Replacement{22, 105, 46};
-constexpr JoinBarrier FirstBarrier{21, 80, 101, 45};
+constexpr JoinBarrier FirstBarrier{21, 80, 104, 46};
 constexpr JoinBarrier NextBarrier{22, 81, 105, 46};
 
 static bool Expect(const char* Step, bool Passed)
@@ -67,6 +67,8 @@ static bool CheckReplacement()
 	Passed &= Expect("owner declares a barrier for the selected baseline", Peer.DeclareBarrier(Identity, FirstBarrier, LoadedAt).has_value());
 	Passed &= ExpectError("stale replacement cannot clear the old barrier", Peer.Rebase(Identity, {22, 99, 46}, LoadedAt + 1s), PeerJoinError::StaleBaseline);
 	Passed &= ExpectError("earlier event watermark cannot replace", Peer.Rebase(Identity, {22, 105, 44}, LoadedAt + 1s), PeerJoinError::StaleBaseline);
+	Passed &= ExpectError("replacement must cover the declared barrier tick", Peer.Rebase(Identity, {22, 103, 46}, LoadedAt + 1s), PeerJoinError::StaleBaseline);
+	Passed &= ExpectError("replacement must cover the declared barrier watermark", Peer.Rebase(Identity, {22, 105, 45}, LoadedAt + 1s), PeerJoinError::StaleBaseline);
 	Passed &= ExpectError("foreign replacement cannot consume this peer's attempt", Peer.Rebase(NextWorld, Replacement, LoadedAt + 1s), PeerJoinError::IdentityMismatch);
 	Passed &= ExpectError("rejected requests preserve the declared barrier", Peer.AcknowledgeBarrier(Identity, {21, 79, 101, 45}, LoadedAt + 1s), PeerJoinError::BarrierMismatch);
 	Passed &= Expect("newer baseline replaces the selected one in the same round", Peer.Rebase(Identity, Replacement, LoadedAt + 1s).has_value());

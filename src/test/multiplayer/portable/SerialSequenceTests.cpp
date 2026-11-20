@@ -104,6 +104,11 @@ namespace CatchUpEventQueueTests
 bool Run();
 }
 
+namespace ClientCatchUpTests
+{
+bool Run();
+}
+
 namespace SerialSequenceTests
 {
 struct SequenceCase
@@ -225,6 +230,10 @@ int main(int ArgumentCount, char** Arguments)
 	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--catch-up-event-queue") == 0)
 	{
 		return CatchUpEventQueueTests::Run() ? EXIT_SUCCESS : EXIT_FAILURE;
+	}
+	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--client-catch-up") == 0)
+	{
+		return ClientCatchUpTests::Run() ? EXIT_SUCCESS : EXIT_FAILURE;
 	}
 	if (ArgumentCount != 1)
 	{

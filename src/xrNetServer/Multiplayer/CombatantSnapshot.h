@@ -90,6 +90,11 @@ struct StalkerCombatantSnapshot
 
 using CombatantSnapshot = std::variant<HumanCombatantSnapshot, StalkerCombatantSnapshot>;
 
+[[nodiscard]] inline const PublicCombatantState& GetPublicCombatantState(const CombatantSnapshot& Snapshot) noexcept
+{
+	return std::visit([](const auto& Typed) noexcept -> const PublicCombatantState& { return Typed.State; }, Snapshot);
+}
+
 enum class CombatantRecordError
 {
 	UnknownKind,

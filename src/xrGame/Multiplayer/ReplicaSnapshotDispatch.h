@@ -42,6 +42,24 @@ private:
 	std::size_t Count = 0;
 };
 
+namespace Detail
+{
+[[nodiscard]] inline ReplicaSnapshotBatchReport::RecordResult DispatchLiveCombatantRecord(JoinIdentity Receiver,
+	std::optional<u32> Watermark, const Wire::SnapshotBatchHeader& Header, const Wire::CombatantSnapshot& Record,
+	CombatantReplicas& Replicas, ICombatantReplicaApplier& Applier) noexcept
+{
+	return std::visit([&](const auto& Snapshot) noexcept
+	{
+		const auto& State = Snapshot.State;
+		return Replicas.ApplyLiveSnapshot(Receiver, Watermark,
+			{Header.Identity, State.Participant, State.Body, Header.ServerTick, Header.RequiredEventWatermark}, [&]() noexcept
+			{
+				return Applier.ApplySnapshot(Header, Snapshot);
+			});
+	}, Record);
+}
+}
+
 // The owner serializes dispatch with catch-up and lifecycle changes and keeps the batch stable during callbacks.
 [[nodiscard]] inline std::expected<ReplicaSnapshotBatchReport, ReplicaSnapshotBatchError> DispatchLiveCombatantBatch(
 	const Wire::CombatantSnapshotBatch& Batch, const ClientCatchUp& CatchUp, CombatantReplicas& Replicas,
@@ -69,15 +87,7 @@ private:
 	const auto Watermark = CatchUp.GetAppliedWatermark();
 	for (const auto& Record : Batch.GetRecords())
 	{
-		Report.Results[Report.Count++] = std::visit([&](const auto& Snapshot) noexcept
-		{
-			const auto& State = Snapshot.State;
-			return Replicas.ApplyLiveSnapshot(Receiver, Watermark,
-				{Header.Identity, State.Participant, State.Body, Header.ServerTick, Header.RequiredEventWatermark}, [&]() noexcept
-				{
-					return Applier.ApplySnapshot(Header, Snapshot);
-				});
-		}, Record);
+		Report.Results[Report.Count++] = Detail::DispatchLiveCombatantRecord(Receiver, Watermark, Header, Record, Replicas, Applier);
 	}
 	return Report;
 }

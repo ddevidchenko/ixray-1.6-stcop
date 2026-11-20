@@ -183,11 +183,6 @@ std::expected<SnapshotRecordView, CombatantRecordError> EncodeCombatantSnapshot(
 	return PublishRecord(SnapshotRecordKind::StalkerCombatant, Writer.Written(), Output);
 }
 
-static const PublicCombatantState& GetPublicState(const CombatantSnapshot& Snapshot) noexcept
-{
-	return std::visit([](const auto& Typed) noexcept -> const PublicCombatantState& { return Typed.State; }, Snapshot);
-}
-
 std::expected<CombatantSnapshotBatch, BoundMessageError> CombatantSnapshotBatch::Decode(xr_span<const u8> Bytes) noexcept
 {
 	auto Batch = SnapshotBatch::Decode(Bytes);
@@ -209,11 +204,11 @@ std::expected<CombatantSnapshotBatch, BoundMessageError> CombatantSnapshotBatch:
 		{
 			return std::unexpected(BoundMessageError::InvalidPayload);
 		}
-		const auto& State = GetPublicState(*Record);
+		const auto& State = GetPublicCombatantState(*Record);
 		if (std::ranges::any_of(Result.GetRecords(), [&State](const PublicCombatantState& Previous)
 		{
 			return Previous.Participant == State.Participant || Previous.Body.ObjectId == State.Body.ObjectId;
-		}, GetPublicState))
+		}, GetPublicCombatantState))
 		{
 			return std::unexpected(BoundMessageError::InvalidPayload);
 		}

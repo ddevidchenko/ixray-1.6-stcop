@@ -1,4 +1,4 @@
-#include "../../../xrGame/Multiplayer/ReplicaSnapshotDispatch.h"
+#include "../../../xrGame/Multiplayer/ReplicaSnapshotQueue.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -352,6 +352,290 @@ static bool CheckRebaseAndWrap()
 		HasRecordResults(Scenario.Dispatch(*Fresh), {std::nullopt}) && Scenario.Applier.HumanAttempts == 2 &&
 		Scenario.Applier.HumanX == 13.0f);
 	return Passed;
+}
+
+static bool CheckDeferredQueue()
+{
+	Fixture Scenario;
+	ReplicaSnapshotQueue Queue;
+	const auto Batch = BuildBatch(Receiver, 101, 37, MakeHuman());
+	if (!Expect("the deferred queue fixture has a registered replica", Batch && Scenario.Synchronize() &&
+		Scenario.Replicas.RegisterBody(World, HumanParticipant, HumanBody, 100u)))
+	{
+		return false;
+	}
+
+	const auto Received = Queue.Receive(*Batch, Scenario.CatchUp, Scenario.Replicas, Scenario.Applier);
+	bool Passed = Expect("an otherwise useful snapshot waiting for an event is retained", Received &&
+		Received->Retry == SnapshotRetryStatus::NoRepair && Queue.GetPendingBatchCount() == 1 &&
+		Queue.GetPendingRecordCount() == 1 && Scenario.Applier.HumanAttempts == 0);
+	constexpr u8 EventBytes[]{1};
+	Passed &= Expect("retry releases the retained snapshot after its event applies",
+		Scenario.CatchUp.ApplyEvent({Receiver, Baseline.BaselineId, 37, EventBytes}, Scenario.Applier).has_value() &&
+		Queue.RetryPending(Scenario.CatchUp, Scenario.Replicas, Scenario.Applier) == SnapshotRetryStatus::NoRepair &&
+		Queue.GetPendingBatchCount() == 0 && Queue.GetPendingRecordCount() == 0 && Scenario.Applier.HumanAttempts == 1 &&
+		Scenario.Applier.HumanX == 12.0f);
+	return Passed;
+}
+
+static bool Enqueue(ReplicaSnapshotQueue& Queue, Fixture& Scenario, const std::expected<CombatantSnapshotBatch, BoundMessageError>& Batch,
+	SnapshotRetryStatus Expected = SnapshotRetryStatus::NoRepair)
+{
+	if (!Batch)
+	{
+		return false;
+	}
+	const auto Result = Queue.Receive(*Batch, Scenario.CatchUp, Scenario.Replicas, Scenario.Applier);
+	return Result && Result->Retry == Expected;
+}
+
+static SnapshotRetryStatus Retry(ReplicaSnapshotQueue& Queue, Fixture& Scenario)
+{
+	return Queue.RetryPending(Scenario.CatchUp, Scenario.Replicas, Scenario.Applier);
+}
+
+static bool ApplyTestEvent(Fixture& Scenario, u32 Sequence)
+{
+	constexpr u8 EventBytes[]{1};
+	return Scenario.CatchUp.ApplyEvent({Receiver, Baseline.BaselineId, Sequence, EventBytes}, Scenario.Applier).has_value();
+}
+
+static bool CheckQueuedLatestUsefulState()
+{
+	Fixture Scenario;
+	ReplicaSnapshotQueue Queue;
+	if (!Expect("latest-state fixture has a synchronized replica", Scenario.Synchronize() &&
+		Scenario.Replicas.RegisterBody(World, HumanParticipant, HumanBody, 100u)))
+	{
+		return false;
+	}
+
+	bool Passed = Expect("newer ticks replace the same body's deferred update with the same event requirement",
+		Enqueue(Queue, Scenario, BuildBatch(Receiver, 101, 37, MakeHuman(HumanBody, 11.0f))) &&
+		Enqueue(Queue, Scenario, BuildBatch(Receiver, 102, 37, MakeHuman(HumanBody, 12.0f))) &&
+		Enqueue(Queue, Scenario, BuildBatch(Receiver, 101, 37, MakeHuman(HumanBody, 99.0f))) &&
+		Enqueue(Queue, Scenario, BuildBatch(Receiver, 102, 37, MakeHuman(HumanBody, 99.0f))) &&
+		Queue.GetPendingBatchCount() == 1 && Queue.GetPendingRecordCount() == 1);
+	Passed &= Expect("a different event requirement can leave older state useful sooner",
+		Enqueue(Queue, Scenario, BuildBatch(Receiver, 103, 38, MakeHuman(HumanBody, 13.0f))) &&
+		Queue.GetPendingRecordCount() == 2 && ApplyTestEvent(Scenario, 37) &&
+		Retry(Queue, Scenario) == SnapshotRetryStatus::NoRepair && Scenario.Applier.HumanX == 12.0f &&
+		Scenario.Applier.HumanAttempts == 1 && Queue.GetPendingRecordCount() == 1);
+	Passed &= Expect("the next applied event releases the later state",
+		ApplyTestEvent(Scenario, 38) && Retry(Queue, Scenario) == SnapshotRetryStatus::NoRepair &&
+		Scenario.Applier.HumanX == 13.0f && Queue.GetPendingRecordCount() == 0);
+	Passed &= Expect("when multiple updates become ready together only the newest is applied",
+		Enqueue(Queue, Scenario, BuildBatch(Receiver, 104, 39, MakeHuman(HumanBody, 14.0f))) &&
+		Enqueue(Queue, Scenario, BuildBatch(Receiver, 105, 40, MakeHuman(HumanBody, 15.0f))) &&
+		ApplyTestEvent(Scenario, 39) && ApplyTestEvent(Scenario, 40) &&
+		Retry(Queue, Scenario) == SnapshotRetryStatus::NoRepair && Scenario.Applier.HumanAttempts == 3 &&
+		Scenario.Applier.HumanX == 15.0f && Queue.GetPendingRecordCount() == 0);
+	Passed &= Expect("an immediate newer application retires obsolete held state",
+		Enqueue(Queue, Scenario, BuildBatch(Receiver, 106, 41, MakeHuman(HumanBody, 16.0f))) &&
+		Enqueue(Queue, Scenario, BuildBatch(Receiver, 107, 40, MakeHuman(HumanBody, 17.0f))) &&
+		Scenario.Applier.HumanX == 17.0f && Queue.GetPendingRecordCount() == 0);
+	Passed &= Expect("an eligible copy at the same tick retires another still waiting for events",
+		Enqueue(Queue, Scenario, BuildBatch(Receiver, 108, 42, MakeHuman(HumanBody, 18.0f))) &&
+		Enqueue(Queue, Scenario, BuildBatch(Receiver, 108, 41, MakeHuman(HumanBody, 18.0f))) &&
+		ApplyTestEvent(Scenario, 41) && Retry(Queue, Scenario) == SnapshotRetryStatus::NoRepair &&
+		Scenario.Applier.HumanX == 18.0f && Queue.GetPendingRecordCount() == 0);
+	return Passed;
+}
+
+static bool CheckQueuedLifecycleAndRepair()
+{
+	Fixture Scenario;
+	ReplicaSnapshotQueue Queue;
+	const auto Stalker = MakeStalker();
+	if (!Expect("lifecycle fixture begins with only the stalker registered", Scenario.Synchronize() &&
+		Scenario.Replicas.RegisterBody(World, StalkerParticipant, StalkerBody, 100u)))
+	{
+		return false;
+	}
+
+	bool Passed = Expect("a mixed batch retains only the unknown life and applies the other record immediately",
+		Enqueue(Queue, Scenario, BuildBatch(Receiver, 101, 36, MakeHuman(HumanBody, 21.0f), &Stalker)) &&
+		Queue.GetPendingBatchCount() == 1 && Queue.GetPendingRecordCount() == 1 && Scenario.Applier.StalkerAttempts == 1);
+	Passed &= Expect("retry does not invent a replica while the body remains unknown",
+		Retry(Queue, Scenario) == SnapshotRetryStatus::NoRepair && Queue.GetPendingRecordCount() == 1 &&
+		Scenario.Replicas.Classify(World, HumanParticipant, HumanBody) == ReplicaBodyState::Unknown && Scenario.Applier.HumanAttempts == 0);
+	Passed &= Expect("trusted registration releases the owned record after the receive input is gone",
+		Scenario.Replicas.RegisterBody(World, HumanParticipant, HumanBody) &&
+		Retry(Queue, Scenario) == SnapshotRetryStatus::NoRepair && Scenario.Applier.HumanX == 21.0f &&
+		Scenario.Applier.StalkerAttempts == 1 && Queue.GetPendingRecordCount() == 0);
+	Passed &= Expect("a held update drops when its body is retired before the event arrives",
+		Enqueue(Queue, Scenario, BuildBatch(Receiver, 102, 37, MakeHuman())) && Queue.GetPendingRecordCount() == 1 &&
+		Scenario.Replicas.Despawn(World, HumanParticipant, HumanBody) &&
+		Retry(Queue, Scenario) == SnapshotRetryStatus::NoRepair && Queue.GetPendingRecordCount() == 0 &&
+		Scenario.Applier.HumanAttempts == 1);
+
+	constexpr EntityRef NewLife{HumanBody.ObjectId, HumanBody.Generation + 1, HumanBody.LifeId + 1};
+	Passed &= Expect("a future life can wait for registration", Enqueue(Queue, Scenario, BuildBatch(Receiver, 103, 36, MakeHuman(NewLife))) &&
+		Queue.GetPendingRecordCount() == 1 && Scenario.Replicas.RegisterBody(World, HumanParticipant, NewLife));
+	Scenario.Applier.AllowHuman = false;
+	Passed &= Expect("failed world application requests repair and leaves no automatic retries",
+		Retry(Queue, Scenario) == SnapshotRetryStatus::RepairRequired && Queue.GetPendingRecordCount() == 0 &&
+		Scenario.Applier.HumanAttempts == 2 && Retry(Queue, Scenario) == SnapshotRetryStatus::NoRepair &&
+		Scenario.Applier.HumanAttempts == 2);
+	Passed &= Expect("immediate failure likewise reports repair without retention",
+		Enqueue(Queue, Scenario, BuildBatch(Receiver, 104, 36, MakeHuman(NewLife)), SnapshotRetryStatus::RepairRequired) &&
+		Queue.GetPendingRecordCount() == 0);
+	Scenario.Applier.AllowHuman = true;
+	Passed &= Expect("repair can resubmit the failed tick", Enqueue(Queue, Scenario, BuildBatch(Receiver, 104, 36, MakeHuman(NewLife))) &&
+		Scenario.Applier.HumanAttempts == 4 && Scenario.Applier.HumanX == 12.0f);
+	return Passed;
+}
+
+static bool CheckQueueCapacity()
+{
+	Fixture Scenario;
+	ReplicaSnapshotQueue Queue;
+	if (!Expect("capacity fixture has two tracked bodies", Scenario.Synchronize() &&
+		Scenario.Replicas.RegisterBody(World, HumanParticipant, HumanBody) &&
+		Scenario.Replicas.RegisterBody(World, StalkerParticipant, StalkerBody)))
+	{
+		return false;
+	}
+
+	bool Passed = true;
+	for (u32 Index = 0; Index < 8; ++Index)
+	{
+		Passed &= Expect("all eight independent event prerequisites fit", Enqueue(Queue, Scenario,
+			BuildBatch(Receiver, 101 + Index, 37 + Index, MakeHuman())));
+	}
+	Passed &= Expect("eight batches occupy the capped queue", Queue.GetPendingBatchCount() == 8 && Queue.GetPendingRecordCount() == 8);
+	Passed &= Expect("a replacement can reuse a full slot when its old record is superseded",
+		Enqueue(Queue, Scenario, BuildBatch(Receiver, 110, 37, MakeHuman(HumanBody, 31.0f))) && Queue.GetPendingBatchCount() == 8);
+
+	const auto Stalker = MakeStalker();
+	constexpr EntityRef Unknown{99, 24, 9};
+	const auto Overflow = BuildBatch(Receiver, 111, 36, MakeHuman(Unknown), &Stalker);
+	Passed &= Expect("overflow offers repair, preserves old retention, and still applies an eligible body",
+		Enqueue(Queue, Scenario, Overflow, SnapshotRetryStatus::RepairRequired) && Queue.GetPendingBatchCount() == 8 &&
+		Queue.GetPendingRecordCount() == 8 && Scenario.Applier.StalkerAttempts == 1);
+	Passed &= Expect("retry keeps and applies the confirmed replacement", ApplyTestEvent(Scenario, 37) &&
+		Retry(Queue, Scenario) == SnapshotRetryStatus::NoRepair && Scenario.Applier.HumanX == 31.0f &&
+		Queue.GetPendingRecordCount() == 0);
+	Passed &= Expect("freed storage accepts a resubmission and never reapplies the successful body",
+		Enqueue(Queue, Scenario, Overflow) && Queue.GetPendingBatchCount() == 1 && Queue.GetPendingRecordCount() == 1 &&
+		Scenario.Applier.StalkerAttempts == 1);
+	return Passed;
+}
+
+static bool CheckQueueScopeAndRebase()
+{
+	Fixture Scenario;
+	ReplicaSnapshotQueue Queue;
+	if (!Expect("scope fixture starts synchronized", Scenario.Synchronize() &&
+		Scenario.Replicas.RegisterBody(World, HumanParticipant, HumanBody)))
+	{
+		return false;
+	}
+
+	const auto Pending = BuildBatch(Receiver, 140, 37, MakeHuman());
+	const JoinIdentity Foreign{Receiver.ServerSession, Receiver.WorldEpoch, Receiver.ConnectionEpoch + 1};
+	const auto Wrong = BuildBatch(Foreign, 141, 37, MakeHuman());
+	if (!Expect("scope fixtures encode successfully", Pending && Wrong))
+	{
+		return false;
+	}
+	bool Passed = Expect("a foreign datagram cannot evict current pending work",
+		Enqueue(Queue, Scenario, Pending) && HasError(Queue.Receive(*Wrong, Scenario.CatchUp, Scenario.Replicas, Scenario.Applier),
+			ReplicaSnapshotBatchError::IdentityMismatch) && Queue.GetPendingBatchCount() == 1);
+
+	constexpr BaselineBoundary Replacement{5, 105, 37};
+	constexpr JoinBarrier NewBarrier{5, 3, 106, 37};
+	Passed &= Expect("a completed rebase clears held records even without a call during synchronization",
+		Scenario.CatchUp.Rebase(Receiver, Replacement).has_value() && Scenario.Synchronize(Replacement, NewBarrier) &&
+		Retry(Queue, Scenario) == SnapshotRetryStatus::NoRepair && Queue.GetPendingRecordCount() == 0 &&
+		Scenario.Applier.HumanAttempts == 0);
+	Passed &= Expect("new barrier can retain another record",
+		Enqueue(Queue, Scenario, BuildBatch(Receiver, 142, 38, MakeHuman())) && Queue.GetPendingRecordCount() == 1);
+	ClientCatchUp Reconnected(Foreign, Replacement);
+	Passed &= Expect("a new admitted connection clears retained data even in the same world",
+		Reconnected.ConfirmBaselineApplied(Foreign, Replacement).has_value() &&
+		Reconnected.DeclareBarrier(Foreign, NewBarrier).has_value() &&
+		Reconnected.CompleteBarrier(Foreign, NewBarrier, 51, Scenario.Applier).has_value() &&
+		Queue.RetryPending(Reconnected, Scenario.Replicas, Scenario.Applier) == SnapshotRetryStatus::NoRepair &&
+		Queue.GetPendingRecordCount() == 0 && Scenario.Applier.HumanAttempts == 0);
+	const auto Current = BuildBatch(Foreign, 143, 38, MakeHuman());
+	Passed &= Expect("the current connection can hold its own update",
+		Current && Queue.Receive(*Current, Reconnected, Scenario.Replicas, Scenario.Applier).has_value() &&
+		Queue.GetPendingRecordCount() == 1);
+	Passed &= Expect("advancing the trusted registry to a new world invalidates held data",
+		Scenario.Replicas.AdvanceWorld(World.WorldEpoch + 1) &&
+		Queue.RetryPending(Reconnected, Scenario.Replicas, Scenario.Applier) == SnapshotRetryStatus::NoRepair &&
+		Queue.GetPendingRecordCount() == 0 && Scenario.Applier.HumanAttempts == 0);
+	return Passed;
+}
+
+static bool CheckPartialReplacementAtCapacity()
+{
+	Fixture Scenario;
+	ReplicaSnapshotQueue Queue;
+	const auto Stalker = MakeStalker();
+	if (!Expect("partial replacement fixture retains a mixed batch",
+		Scenario.Synchronize() && Scenario.Replicas.RegisterBody(World, HumanParticipant, HumanBody) &&
+		Scenario.Replicas.RegisterBody(World, StalkerParticipant, StalkerBody) &&
+		Enqueue(Queue, Scenario, BuildBatch(Receiver, 101, 37, MakeHuman(HumanBody, 11.0f), &Stalker))))
+	{
+		return false;
+	}
+	bool Passed = true;
+	for (u32 Offset = 1; Offset < 8; ++Offset)
+	{
+		Passed &= Expect("the other prerequisites fill the queue",
+			Enqueue(Queue, Scenario, BuildBatch(Receiver, 101 + Offset, 37 + Offset, MakeHuman())));
+	}
+	Passed &= Expect("an overflowing replacement preserves its predecessor and sibling",
+		Enqueue(Queue, Scenario, BuildBatch(Receiver, 109, 37, MakeHuman(HumanBody, 99.0f)), SnapshotRetryStatus::RepairRequired) &&
+		Queue.GetPendingBatchCount() == 8 && Queue.GetPendingRecordCount() == 9);
+	Passed &= Expect("retry applies both records from the preserved batch", ApplyTestEvent(Scenario, 37) &&
+		Retry(Queue, Scenario) == SnapshotRetryStatus::NoRepair && Scenario.Applier.HumanX == 11.0f &&
+		Scenario.Applier.StalkerX == 13.0f && Queue.GetPendingBatchCount() == 7);
+	return Passed;
+}
+
+static bool CheckQueueSerialOrdering()
+{
+	constexpr BaselineBoundary Capture{4, 0xfffffffcu, 36};
+	constexpr JoinBarrier Target{4, 2, 0xfffffffdu, 36};
+	Fixture Scenario(Capture);
+	ReplicaSnapshotQueue Queue;
+	if (!Expect("serial-order fixture starts near wrap", Scenario.Synchronize(Capture, Target) &&
+		Scenario.Replicas.RegisterBody(World, HumanParticipant, HumanBody, Capture.CaptureTick)))
+	{
+		return false;
+	}
+
+	bool Passed = Expect("retry orders deferred ticks newest first across wrap",
+		Enqueue(Queue, Scenario, BuildBatch(Receiver, 0xffffffffu, 37, MakeHuman(HumanBody, 11.0f))) &&
+		Enqueue(Queue, Scenario, BuildBatch(Receiver, 0, 38, MakeHuman(HumanBody, 21.0f))) &&
+		ApplyTestEvent(Scenario, 37) && ApplyTestEvent(Scenario, 38) &&
+		Retry(Queue, Scenario) == SnapshotRetryStatus::NoRepair && Scenario.Applier.HumanAttempts == 1 &&
+		Scenario.Applier.HumanX == 21.0f && Queue.GetPendingRecordCount() == 0);
+	constexpr EntityRef Unknown{99, 24, 9};
+	Passed &= Expect("an unknown body with an ambiguous event watermark consumes no queue capacity",
+		Enqueue(Queue, Scenario, BuildBatch(Receiver, 1, 38u + 0x80000000u, MakeHuman(Unknown))) &&
+		Queue.GetPendingRecordCount() == 0 && Scenario.Applier.HumanAttempts == 1);
+	return Passed;
+}
+
+bool RunQueue()
+{
+	bool Passed = CheckDeferredQueue();
+	Passed &= CheckQueuedLatestUsefulState();
+	Passed &= CheckQueuedLifecycleAndRepair();
+	Passed &= CheckQueueCapacity();
+	Passed &= CheckQueueScopeAndRebase();
+	Passed &= CheckPartialReplacementAtCapacity();
+	Passed &= CheckQueueSerialOrdering();
+	if (!Passed)
+	{
+		return false;
+	}
+	std::puts("Replica snapshot queue checks passed");
+	return true;
 }
 
 bool Run()

@@ -154,6 +154,7 @@ bool Run();
 namespace ReplicaSnapshotDispatchTests
 {
 bool Run();
+bool RunQueue();
 }
 
 namespace SerialSequenceTests
@@ -325,6 +326,10 @@ int main(int ArgumentCount, char** Arguments)
 	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--replica-snapshot-dispatch") == 0)
 	{
 		return ReplicaSnapshotDispatchTests::Run() ? EXIT_SUCCESS : EXIT_FAILURE;
+	}
+	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--replica-snapshot-queue") == 0)
+	{
+		return ReplicaSnapshotDispatchTests::RunQueue() ? EXIT_SUCCESS : EXIT_FAILURE;
 	}
 	if (ArgumentCount != 1)
 	{

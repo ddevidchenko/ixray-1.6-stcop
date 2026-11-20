@@ -131,6 +131,21 @@ A `ClientHello` uses envelope tag `0x01` and carries protocol version `1` in the
 
 The payload length is 100 through 260 bytes. The decoder consumes the complete payload and rejects missing fields and trailing data. Admission compares the claimed compatibility IDs against the server's expected values and verifies credentials before assigning connection identity. [Codec](../../src/xrNetServer/Multiplayer/ClientHello.h), [independent golden datagram](../../src/test/multiplayer/portable/ClientHelloTests.cpp).
 
+### Server welcome
+
+A `ServerWelcome` uses envelope tag `0x02`. The server assigns a nonzero session and connection epoch. The world epoch may be zero for the initial world. The envelope carries the server's message sequence.
+
+| Payload field in order | Encoding |
+| --- | --- |
+| Content manifest ID | 32 opaque bytes |
+| Rules ID | 32 opaque bytes |
+| Logical map ID | Little-endian `u16` byte count followed by 1 to 64 UTF-8 bytes. The field rejects an embedded U+0000. |
+| Gameplay, physics, snapshot, and input command rates | Four positive little-endian `u32` values in millihertz, in that order. For example, 37.5 Hz is `37500`. |
+| Respawn delay and spawn protection | Two little-endian `u32` durations in milliseconds, in that order. Zero represents no delay or no protection respectively. |
+| Round time limit and frag limit | Two little-endian `u32` values, milliseconds then frags. A zero value disables its criterion. |
+
+The payload spans 99 to 162 bytes and the decoder consumes it completely. The client resolves the map against the verified content manifest. Timing and rules profiles validate the advertised settings before use. [Codec](../../src/xrNetServer/Multiplayer/ServerWelcome.h), [independent golden datagram](../../src/test/multiplayer/portable/ServerWelcomeTests.cpp).
+
 ### Input and discrete actions
 
 Each command includes `u32 CommandSequence`, `u32 ClientTick`, signed `i8` forward/right input, `u16` yaw, `i16` pitch and a `u16` held-button mask. Declare direction normalization and button meanings in MP-030's golden fixtures. Yaw covers a full turn; pitch is bounded to the shared controller's allowed range. A client timestamp is evidence for bounded scheduling, not permission to choose an arbitrary execution/rewind time.

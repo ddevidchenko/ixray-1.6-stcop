@@ -14,6 +14,7 @@ add_executable(TestMultiplayerUnit
     WireEnvelopeTests.cpp
     WirePayloadTests.cpp
     ClientHelloTests.cpp
+    ServerWelcomeTests.cpp
     ../transport/ScriptedTransport.cpp
 )
 target_link_libraries(TestMultiplayerUnit PRIVATE xrNetServerMultiplayer)
@@ -26,8 +27,9 @@ add_test(NAME Multiplayer.ScriptedTransport COMMAND TestMultiplayerUnit --script
 add_test(NAME Multiplayer.WireEnvelope COMMAND TestMultiplayerUnit --wire-envelope)
 add_test(NAME Multiplayer.WirePayload COMMAND TestMultiplayerUnit --wire-payload)
 add_test(NAME Multiplayer.ClientHello COMMAND TestMultiplayerUnit --client-hello)
+add_test(NAME Multiplayer.ServerWelcome COMMAND TestMultiplayerUnit --server-welcome)
 set_tests_properties(
-    Multiplayer.Sequence Multiplayer.MapSyncDeadline Multiplayer.WeaponSpread Multiplayer.ScriptedTransport Multiplayer.WireEnvelope Multiplayer.WirePayload Multiplayer.ClientHello
+    Multiplayer.Sequence Multiplayer.MapSyncDeadline Multiplayer.WeaponSpread Multiplayer.ScriptedTransport Multiplayer.WireEnvelope Multiplayer.WirePayload Multiplayer.ClientHello Multiplayer.ServerWelcome
     PROPERTIES LABELS multiplayer
 )
 

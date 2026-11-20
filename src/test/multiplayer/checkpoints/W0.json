@@ -1,7 +1,7 @@
 {
     "id": "W0",
     "Portable": {
-        "workItems": ["MP-010", "MP-011a", "MP-011b", "MP-012", "MP-020a", "MP-020b", "MP-020c"],
+        "workItems": ["MP-010", "MP-011a", "MP-011b", "MP-012", "MP-020a", "MP-020b", "MP-020c", "MP-020d"],
         "configuration": "RelWithDebInfo",
         "sourceDirectory": "src/test/multiplayer/portable",
         "architecture": "x64",
@@ -38,6 +38,11 @@
                 "name": "Multiplayer.ClientHello",
                 "successMessage": "Client hello checks passed",
                 "step": "client-hello"
+            },
+            {
+                "name": "Multiplayer.ServerWelcome",
+                "successMessage": "Server welcome checks passed",
+                "step": "server-welcome"
             }
         ],
         "deliberateFailureTest": "Multiplayer.Sequence.DeliberateFailure",
@@ -47,7 +52,7 @@
         "testTimeoutSeconds": 30
     },
     "Peers": {
-        "workItems": ["MP-010", "MP-011a", "MP-011b", "MP-012", "MP-020a", "MP-020b", "MP-020c"],
+        "workItems": ["MP-010", "MP-011a", "MP-011b", "MP-012", "MP-020a", "MP-020b", "MP-020c", "MP-020d"],
         "configuration": "RelWithDebInfo",
         "targets": ["TestMultiplayerUnit", "TestMultiplayerGns"],
         "test": {

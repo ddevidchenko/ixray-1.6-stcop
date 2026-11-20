@@ -34,6 +34,11 @@ namespace ClientHelloTests
 bool Run();
 }
 
+namespace ServerWelcomeTests
+{
+bool Run();
+}
+
 namespace SerialSequenceTests
 {
 struct SequenceCase
@@ -99,6 +104,10 @@ int main(int ArgumentCount, char** Arguments)
 	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--client-hello") == 0)
 	{
 		return ClientHelloTests::Run() ? EXIT_SUCCESS : EXIT_FAILURE;
+	}
+	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--server-welcome") == 0)
+	{
+		return ServerWelcomeTests::Run() ? EXIT_SUCCESS : EXIT_FAILURE;
 	}
 	if (ArgumentCount != 1)
 	{

@@ -1,6 +1,6 @@
 # Multiplayer TDD work items
 
-The operator reports that W0 passed on Windows. The exact revision and result bundle are pending attachment. MP-010, MP-011a, MP-011b, MP-012, MP-020a, MP-020b and MP-020c have macOS evidence.
+The operator reports that W0 passed on Windows. The exact revision and result bundle are pending attachment. MP-010, MP-011a, MP-011b, MP-012, MP-020a, MP-020b, MP-020c and MP-020d have macOS evidence.
 
 Implements the [modern multiplayer plan](multiplayer-modernization-plan.md): 32 total human/bot combatants, simple DM, direct IP over GameNetworkingSockets first, human-like bots, authoritative simulation, prediction, lag compensation, and immediate local effects. Windows x64 is the initial runtime target; macOS remains usable for source work and portable tests. Hitscan, ballistics, and hybrid gunplay remain alternatives until the comparison gate.
 
@@ -183,6 +183,12 @@ The [peer runbook](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch
 - The codec carries 32-byte build, content, and rules compatibility identifiers and bounded fields for the requested name and credentials. It checks that the envelope is unbound and consumes the whole payload before returning a hello. Encoding validates a bounded temporary payload before writing the complete frame. Compatibility matching and credential verification belong to MP-022. [Client hello wire layout](multiplayer-implementation-contracts.md#client-hello), [codec](../../src/xrNetServer/Multiplayer/ClientHello.h).
 - **Mac checks passed / Windows pending.** The first hand-authored datagram failed before implementation. Reviewed tests exercise whole-frame and typed truncation, bound identities, trailing data, name and credential limits, and atomic encoding with overlapping buffers. Tests use literal fixtures. [Tests](../../src/test/multiplayer/portable/ClientHelloTests.cpp).
 - [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) collects a passing `client-hello.xml` on Windows.
+
+#### MP-020d — Encode and validate server welcome
+
+- The welcome carries assigned session and connection identity, the content and rules IDs, the logical map ID, effective millihertz rates, and the initial respawn, protection, and round limits. Encoding stages a bounded payload before publishing the frame. [Server welcome wire layout](multiplayer-implementation-contracts.md#server-welcome), [codec](../../src/xrNetServer/Multiplayer/ServerWelcome.h).
+- **Mac checks passed / Windows pending.** The hand-authored welcome failed before implementation. The reviewed suite covers framing and typed truncation, fractional rates, zero-rate rejection, map byte bounds, unassigned identity, exact payload consumption, and atomic writes with overlapping buffers. Fixtures use literal data. [Tests](../../src/test/multiplayer/portable/ServerWelcomeTests.cpp).
+- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) collects a passing `server-welcome.xml` on Windows.
 
 ### MP-021 — Bound legacy envelope parsing and decompression
 

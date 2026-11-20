@@ -89,7 +89,7 @@ public:
 		{
 			return std::unexpected(ReplicaBaselineError::InvalidBody);
 		}
-		if ((AppliedBaselineTick && !IsSequenceCurrentOrNewer(CaptureTick, *AppliedBaselineTick)) ||
+		if ((AppliedCaptureTick && !IsSequenceCurrentOrNewer(CaptureTick, *AppliedCaptureTick)) ||
 			std::ranges::any_of(Active, [CaptureTick](const Entry& Current)
 			{
 				return Current.AppliedSnapshotTick && !IsSequenceCurrentOrNewer(CaptureTick, *Current.AppliedSnapshotTick);
@@ -148,7 +148,7 @@ public:
 			}
 		}
 		Active = Next;
-		AppliedBaselineTick = CaptureTick;
+		AppliedCaptureTick = CaptureTick;
 		return {};
 	}
 
@@ -286,7 +286,7 @@ public:
 
 		Identity.WorldEpoch = Epoch;
 		Active = {};
-		AppliedBaselineTick.reset();
+		AppliedCaptureTick.reset();
 		std::ranges::fill(RetiredGenerations, 0u);
 		return true;
 	}
@@ -322,6 +322,6 @@ private:
 	WorldIdentity Identity;
 	const xr_span<u32, InvalidObjectId> RetiredGenerations;
 	xr_array<Entry, MaxCombatants> Active{};
-	std::optional<u32> AppliedBaselineTick;
+	std::optional<u32> AppliedCaptureTick;
 };
 }

@@ -72,7 +72,44 @@ public:
 	[[nodiscard]] std::expected<void, ClientCatchUpError> ConfirmBaselineApplied(JoinIdentity Peer, BaselineBoundary Applied) noexcept;
 	[[nodiscard]] std::expected<void, ClientCatchUpError> ApplyEvent(const CatchUpEvent& Event, IClientCatchUpApplier& Applier) noexcept;
 	[[nodiscard]] std::expected<void, ClientCatchUpError> DeclareBarrier(JoinIdentity Peer, JoinBarrier Barrier) noexcept;
-	// Once applied, the same barrier can produce an acknowledgement for a transport retry.
+	// Apply the selected snapshot before acknowledging. An already applied barrier can be acknowledged again.
+	template <class Applier>
+		requires std::is_nothrow_invocable_r_v<bool, Applier&>
+	[[nodiscard]] std::expected<Wire::ReadyAcknowledgement, ClientCatchUpError> CompleteBarrier(JoinIdentity Peer, JoinBarrier Barrier,
+		u32 MessageSequence, Applier&& ApplySnapshot) noexcept
+	{
+		if (const auto Error = CheckScope(Peer, Barrier.BaselineId))
+		{
+			return std::unexpected(*Error);
+		}
+		if (!DeclaredBarrier)
+		{
+			return std::unexpected(ClientCatchUpError::InvalidState);
+		}
+		if (*DeclaredBarrier != Barrier)
+		{
+			return std::unexpected(ClientCatchUpError::BarrierMismatch);
+		}
+		if (!AppliedWatermark)
+		{
+			return std::unexpected(ClientCatchUpError::BaselineNotApplied);
+		}
+		if (!BarrierApplied)
+		{
+			if (*AppliedWatermark != Barrier.EventWatermark)
+			{
+				return std::unexpected(ClientCatchUpError::BarrierPending);
+			}
+			const bool Succeeded = ApplySnapshot();
+			if (!Succeeded)
+			{
+				return std::unexpected(ClientCatchUpError::ApplicationFailed);
+			}
+			BarrierApplied = true;
+		}
+		return Wire::ReadyAcknowledgement{Identity, MessageSequence, Barrier};
+	}
+
 	[[nodiscard]] std::expected<Wire::ReadyAcknowledgement, ClientCatchUpError> CompleteBarrier(JoinIdentity Peer, JoinBarrier Barrier,
 		u32 MessageSequence, IClientCatchUpApplier& Applier) noexcept;
 	[[nodiscard]] std::expected<void, ClientCatchUpError> Rebase(JoinIdentity Peer, BaselineBoundary Replacement) noexcept;

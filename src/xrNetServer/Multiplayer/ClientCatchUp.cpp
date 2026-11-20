@@ -82,35 +82,7 @@ std::expected<void, ClientCatchUpError> ClientCatchUp::DeclareBarrier(JoinIdenti
 std::expected<Wire::ReadyAcknowledgement, ClientCatchUpError> ClientCatchUp::CompleteBarrier(JoinIdentity Peer, JoinBarrier Barrier,
 	u32 MessageSequence, IClientCatchUpApplier& Applier) noexcept
 {
-	if (const auto Error = CheckScope(Peer, Barrier.BaselineId))
-	{
-		return std::unexpected(*Error);
-	}
-	if (!DeclaredBarrier)
-	{
-		return std::unexpected(ClientCatchUpError::InvalidState);
-	}
-	if (*DeclaredBarrier != Barrier)
-	{
-		return std::unexpected(ClientCatchUpError::BarrierMismatch);
-	}
-	if (!AppliedWatermark)
-	{
-		return std::unexpected(ClientCatchUpError::BaselineNotApplied);
-	}
-	if (!BarrierApplied)
-	{
-		if (*AppliedWatermark != Barrier.EventWatermark)
-		{
-			return std::unexpected(ClientCatchUpError::BarrierPending);
-		}
-		if (!Applier.ApplyBarrier(Peer, Barrier))
-		{
-			return std::unexpected(ClientCatchUpError::ApplicationFailed);
-		}
-		BarrierApplied = true;
-	}
-	return Wire::ReadyAcknowledgement{Identity, MessageSequence, Barrier};
+	return CompleteBarrier(Peer, Barrier, MessageSequence, [&]() noexcept { return Applier.ApplyBarrier(Peer, Barrier); });
 }
 
 std::expected<void, ClientCatchUpError> ClientCatchUp::Rebase(JoinIdentity Peer, BaselineBoundary Replacement) noexcept

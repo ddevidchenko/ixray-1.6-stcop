@@ -1,10 +1,9 @@
 #pragma once
 
-#include "CombatantReplicas.h"
+#include "CombatantCaptureApply.h"
 #include "../../xrNetServer/Multiplayer/ClientCatchUp.h"
 #include "../../xrNetServer/Multiplayer/CombatantBaseline.h"
 
-#include <algorithm>
 #include <expected>
 #include <variant>
 
@@ -36,14 +35,7 @@ using CombatantBaselineImportError = std::variant<ClientCatchUpError, ReplicaBas
 	std::expected<void, ReplicaBaselineError> ReplicasApplied;
 	const auto Confirmed = CatchUp.ApplyBaseline(Baseline.GetIdentity(), Boundary, [&]() noexcept
 	{
-		const auto Records = Baseline.GetRecords();
-		xr_array<ReplicaBodyIdentity, MaxCombatants> Bodies;
-		std::ranges::transform(Records, Bodies.begin(), [](const Wire::CombatantSnapshot& Record) noexcept
-		{
-			const auto& State = Wire::GetPublicCombatantState(Record);
-			return ReplicaBodyIdentity{State.Participant, State.Body};
-		});
-		ReplicasApplied = Replicas.ReplaceFromBaseline(World, Boundary.CaptureTick, xr_span(Bodies).first(Records.size()), [&]() noexcept
+		ReplicasApplied = Detail::ApplyCombatantCapture(Replicas, World, Boundary.CaptureTick, Baseline.GetRecords(), [&]() noexcept
 		{
 			return Applier.ApplyBaseline(Baseline);
 		});

@@ -487,7 +487,13 @@ The [peer runbook](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch
 
 - Assign bound tag `0x0c` for canonical roster chunks carrying the exact declared barrier. Reuse the baseline storage budget and assembler, then return independently owned typed state. [Chunk layout](multiplayer-implementation-contracts.md#public-combatant-barrier-chunks), [staging contract](multiplayer-implementation-contracts.md#client-public-combatant-barrier-staging).
 - **Mac checks passed / Windows pending.** The independent golden frame and reviewed tests failed on base `4b28bd7e6`. Coverage includes exact wire sizes, malformed and aliased buffers, empty rosters, invalid or conflicting fragments, stale scopes, bounded storage, and a maximum-size transfer arriving out of order. Review reproduced an impossible record byte total reserving conflicting metadata ahead of a valid transfer. The corrected suite passed all 37 portable tests in Debug, Release, and ASan/UBSan on macOS arm64. Fixtures use literal inputs and no game assets. [Barrier tests](../../src/test/multiplayer/portable/CombatantBarrierTests.cpp).
-- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) records a passing `combatant-barrier.xml` on Windows. Barrier world application and transport scheduling remain open.
+- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) records a passing `combatant-barrier.xml` on Windows. Public barrier application follows in MP-037o. Transport scheduling remains open.
+
+#### MP-037o — Apply the staged public barrier before acknowledging readiness
+
+- Require the exact staged barrier and applied event frontier. Commit the roster through the shared replica transaction, seed the barrier tick, and generate a retryable acknowledgement after application. [Application contract](multiplayer-implementation-contracts.md#public-combatant-barrier-application).
+- **Mac checks passed / Windows pending.** The first application and reviewed suite failed on base `2c6e12f8d`. Coverage includes early and foreign snapshots, failed callback and retry, a real catch-up despawn, live packet ordering, rebase, empty wrapped captures, and duplicate acknowledgement after later updates. The portable handoff passes the actual encoded acknowledgement to the server join tracker. All 38 portable tests passed in Debug, Release, and ASan/UBSan on macOS arm64. Fixtures use literal inputs and no game assets. [Application tests](../../src/test/multiplayer/portable/CombatantBarrierApplyTests.cpp).
+- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) records a passing `combatant-barrier-apply.xml` on Windows. The engine world adapter and live transport scheduling remain open.
 
 ### MP-038 — Make death, score, round flow, and spectator state authoritative
 

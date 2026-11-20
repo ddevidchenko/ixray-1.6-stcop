@@ -165,6 +165,14 @@ An `AdmissionReject` uses envelope tag `0x03` during unbound admission. The serv
 
 All other reason bytes are reserved and rejected. Client presentation maps these codes to local text. When peers have no shared envelope version, connection failure diagnostics surface the incompatibility. MP-022 owns the state transitions and selects the reason. [Codec](../../src/xrNetServer/Multiplayer/AdmissionReject.h), [independent golden datagram](../../src/test/multiplayer/portable/AdmissionRejectTests.cpp).
 
+### Pending admission decision
+
+The connection owner creates one pending tracker with an absolute monotonic deadline, initially 10 seconds after connect. A hello received at or after the deadline expires before validation. The same deadline applies while waiting for a slot. Expiry reports a reason once when the peer enters `Closing`.
+
+The tracker validates the complete unbound hello and compares build, content, and rules IDs in that order against server requirements. A protected server requires nonempty credentials and calls its verifier with the borrowed bytes. An open server skips credential verification. The first verified hello produces a slot request carrying the message sequence and borrowed display name. The slot owner reserves capacity and assigns the connection identity before it can send a welcome.
+
+The peer remains `AwaitingSlot` if another hello arrives before expiry. Such a hello yields `InvalidState` for diagnostics and leaves the original request intact. The initial terminal failure tells the caller to send one rejection. Calls after `Closing` yield `InvalidState` without another rejection. [Portable tracker](../../src/xrNetServer/Multiplayer/PendingAdmission.h), [deterministic tests](../../src/test/multiplayer/portable/PendingAdmissionTests.cpp).
+
 ### Input and discrete actions
 
 Each command includes `u32 CommandSequence`, `u32 ClientTick`, signed `i8` forward/right input, `u16` yaw, `i16` pitch and a `u16` held-button mask. Declare direction normalization and button meanings in MP-030's golden fixtures. Yaw covers a full turn; pitch is bounded to the shared controller's allowed range. A client timestamp is evidence for bounded scheduling, not permission to choose an arbitrary execution/rewind time.

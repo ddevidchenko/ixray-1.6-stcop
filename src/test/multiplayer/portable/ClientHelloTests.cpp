@@ -124,7 +124,7 @@ static bool CheckEnvelopeAndTruncation()
 	Passed &= ExpectError("welcome tag cannot decode as hello", DecodeClientHello(WrongType), ClientHelloError::WrongMessageType);
 	auto WrongVersion = std::to_array(Golden);
 	WrongVersion[4] = 2;
-	Passed &= ExpectError("unsupported envelope version cannot decode as hello", DecodeClientHello(WrongVersion), ClientHelloError::InvalidEnvelope);
+	Passed &= ExpectError("unsupported envelope version cannot decode as hello", DecodeClientHello(WrongVersion), ClientHelloError::UnsupportedVersion);
 
 	std::array<u8, sizeof(Golden) + 1> Trailing{};
 	std::ranges::copy(Golden, Trailing.begin());

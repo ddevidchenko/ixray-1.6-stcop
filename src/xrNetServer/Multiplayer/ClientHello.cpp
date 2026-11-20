@@ -18,7 +18,7 @@ std::expected<ClientHello, ClientHelloError> DecodeClientHello(xr_span<const u8>
 	const auto Frame = DecodeEnvelope(Bytes);
 	if (!Frame)
 	{
-		return std::unexpected(ClientHelloError::InvalidEnvelope);
+		return std::unexpected(Frame.error() == EnvelopeError::UnsupportedVersion ? ClientHelloError::UnsupportedVersion : ClientHelloError::InvalidEnvelope);
 	}
 	const auto& Header = Frame->Header;
 	if (Header.Type != MessageType::ClientHello)

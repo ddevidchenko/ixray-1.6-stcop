@@ -9,6 +9,7 @@ namespace Multiplayer::Wire
 enum class ClientHelloError
 {
 	InvalidEnvelope,
+	UnsupportedVersion,
 	WrongMessageType,
 	BoundHello,
 	TruncatedPayload,

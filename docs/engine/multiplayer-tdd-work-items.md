@@ -252,6 +252,7 @@ The [peer runbook](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch
 - **Kind / runs / depends:** TDD; `P` where extracted, `W`; MP-003, MP-010, MP-020.
 - **Red:** zero/short headers, nested length beyond remaining bytes, advertised output above limit, failed/short decompression and truncated merged packets are rejected. Later malformed data must not partially mutate the world through earlier records in an invalid envelope.
 - **Green / seam:** validate before pointer arithmetic, decompression, dispatch, or allocations in [NET_Common.cpp](../../src/xrNetServer/NET_Common.cpp) and [NET_Compressor.cpp](../../src/xrNetServer/NET_Compressor.cpp). Decode/validate an envelope before applying it; preserve intentionally retained legacy/SP formats.
+- **Refactoring proposed from source review.** Separate legacy framing and record validation from decompression. The default uncompressed envelope and the optional LZO path need distinct fixtures. Define the compressed length and checksum over transmitted bytes, then wrap bounded decompression with an explicit failure result. Record compressed interoperability in the Windows characterization. [Legacy receive](../../src/xrNetServer/NET_Common.cpp), [compression](../../src/xrNetServer/NET_Compressor.cpp).
 - [ ] **Complete when:** captured valid fixtures still work, the negative corpus cannot crash or exceed allocation limits, and Shipping rejection does not depend on assertions.
 
 ### MP-022 — Enforce admission as a state machine
@@ -366,6 +367,12 @@ The [peer runbook](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch
 - Copy connect, packet, and disconnect events into a bounded FIFO using the native handle and locally assigned transport generation. Drain at most the owner's event budget. The first overflow invalidates the inbox and requires endpoint shutdown and peer cleanup before reuse. [Inbox](../../src/xrNetServer/Multiplayer/TransportInbox.h), [GNS worker ingress](../../src/xrNetServer/Multiplayer/GnsReceive.h).
 - **Mac checks passed / Windows pending.** Portable coverage includes reused handles, copied bytes, a saturated queue, concurrent production, and bounded drains. The real GNS fixture queues connect and disconnect callbacks and copies packet data from the owned receive worker.
 - [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) records passing `transport-inbox.xml` and `gns-loopback.xml` on Windows. Installing the inbox at the loading and simulation boundaries remains under MP-026.
+
+#### MP-026b — Route inbox events through the game owner
+
+- **Depends on MP-026a and MP-025c.** Bind one fixed peer table to each version-one endpoint inbox. Register an outbound attempt before callback pumping. Apply packet and close events only for the matching local connection generation. Consume stale events within the same drain budget. Reject just the newcomer at peer capacity. A conflicting live handle or inbox overflow requires closing the endpoint and retiring its remaining peers. [Event router](../../src/xrNetServer/Multiplayer/TransportEventRouter.h).
+- **Mac checks passed / Windows pending.** Portable tests cover ordering, delayed confirmations, early close, stale generations, peer capacity, drain budgets, and cleanup after an endpoint fault. The native GNS fixture uses the same owner router for hosted connect, packet, and close events in both directions.
+- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) records passing `transport-event-router.xml` and `gns-loopback.xml` on Windows. Wiring the version-one endpoint into game loading and simulation remains under MP-026.
 
 ### MP-027 — Separate traffic classes and handle backpressure
 

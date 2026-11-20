@@ -4,6 +4,7 @@
 #include "../../../xrNetServer/Multiplayer/GnsEndpoint.h"
 #include "../../../xrNetServer/Multiplayer/GnsRuntime.h"
 #include "../../../xrNetServer/Multiplayer/GnsReceive.h"
+#include "../../../xrNetServer/Multiplayer/TransportEventRouter.h"
 
 #include <algorithm>
 #include <array>
@@ -449,6 +450,7 @@ private:
 };
 
 using EventInbox = TransportInbox<InboxLock, InboxGuard>;
+using EventRouter = TransportEventRouter<InboxLock, InboxGuard>;
 using CallbackPump = GnsCallbackPump<EventInbox>;
 
 struct ReceiveFixture
@@ -594,10 +596,17 @@ static bool CheckPolledNativeEndpoints()
 	return Standalone && SteamNetworkingSockets() == nullptr;
 }
 
-static std::optional<TransportEvent> NextEvent(EventInbox& Inbox)
+static std::optional<TransportEvent> NextEvent(EventRouter& Router)
 {
-	const auto Next = Inbox.Pop();
-	return Next ? *Next : std::nullopt;
+	std::optional<TransportEvent> Event;
+	const auto Drained = Router.Drain(1, [&](const TransportEvent& Next, TransportEventDelivery Delivery) noexcept
+	{
+		if (Delivery == TransportEventDelivery::Deliver)
+		{
+			Event = Next;
+		}
+	});
+	return Drained ? Event : std::nullopt;
 }
 
 static bool CheckPump(CallbackPump& Pump, const CallbackPump::ServerRoute* Server, const CallbackPump::ClientRoute* Client)
@@ -607,14 +616,14 @@ static bool CheckPump(CallbackPump& Pump, const CallbackPump::ServerRoute* Serve
 }
 
 static bool CheckClose(CallbackPump& Pump, const CallbackPump::ServerRoute* Server, const CallbackPump::ClientRoute* Client,
-	EventInbox& Inbox, TransportPeer Peer, u32 Reason)
+	EventRouter& Router, TransportPeer Peer, u32 Reason)
 {
 	std::optional<TransportEvent> Closed;
 	bool Pumped = true;
 	WaitFor([&]
 	{
 		Pumped = CheckPump(Pump, Server, Client);
-		Closed = NextEvent(Inbox);
+		Closed = NextEvent(Router);
 		return !Pumped || Closed.has_value();
 	});
 	return Pumped && Closed && Closed->Kind == TransportEventKind::Disconnected && Closed->Peer == Peer && Closed->Reason == Reason;
@@ -636,6 +645,10 @@ static bool CheckRealEndpoints(CloseOrder Order)
 	xr_array<TransportEvent, 3> ClientStorage;
 	EventInbox ServerInbox(ServerStorage);
 	EventInbox ClientInbox(ClientStorage);
+	xr_array<TransportConnectionSlot, 1> ServerPeers;
+	xr_array<TransportConnectionSlot, 1> ClientPeers;
+	EventRouter ServerRouter(ServerInbox, ServerPeers);
+	EventRouter ClientRouter(ClientInbox, ClientPeers);
 	ReceiveFixture ServerReceive{ServerInbox};
 	ReceiveFixture ClientReceive{ClientInbox};
 	GnsEndpoint<ProcessRuntime::Lease> Server;
@@ -674,6 +687,11 @@ static bool CheckRealEndpoints(CloseOrder Order)
 	const CallbackPump::ServerRoute ServerRoute{Server.Get(), ServerInbox};
 	const CallbackPump::ClientRoute ClientRoute{Client.Get(), ClientInbox, Options->Generation};
 	const TransportPeer Local{ClientRoute.Endpoint.Connection, static_cast<u64>(Options->Generation)};
+	if (ClientRouter.RegisterOutbound(Local) != TransportRegistration::Tracked)
+	{
+		std::fputs("the loading owner must register the native outbound attempt before polling\n", stderr);
+		return false;
+	}
 	std::optional<TransportEvent> Accepted;
 	std::optional<TransportEvent> Connected;
 	bool Pumped = true;
@@ -682,11 +700,11 @@ static bool CheckRealEndpoints(CloseOrder Order)
 		Pumped = CheckPump(Pump, &ServerRoute, &ClientRoute);
 		if (!Accepted)
 		{
-			Accepted = NextEvent(ServerInbox);
+			Accepted = NextEvent(ServerRouter);
 		}
 		if (!Connected)
 		{
-			Connected = NextEvent(ClientInbox);
+			Connected = NextEvent(ClientRouter);
 		}
 		return !Pumped || (Accepted && Connected);
 	});
@@ -714,11 +732,11 @@ static bool CheckRealEndpoints(CloseOrder Order)
 	{
 		if (!ServerPacket)
 		{
-			ServerPacket = NextEvent(ServerInbox);
+			ServerPacket = NextEvent(ServerRouter);
 		}
 		if (!ClientPacket)
 		{
-			ClientPacket = NextEvent(ClientInbox);
+			ClientPacket = NextEvent(ClientRouter);
 		}
 		return (ServerPacket && ClientPacket) || ServerReceive.Failed.load() || ClientReceive.Failed.load();
 	});
@@ -744,7 +762,7 @@ static bool CheckRealEndpoints(CloseOrder Order)
 	else if (Order == CloseOrder::ClientFirst)
 	{
 		Client.Close();
-		if (!CheckClose(Pump, &ServerRoute, nullptr, ServerInbox, Remote, k_ESteamNetConnectionEnd_App_Generic))
+		if (!CheckClose(Pump, &ServerRoute, nullptr, ServerRouter, Remote, k_ESteamNetConnectionEnd_App_Generic))
 		{
 			std::fputs("closing the client must publish the server peer's disconnection with its original generation and reason\n", stderr);
 			return false;
@@ -754,7 +772,7 @@ static bool CheckRealEndpoints(CloseOrder Order)
 	{
 		constexpr int Reason = k_ESteamNetConnectionEnd_App_Min + 42;
 		if (!Sockets.CloseConnection(Remote.Handle, Reason, nullptr, false) ||
-			!CheckClose(Pump, &ServerRoute, &ClientRoute, ClientInbox, Local, Reason))
+			!CheckClose(Pump, &ServerRoute, &ClientRoute, ClientRouter, Local, Reason))
 		{
 			std::fputs("closing the accepted server peer must deliver its reason to the client's inbox\n", stderr);
 			return false;
@@ -762,6 +780,17 @@ static bool CheckRealEndpoints(CloseOrder Order)
 	}
 	Client.Close();
 	Server.Close();
+	std::optional<TransportPeer> ServerRetired;
+	std::optional<TransportPeer> ClientRetired;
+	ServerRouter.ResetAfterClose([&](TransportPeer Peer) noexcept { ServerRetired = Peer; });
+	ClientRouter.ResetAfterClose([&](TransportPeer Peer) noexcept { ClientRetired = Peer; });
+	const std::optional<TransportPeer> ExpectedServer = Order == CloseOrder::ClientFirst ? std::nullopt : std::optional{Remote};
+	const std::optional<TransportPeer> ExpectedClient = Order == CloseOrder::ServerPeerFirst ? std::nullopt : std::optional{Local};
+	if (ServerRetired != ExpectedServer || ClientRetired != ExpectedClient)
+	{
+		std::fputs("owner cleanup must retire only the peers that did not receive a remote close\n", stderr);
+		return false;
+	}
 	return SteamNetworkingSockets() == nullptr;
 }
 

@@ -186,6 +186,7 @@ bool Run();
 namespace TransportInboxTests
 {
 bool Run();
+bool RunRouter();
 }
 
 namespace SerialSequenceTests
@@ -395,6 +396,10 @@ int main(int ArgumentCount, char** Arguments)
 	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--combatant-barrier-apply") == 0)
 	{
 		return CombatantBarrierApplyTests::Run() ? EXIT_SUCCESS : EXIT_FAILURE;
+	}
+	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--transport-event-router") == 0)
+	{
+		return TransportInboxTests::RunRouter() ? EXIT_SUCCESS : EXIT_FAILURE;
 	}
 	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--transport-inbox") == 0)
 	{

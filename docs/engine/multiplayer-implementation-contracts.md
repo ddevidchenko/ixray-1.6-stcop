@@ -90,6 +90,12 @@ The endpoint inbox uses a fixed number of caller-owned slots. Each slot holds on
 
 When enqueueing would exceed capacity, the inbox discards its backlog and reports overflow on subsequent reads and writes. The game owner closes the affected endpoint, retires all its peers, and then resets the inbox. This recovery also applies if an overflowing event is a disconnect. [Bounded inbox](../../src/xrNetServer/Multiplayer/TransportInbox.h), [GNS receive bridge](../../src/xrNetServer/Multiplayer/GnsReceive.h).
 
+### Owner-side transport event routing
+
+The game owner binds each version-one endpoint inbox to a fixed table of local transport peers. The loading owner registers the outbound handle and generation before callback pumping. A matching disconnect completes that attempt even if native connect never arrived. Packets require a confirmed connection. Existing pending attempts may confirm in native order. Unsolicited connect events for a listener are published in generation assignment order.
+
+The owner consumes stale and duplicate events within the same budget as delivered events. A full peer table asks the owner to close the newcomer without admitting it. Keep the highest observed generation across a rejected connect, retirement, and endpoint reopen. A newer generation competing with a live handle is an endpoint fault. Inbox overflow and handle conflict stop the drain. After closing the endpoint and stopping its producers, retire each remaining active or pending peer once and reset the inbox. An event already popped can finish before the owner sees a later producer overflow. [Owner router](../../src/xrNetServer/Multiplayer/TransportEventRouter.h), [routing checks](../../src/test/multiplayer/portable/TransportInboxTests.cpp).
+
 ## 3. Version-one wire contract
 
 Use explicit little-endian primitives, UTF-8 length-prefixed strings and checked reads/writes. A wire table is not a packed C++ structure. Freeze numeric message tags, field order and independent golden byte vectors in MP-020 before implementing each message family; update this contract alongside those vectors.

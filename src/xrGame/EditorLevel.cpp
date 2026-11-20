@@ -63,6 +63,10 @@ bool CLevelEditor::net_Start(const char* op_server, const char* op_client)
 	}
 
 	connected_to_server = Connect2Server(*m_caClientOptions);
+	while (!PollLoadingClockSync())
+	{
+		Sleep(1);
+	}
 
 	if (connected_to_server)
 	{
@@ -128,12 +132,6 @@ bool CLevelEditor::net_Start(const char* op_server, const char* op_client)
 			CTimer	timer_sync;	timer_sync.Start();
 			while (!net_isCompleted_Connect())	Sleep(5);
 			Msg("* connection sync: %d ms", timer_sync.GetElapsed_ms());
-
-			while (!net_isCompleted_Sync())
-			{
-				ClientReceive();
-				Sleep(5);
-			}
 		}
 	}
 

@@ -4,40 +4,14 @@
 #include "ClientConnectionOptions.h"
 #include "IClientStatistic.h"
 #include "INetQueue.h"
+#include "Multiplayer/LegacyClockSync.h"
+
+#include <atomic>
 
 struct ip_address;
 
-// -----------------------------------------------------------------------------
-
-class XRNETSERVER_API syncQueue
-{
-	static const u32 syncQueueSize = 512;
-
-	u32				table[syncQueueSize];
-	u32				write;
-	u32				count;
-public:
-	syncQueue() { clear(); }
-
-	IC void			push(u32 value)
-	{
-		table[write++] = value;
-		if (write == syncQueueSize)	write = 0;
-
-		if (count <= syncQueueSize)	count++;
-	}
-	IC u32*		begin() { return table; }
-	IC u32*		end() { return table + count; }
-	IC u32		size() { return count; }
-	IC void     clear() { write = 0; count = 0; }
-};
-
-// -----------------------------------------------------------------------------
-
 class XRNETSERVER_API BaseClient : public MultipacketReciever, private MultipacketSender
 {
-	friend void client_sync_thread(void* P);
-
 public:
 	enum ConnectionState
 	{
@@ -48,21 +22,20 @@ public:
 
 private:
 	ClientID            net_ClientID;
+	xrCriticalSection ClockSyncSection;
+	Multiplayer::LegacyClockSync ClockSync;
 
 protected:
-	syncQueue           net_DeltaArray;
-
 	u32                 net_Time_LastUpdate;
-	s32                 net_TimeDelta;
-	s32                 net_TimeDelta_Calculated;
-	s32                 net_TimeDelta_User;
+	std::atomic<s32>    net_TimeDelta{0};
+	std::atomic<s32>    net_TimeDelta_User{0};
 
 	GameDescriptionData m_game_description;
 	CTimer*             device_timer;
 
-	ConnectionState			net_Connected;
+	std::atomic<ConnectionState> net_Connected{EnmConnectionWait};
 	bool                net_Syncronised = false;
-	bool                net_Disconnected = true;
+	std::atomic<bool>   net_Disconnected{true};
 
 	INetQueue           net_Queue;
 	IClientStatistic    net_Statistic;
@@ -84,10 +57,8 @@ protected:
 	virtual bool        CreateConnection(ClientConnectionOptions& opt) { return true; };
 	virtual void        DestroyConnection() {};
 
-	bool                Sync_Thread();
-	void                Sync_Average();
 	virtual bool        GetPendingMessagesCount(DWORD& dwPending) { return true; };
-	virtual bool        SendPingMessage(MSYS_PING& clPing) { return true; };
+	virtual Multiplayer::ClockProbeResult TrySendClockProbe(MSYS_PING&) { return Multiplayer::ClockProbeResult::Failed; }
 
 	virtual	void        SendTo_LL(void* data, u32 size, u32 dwFlags = DPNSEND_GUARANTEED, u32 dwTimeout = 0) {}
 
@@ -110,6 +81,7 @@ public:
 
 	bool                net_IsSyncronised() const { return net_Syncronised; };
 	void                net_Syncronize();
+	[[nodiscard]] Multiplayer::LegacyClockSyncStatus PollClockSync();
 
 	// receive
 	IC void							StartProcessQueue() { net_Queue.Lock(); }; // WARNING ! after Start mast be End !!! <-

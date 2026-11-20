@@ -277,6 +277,7 @@ protected:
 
 	bool				net_start_client1				();
 	bool				net_start_client2				();
+	bool				PollLoadingClockSync();
 	bool				net_start_client3				();
 	bool				net_start_client4				();
 	bool				net_start_client5				();

@@ -436,26 +436,7 @@ bool CLevel::Connect2Server(const char* options)
 		return false		;
 	};
 
-	
-	if(psNET_direct_connect)
-		net_Syncronised = true;
-	else
-		net_Syncronize	();
-
-	while (!net_IsSyncronised()) {
-		Sleep(1);
-		if (net_Disconnected)
-		{
-			OnConnectRejected	();	
-			Disconnect			();
-			return false;
-		}
-	};
-
-	//---------------------------------------------------------------------------
-	//P.w_begin	(M_CLIENT_REQUEST_CONNECTION_DATA);
-	//Send		(P, net_flags(true, true, true, true));
-	//---------------------------------------------------------------------------
+	net_Syncronize();
 	return true;
 };
 

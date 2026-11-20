@@ -335,19 +335,35 @@ void SteamNetClient::SendTo_LL(void * data, u32 size, u32 dwFlags, u32 dwTimeout
 	}
 }
 
-bool SteamNetClient::SendPingMessage(MSYS_PING & clPing)
+Multiplayer::ClockProbeResult SteamNetClient::TrySendClockProbe(MSYS_PING& Ping)
 {
-	R_ASSERT(m_pInterface);
+	using Multiplayer::ClockProbeResult;
+	if (!csConnection.TryEnter())
+	{
+		return ClockProbeResult::Deferred;
+	}
+	const xr_scope_exit Unlock([this] { csConnection.Leave(); });
 
-	EResult result = m_pInterface->SendMessageToConnection(
-		m_hConnection,
-		(void*)(&clPing),
-		sizeof(clPing),
-		k_nSteamNetworkingSend_UnreliableNoNagle,
-		nullptr
-	);
+	if (net_isDisconnected() || !m_pInterface || m_hConnection == k_HSteamNetConnection_Invalid)
+	{
+		return ClockProbeResult::Failed;
+	}
+	DWORD Pending = 0;
+	if (!GetPendingMessagesCount(Pending))
+	{
+		return ClockProbeResult::Failed;
+	}
+	if (Pending != 0)
+	{
+		return ClockProbeResult::Deferred;
+	}
 
-	return result == k_EResultOK;
+	const auto Sent = m_pInterface->SendMessageToConnection(m_hConnection, &Ping, sizeof(Ping), k_nSteamNetworkingSend_UnreliableNoNagle, nullptr);
+	if (Sent == k_EResultLimitExceeded)
+	{
+		return ClockProbeResult::Deferred;
+	}
+	return Sent == k_EResultOK ? ClockProbeResult::Sent : ClockProbeResult::Failed;
 }
 
 #pragma endregion

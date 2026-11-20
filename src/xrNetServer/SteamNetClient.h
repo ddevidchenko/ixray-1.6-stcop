@@ -49,7 +49,7 @@ protected:
 	virtual	void	SendTo_LL(void* data, u32 size, u32 dwFlags = DPNSEND_GUARANTEED, u32 dwTimeout = 0) override;
 
 	virtual bool	GetPendingMessagesCount(DWORD& dwPending) override;
-	virtual bool	SendPingMessage(MSYS_PING& clPing) override;
+	Multiplayer::ClockProbeResult TrySendClockProbe(MSYS_PING& Ping) override;
 
 public:
 	virtual	bool	GetServerAddress(ip_address& pAddress, DWORD* pPort)  override;

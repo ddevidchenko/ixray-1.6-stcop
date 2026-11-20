@@ -314,7 +314,7 @@ The [peer runbook](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch
 #### MP-024a — Protect the process runtime with endpoint leases
 
 - Give the GNS owner one serialized start/shutdown path and movable endpoint leases. Preserve the initial process identity while leased. Release the library after the last lease. [Runtime](../../src/xrNetServer/Multiplayer/GnsRuntime.h).
-- **Mac checks passed / Windows pending.** Real GNS loopback exercises the shared interface after a server lease releases, reversed close order, move assignment, and repeated startup. Injected failures check init failure, missing interface, and retry. The live endpoint switch depends on owned shutdown for both the receive worker and the legacy clock-sync thread.
+- **Mac checks passed / Windows pending.** Real GNS loopback exercises the shared interface after a server lease releases, reversed close order, move assignment, and repeated startup. Injected failures check init failure, missing interface, and retry. The live endpoint switch depends on owned receive shutdown and callback routing under MP-025.
 - [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) records a passing `gns-loopback.xml` on Windows with the shared runtime.
 
 ### MP-025 — Own endpoint resources and unwind every creation failure
@@ -328,7 +328,13 @@ The [peer runbook](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch
 
 - Acquire an endpoint lease before creating a listener and poll group or a client connection. A failed open releases acquired handles and the lease. Close requests worker stop, joins it, and then releases its GNS handles. [Endpoint owner](../../src/xrNetServer/Multiplayer/GnsEndpoint.h).
 - **Mac checks passed / Windows pending.** The GNS fixture checks failure at each native creation step, worker creation failure, duplicate open, repeated close, and shutdown while a worker is running. It also connects the owned endpoints over loopback and verifies that the client lease survives server close.
-- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) records the endpoint cases in `gns-loopback.xml` on Windows. Legacy startup and the separate clock-sync thread are still outside this owner.
+- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) records the endpoint cases in `gns-loopback.xml` on Windows. The legacy receive path still needs the callback ownership refactor before switching to these endpoints.
+
+#### MP-025b — Advance legacy clock synchronization from the loading and frame owner
+
+- **Depends on:** MP-010, MP-011a. This removes the detached clock-sync worker before the endpoint cutover under MP-025.
+- **Mac checks passed / Windows pending.** A portable test drives a single in-flight MSYS ping, queue backpressure, send failure, cancellation and restart, stale replies, deadline fallback, and wire clock wrap. Remote loading polls one step per turn after connection acceptance. The normal frame drives console resync. Direct single-player completes without a probe. [Clock state](../../src/xrNetServer/Multiplayer/LegacyClockSync.h), [client driver](../../src/xrNetServer/BaseClient.cpp), [loading stage](../../src/xrGame/Level_network_start_client.cpp).
+- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) records a passing `legacy-clock-sync.xml` on Windows and the [two-client check](multiplayer-checkpoints/w0.md#run-the-two-client-check) verifies join and reconnect on the integrated engine.
 
 ### MP-026 — Apply network events only at the simulation boundary
 

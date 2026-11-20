@@ -612,6 +612,7 @@ void CLevel::OnFrame()
 	}
 	else {
 
+		(void)PollClockSync();
 		Device.Statistic->netClient1.Begin();
 
 		ClientReceive();

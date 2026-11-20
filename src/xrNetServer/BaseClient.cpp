@@ -9,17 +9,12 @@ XRNETSERVER_API int		psNET_ClientUpdate = 30; // FPS
 XRNETSERVER_API int		psNET_ClientPending = 2;
 XRNETSERVER_API char	psNET_Name[32] = "Player";
 
-static const int syncSamples = 0;
-
 //------------------------------------------------------------------------------
 BaseClient::BaseClient(CTimer * timer) : net_Statistic(timer)
 {
 	device_timer = timer;
 
-	net_TimeDelta_User = 0;
 	net_Time_LastUpdate = 0;
-	net_TimeDelta = 0;
-	net_TimeDelta_Calculated = 0;
 }
 
 // -----------------------------------------------------------------------------
@@ -101,6 +96,12 @@ bool BaseClient::Connect(const char* options)
 {
 	R_ASSERT(options);
 
+	{
+		xrCriticalSectionGuard Locked(ClockSyncSection);
+		ClockSync.Cancel();
+	}
+	net_Syncronised = false;
+	net_TimeDelta = 0;
 	net_Disconnected = false;
 
 	if (!psNET_direct_connect)
@@ -109,8 +110,6 @@ bool BaseClient::Connect(const char* options)
 		ParseConnectionOptions(options, connectOpt);
 
 		net_Connected = EnmConnectionWait;
-		net_Syncronised = false;
-		net_Disconnected = false;
 
 		bool success = CreateConnection(connectOpt);
 		if (!success)
@@ -121,8 +120,6 @@ bool BaseClient::Connect(const char* options)
 
 	} //psNET_direct_connect
 
-	// Sync	
-	net_TimeDelta = 0;
 	return true;
 }
 
@@ -130,7 +127,10 @@ void BaseClient::Disconnect()
 {
 	net_Connected = EnmConnectionWait;
 	net_Syncronised = false;
-
+	{
+		xrCriticalSectionGuard Locked(ClockSyncSection);
+		ClockSync.Cancel();
+	}
 	DestroyConnection();
 }
 
@@ -179,130 +179,83 @@ void	BaseClient::Flush_Send_Buffer()
 // -----------------------------------------------------------------------------
 
 #pragma region time correct
-void client_sync_thread(void* P)
-{
-	Platform::SetCurrentThreadHighPriority();
-	BaseClient*	C = (BaseClient*)P;
-	C->Sync_Thread();
-}
-
 void BaseClient::net_Syncronize()
 {
-	net_Syncronised = false;
-	net_DeltaArray.clear();
-	thread_spawn(client_sync_thread, "network-time-sync", 0, this);
+	net_Syncronised = psNET_direct_connect;
+	xrCriticalSectionGuard Locked(ClockSyncSection);
+	if (psNET_direct_connect)
+	{
+		ClockSync.Cancel();
+		return;
+	}
+	ClockSync.Start(Multiplayer::LegacyClockSync::Clock::now());
 }
 
-bool BaseClient::Sync_Thread()
+Multiplayer::LegacyClockSyncStatus BaseClient::PollClockSync()
 {
-	MSYS_PING clPing;
+	using Multiplayer::LegacyClockSync;
+	using Multiplayer::LegacyClockSyncStatus;
 
-	//***** Ping server
-	net_DeltaArray.clear();
-	R_ASSERT(IsConnectionInit());
-
-	for (; IsConnectionInit() && !net_Disconnected; )
+	// Only the loading or frame owner changes the state. The receive worker can latch a reply.
+	const auto Status = ClockSync.GetStatus();
+	if (Status != LegacyClockSyncStatus::Pending)
 	{
-		// Waiting for queue empty state
-		if (net_Syncronised)
+		return Status;
+	}
+
+	std::optional<u32> Probe;
+	{
+		xrCriticalSectionGuard Locked(ClockSyncSection);
+		if (net_isDisconnected())
 		{
-			break;
+			ClockSync.Cancel();
+			return LegacyClockSyncStatus::Idle;
 		}
 
-		else {
-			DWORD dwPending = 0;
-			do 
-			{
-				GetPendingMessagesCount(dwPending);
-				std::this_thread::sleep_for(std::chrono::milliseconds(1));
-			}
-			while (dwPending);
-		}
-
-		// Construct message
-		clPing.sign1 = 0x12071980;
-		clPing.sign2 = 0x26111975;
-		clPing.dwTime_ClientSend = TimerAsync(device_timer);
-
-		// Send it
-		try
+		Probe = ClockSync.Poll(LegacyClockSync::Clock::now(), TimerAsync(device_timer));
+		if (ClockSync.GetStatus() == LegacyClockSyncStatus::Ready)
 		{
-			if (!IsConnectionInit() || net_Disconnected)
-				break;
-
-			if (!SendPingMessage(clPing))
+			if (const auto Offset = ClockSync.GetOffset())
 			{
-				Msg("* DirectPlayClient: SyncThread: EXIT. (failed to send - disconnected?)");
-				break;
+				net_TimeDelta = *Offset;
 			}
-		}
-		catch (...)
-		{
-			Msg("* CLIENT: SyncThread: EXIT. (failed to send - disconnected?)");
-			break;
-		}
-
-		// Waiting for reply-packet to arrive
-		if (!net_Syncronised)
-		{
-			u32	old_size = net_DeltaArray.size();
-			u32	timeBegin = TimerAsync(device_timer);
-			while ((net_DeltaArray.size() == old_size) && (TimerAsync(device_timer) - timeBegin < 5000))
-			{
-				Sleep(1);
-			}
-
-			if (net_DeltaArray.size() >= syncSamples) 
-			{
-				net_Syncronised = true;
-				net_TimeDelta = net_TimeDelta_Calculated;
-				return true;
-			}
+			net_Syncronised = true;
 		}
 	}
 
-	return false;
-}
-
-void BaseClient::Sync_Average()
-{
-	//***** Analyze results
-	s64	 summary_delta = 0;
-	s32	 size = net_DeltaArray.size();
-	u32* I = net_DeltaArray.begin();
-	u32*  E = I + size;
-
-	for (; I != E; I++)		
-		summary_delta += *((int*)I);
-
-	s64 frac = s64(summary_delta) % s64(size);
-	if (frac < 0)				frac = -frac;
-	summary_delta /= s64(size);
-	if (frac > s64(size / 2))	summary_delta += (summary_delta < 0) ? -1 : 1;
-	net_TimeDelta_Calculated = s32(summary_delta);
-	net_TimeDelta = (net_TimeDelta * 5 + net_TimeDelta_Calculated) / 6;
+	if (Probe)
+	{
+		MSYS_PING Ping{};
+		Ping.sign1 = 0x12071980;
+		Ping.sign2 = 0x26111975;
+		Ping.dwTime_ClientSend = *Probe;
+		// The transport can take its own lock while the receive worker delivers a clock reply.
+		const auto Result = TrySendClockProbe(Ping);
+		xrCriticalSectionGuard Locked(ClockSyncSection);
+		ClockSync.CompleteProbe(Result);
+	}
+	return ClockSync.GetStatus();
 }
 
 void BaseClient::_Recieve(const void* data, u32 data_size, u32 /*param*/)
 {
-	MSYS_PING*    cfg = (MSYS_PING*)data;
 	net_Statistic.dwBytesReceived += data_size;
 
-	if ((data_size >= 2 * sizeof(u32))
-		&& (cfg->sign1 == 0x12071980)
-		&& (cfg->sign2 == 0x26111975)
-		)
+	MSYS_CONFIG Header{};
+	if (data_size >= sizeof(Header))
 	{
-		// Internal system message
-		if (data_size == (u32)sizeof(MSYS_PING))
+		CopyMemory(&Header, data, sizeof(Header));
+	}
+	if (Header.sign1 == 0x12071980 && Header.sign2 == 0x26111975)
+	{
+		if (data_size == sizeof(MSYS_PING))
 		{
-			// It is reverted(server) ping
-			u32		    time = TimerAsync(device_timer);
-			u32		    ping = time - (cfg->dwTime_ClientSend);
-			u32		    delta = cfg->dwTime_Server + ping / 2 - time;
-
-			net_DeltaArray.push(delta);
-			Sync_Average();
+			MSYS_PING Reply;
+			CopyMemory(&Reply, data, sizeof(Reply));
+			const auto Arrived = Multiplayer::LegacyClockSync::Clock::now();
+			const u32 Received = TimerAsync(device_timer);
+			xrCriticalSectionGuard Locked(ClockSyncSection);
+			ClockSync.RecordReply(Arrived, Reply.dwTime_ClientSend, Reply.dwTime_Server, Received);
 			return;
 		}
 

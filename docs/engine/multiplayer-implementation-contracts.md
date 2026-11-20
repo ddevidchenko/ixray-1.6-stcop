@@ -62,6 +62,12 @@ The transport owner captures the local admission identity from the receiving con
 
 Disconnect checks the local identity and releases that participant and any active body mapping together. It can arrive across a round change in the same session. Round advance preserves connection bindings and invalidates old-world packets. A new admission may reuse a freed handle with a newer connection epoch and its own participant ID. [Local connection identity](../../src/xrNetServer/Multiplayer/JoinTypes.h), [registry](../../src/xrGame/Multiplayer/CombatantRegistry.h).
 
+### Legacy clock synchronization during endpoint migration
+
+The loading owner polls synchronization once per loading turn after a remote connection is accepted. During play the frame owner polls the same attempt for console resync. The owner cancels before releasing the client connection. Direct single-player completes without sending a probe.
+
+For a remote connection, send one legacy ping when the transport accepts it. If the endpoint is busy, the owner has five monotonic seconds to send. A rejected send or a send deadline fails the attempt. An accepted send opens a separate five-second reply window. The receive path records the first matching echoed timestamp. The owner applies the signed offset using half the round trip and the existing 32-bit wire clock. If the reply window expires, the owner completes with its prior offset. The clock state belongs to the loading or frame owner. The receive worker only records the matching sample. [Clock state](../../src/xrNetServer/Multiplayer/LegacyClockSync.h), [portable tests](../../src/test/multiplayer/portable/LegacyClockSyncTests.cpp).
+
 ### Transport event inbox
 
 The endpoint assigns each connection a positive local transport generation that fits GNS's signed 64-bit connection user data. Keep that generation fixed for the life of the native connection. Record it before publishing any event for that connection. Publish connect before enabling packet receipt on the server poll group. The receive worker takes the generation from the returned GNS message, copies the bytes, and releases the native buffer. Connect and disconnect producers use the generation of the connection that caused the event. The transport generation identifies the native connection before admission and is independent of the admission epoch carried on the wire.

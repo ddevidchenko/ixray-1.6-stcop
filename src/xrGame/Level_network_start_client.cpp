@@ -67,6 +67,34 @@ bool	CLevel::net_start_client2				()
 
 	return true;
 }
+bool CLevel::PollLoadingClockSync()
+{
+	if (!connected_to_server || psNET_direct_connect)
+	{
+		return true;
+	}
+
+	using Multiplayer::LegacyClockSyncStatus;
+	const auto Status = PollClockSync();
+	if (!net_isDisconnected())
+	{
+		if (Status == LegacyClockSyncStatus::Pending)
+		{
+			return false;
+		}
+		if (Status == LegacyClockSyncStatus::Ready)
+		{
+			return true;
+		}
+	}
+
+	Msg("! Client clock synchronization failed during connection");
+	connected_to_server = false;
+	OnConnectRejected();
+	Disconnect();
+	return true;
+}
+
 void rescan_mp_archives()
 {
 	FS_Path* mp_archs_path = FS.get_path("$game_arch_mp$");
@@ -161,7 +189,6 @@ bool CLevel::net_start_client4()
 			CTimer	timer_sync;	timer_sync.Start();
 			while (!net_isCompleted_Connect())	Sleep(5);
 			Msg("* connection sync: %d ms", timer_sync.GetElapsed_ms());
-			while (!net_isCompleted_Sync()) { ClientReceive(); Sleep(5); }
 		}
 	}
 	return true;

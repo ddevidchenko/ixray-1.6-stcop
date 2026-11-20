@@ -1,4 +1,6 @@
 #include "../transport/TransportScenario.h"
+#include "BaselineTransfer.h"
+#include "CatchUpDespawn.h"
 
 #include "../../../xrNetServer/Multiplayer/GnsCallbackPump.h"
 #include "../../../xrNetServer/Multiplayer/GnsEndpoint.h"
@@ -17,6 +19,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <memory>
+#include <optional>
 #include <system_error>
 #include <thread>
 #include <utility>
@@ -866,7 +869,7 @@ public:
 		return TransportStatus::Success;
 	}
 
-	ReceivedMessage Receive(Peer Receiver, bool Reliable = true)
+	ReceivedMessage Receive(Peer Receiver, std::optional<bool> Reliable = true)
 	{
 		const auto Handle = Handles[static_cast<std::size_t>(Receiver)];
 		if (Handle == k_HSteamNetConnection_Invalid)
@@ -881,7 +884,7 @@ public:
 			const auto Release = [](SteamNetworkingMessage_t* Incoming) { Incoming->Release(); };
 			const std::unique_ptr<SteamNetworkingMessage_t, decltype(Release)> Incoming(Raw, Release);
 			const bool IsReliable = (Incoming->m_nFlags & k_nSteamNetworkingSend_Reliable) != 0;
-			if (IsReliable != Reliable)
+			if (Reliable && IsReliable != *Reliable)
 			{
 				std::fputs("GNS loopback received an unexpected reliability flag\n", stderr);
 				return {TransportStatus::Failed, {}};
@@ -933,7 +936,7 @@ private:
 	ProcessRuntime::Lease Lease;
 };
 
-static ReceivedMessage AwaitReceive(GnsTransport& Link, Peer Receiver, bool Reliable = true)
+static ReceivedMessage AwaitReceive(GnsTransport& Link, Peer Receiver, std::optional<bool> Reliable = true)
 {
 	const auto Deadline = std::chrono::steady_clock::now() + 2s;
 	do
@@ -1084,6 +1087,126 @@ static bool CheckSnapshotSendPressure()
 	std::puts("GNS snapshot send pressure checks passed");
 	return true;
 }
+
+static bool CheckOutgoingTrafficPressure()
+{
+	using namespace Multiplayer;
+	ProcessRuntime Runtime;
+	GnsTransport Link(Runtime);
+	if (!ExpectStatus("open a UDP loopback pair for egress pacing", Link.Connect(), TransportStatus::Success))
+	{
+		return false;
+	}
+	const auto Handle = Link.GetHandle(Peer::First);
+	auto& Sockets = *SteamNetworkingSockets();
+	auto& Utils = *SteamNetworkingUtils();
+	// This standalone test process uses lossless receive delay to hold the first bulk packet outstanding.
+	if (!Utils.SetGlobalConfigValueInt32(k_ESteamNetworkingConfig_FakePacketLag_Recv, 300))
+	{
+		std::fputs("could not delay loopback acknowledgements\n", stderr);
+		return false;
+	}
+
+	constexpr JoinIdentity Identity{4, 1, 2};
+	xr_array<u8, Wire::MaxBaselineChunkBytes> Data;
+	Data.fill(0x21);
+	xr_array<u8, Wire::MaxMessageSize> BulkBytes;
+	xr_array<u8, Wire::MaxMessageSize> NextBulk;
+	const auto FirstSize = Wire::EncodeBaselineChunk({Identity, 20, 9, 0, Data}, BulkBytes);
+	const auto NextSize = Wire::EncodeBaselineChunk({Identity, 22, 9, 1, Data}, NextBulk);
+	if (!FirstSize || !NextSize)
+	{
+		std::fputs("failed to encode the baseline chunks for the pacing fixture\n", stderr);
+		return false;
+	}
+	const auto FirstFrame = xr_span(BulkBytes).first(*FirstSize);
+	const auto NextFrame = xr_span(NextBulk).first(*NextSize);
+	const auto SendReliable = [&](xr_span<const u8> Bytes) noexcept { return SubmitGnsReliableFrame(Sockets, Handle, Bytes); };
+	if (SendReliable(FirstFrame) != ReliableSendAttempt::Accepted || SendReliable(NextFrame) != ReliableSendAttempt::Backpressured)
+	{
+		std::fputs("one outstanding bulk frame must pace the next frame despite available GNS capacity\n", stderr);
+		return false;
+	}
+
+	xr_array<u8, Wire::MaxMessageSize> ControlBytes;
+	const auto ControlSize = Wire::EncodeCatchUpDespawn({Identity, 21, 9, 45, 1, 102, {2}, {3, 1, 1}}, ControlBytes);
+	if (!ControlSize)
+	{
+		return false;
+	}
+	const auto Control = xr_span(ControlBytes).first(*ControlSize);
+	constexpr u8 Snapshot[] = {0x14, 0xa9, 0x23};
+	constexpr u8 Command[] = {0xdc, 0x19, 0x76};
+	constexpr u8 Cosmetic[] = {0xc8, 0x88};
+	xr_array<ReliableSendQueue::Slot, 1> Slots;
+	ReliableSendQueue Queue(Slots, 1100, 20);
+	if (Queue.Enqueue(Control, 4) != ReliableEnqueueResult::Queued || Queue.SubmitNext(5, SendReliable) != ReliableSendResult::Submitted ||
+		SubmitGnsSnapshot(Sockets, Handle, Snapshot) != SnapshotSendAttempt::Accepted ||
+		SubmitGnsOutgoing(Sockets, Handle, OutgoingTraffic::Command, Command) != GnsSendAttempt::Accepted ||
+		SubmitGnsOutgoing(Sockets, Handle, OutgoingTraffic::Cosmetic, Cosmetic) != GnsSendAttempt::Deferred)
+	{
+		std::fputs("bulk must leave room for control and gameplay while cosmetics defer\n", stderr);
+		return false;
+	}
+
+	bool ReceivedBulk = false;
+	bool ReceivedControl = false;
+	bool ReceivedSnapshot = false;
+	bool ReceivedCommand = false;
+	for (int Index = 0; Index < 4; ++Index)
+	{
+		const auto Message = AwaitReceive(Link, Peer::Second, std::nullopt);
+		if (Message.Status != TransportStatus::Success)
+		{
+			return false;
+		}
+		if (!ReceivedBulk && std::ranges::equal(Message.Bytes, FirstFrame))
+		{
+			ReceivedBulk = true;
+		}
+		else if (ReceivedBulk && !ReceivedControl && std::ranges::equal(Message.Bytes, Control))
+		{
+			ReceivedControl = true;
+		}
+		else if (!ReceivedSnapshot && std::ranges::equal(Message.Bytes, Snapshot))
+		{
+			ReceivedSnapshot = true;
+		}
+		else if (!ReceivedCommand && std::ranges::equal(Message.Bytes, Command))
+		{
+			ReceivedCommand = true;
+		}
+		else
+		{
+			std::fputs("received unexpected traffic or reordered reliable control\n", stderr);
+			return false;
+		}
+	}
+	if (!ReceivedBulk || !ReceivedControl || !ReceivedSnapshot || !ReceivedCommand)
+	{
+		return false;
+	}
+	auto Outcome = ReliableSendAttempt::Backpressured;
+	if (!EndpointTests::WaitFor([&]
+		{
+			Outcome = SendReliable(NextFrame);
+			return Outcome != ReliableSendAttempt::Backpressured;
+		}) ||
+		Outcome != ReliableSendAttempt::Accepted)
+	{
+		std::fputs("acknowledgements must release the outstanding native bulk allowance\n", stderr);
+		return false;
+	}
+	const auto Last = AwaitReceive(Link, Peer::Second);
+	if (Last.Status != TransportStatus::Success || !std::ranges::equal(Last.Bytes, NextFrame))
+	{
+		std::fputs("the paced producer must deliver the resumed reliable frame once\n", stderr);
+		return false;
+	}
+
+	std::puts("GNS outgoing traffic pressure checks passed");
+	return true;
+}
 }
 
 int main(int ArgumentCount, char** Arguments)
@@ -1096,6 +1219,10 @@ int main(int ArgumentCount, char** Arguments)
 	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--snapshot-send-pressure") == 0)
 	{
 		return CheckSnapshotSendPressure() ? EXIT_SUCCESS : EXIT_FAILURE;
+	}
+	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--outgoing-traffic-pressure") == 0)
+	{
+		return CheckOutgoingTrafficPressure() ? EXIT_SUCCESS : EXIT_FAILURE;
 	}
 	if (ArgumentCount != 1)
 	{

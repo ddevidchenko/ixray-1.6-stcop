@@ -26,3 +26,6 @@ set_tests_properties(Multiplayer.GnsReliableSendPressure PROPERTIES LABELS multi
 
 add_test(NAME Multiplayer.GnsSnapshotSendPressure COMMAND TestMultiplayerGns --snapshot-send-pressure)
 set_tests_properties(Multiplayer.GnsSnapshotSendPressure PROPERTIES LABELS multiplayer TIMEOUT 10)
+
+add_test(NAME Multiplayer.GnsOutgoingTrafficPressure COMMAND TestMultiplayerGns --outgoing-traffic-pressure)
+set_tests_properties(Multiplayer.GnsOutgoingTrafficPressure PROPERTIES LABELS multiplayer TIMEOUT 12)

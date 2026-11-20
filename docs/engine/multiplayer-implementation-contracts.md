@@ -338,6 +338,8 @@ A declaration allows at most 4 MiB, 8,192 records, and 4,096 chunks. The declare
 
 `BaselineChunk` carries a `u32` baseline ID, a zero-based `u16` chunk index from 0 through 4,095, and 1–1,024 opaque baseline-data bytes. The envelope length delimits the data. In a declared transfer, the encoded record stream is split at successive 1,024-byte offsets. The final chunk carries the remaining bytes. `BaselineEnd` carries the `u32` baseline ID alone.
 
+The sending owner retains one immutable encoded source and submits at most one Begin, chunk, or End per turn while its control queue is empty. The transfer consumes an envelope sequence only on native acceptance. Deferred reliable work retains its cursor and can use the next available sequence when retried. The transfer has an owner-supplied monotonic deadline and is retired when the selected baseline or connection changes. [Sender](../../src/xrNetServer/Multiplayer/BaselineSend.h).
+
 Decoded chunk data borrows the datagram. The transfer owner checks the identity and baseline ID against the active declaration, checks each chunk against its declared offset and length, and verifies completeness and the encoded records before publishing a baseline. Aggregate staging limits and readiness remain with the transfer and world owners. [Codec](../../src/xrNetServer/Multiplayer/BaselineTransfer.h), [independent datagrams](../../src/test/multiplayer/portable/BaselineTransferTests.cpp).
 
 ### Pending admission decision

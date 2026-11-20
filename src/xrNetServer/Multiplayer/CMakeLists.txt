@@ -16,6 +16,7 @@ add_library(xrNetServerMultiplayer OBJECT
     BoundMessage.cpp BoundMessage.h
     ClientJoin.cpp ClientJoin.h JoinBarrierFields.h
     BaselineTransfer.cpp BaselineTransfer.h
+    BaselineSend.cpp BaselineSend.h
     BaselineStaging.cpp BaselineStaging.h
     BaselineStagingBudget.cpp BaselineStagingBudget.h
     BaselineRecords.cpp BaselineRecords.h

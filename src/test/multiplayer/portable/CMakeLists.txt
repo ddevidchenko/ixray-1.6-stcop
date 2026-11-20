@@ -18,6 +18,7 @@ add_executable(TestMultiplayerUnit
     ReliableSendQueueTests.cpp
     SnapshotSendQueueTests.cpp
     OutgoingTrafficTests.cpp
+    BaselineSendTests.cpp
     WireEnvelopeTests.cpp
     WirePayloadTests.cpp
     ClientHelloTests.cpp
@@ -66,7 +67,8 @@ set_tests_properties(Multiplayer.TransportInbox Multiplayer.TransportEventRouter
 add_test(NAME Multiplayer.ReliableSendQueue COMMAND TestMultiplayerUnit --reliable-send-queue)
 add_test(NAME Multiplayer.SnapshotSendQueue COMMAND TestMultiplayerUnit --snapshot-send-queue)
 add_test(NAME Multiplayer.OutgoingTraffic COMMAND TestMultiplayerUnit --outgoing-traffic)
-set_tests_properties(Multiplayer.ReliableSendQueue Multiplayer.SnapshotSendQueue Multiplayer.OutgoingTraffic PROPERTIES LABELS multiplayer)
+add_test(NAME Multiplayer.BaselineSend COMMAND TestMultiplayerUnit --baseline-send)
+set_tests_properties(Multiplayer.ReliableSendQueue Multiplayer.SnapshotSendQueue Multiplayer.OutgoingTraffic Multiplayer.BaselineSend PROPERTIES LABELS multiplayer)
 add_test(NAME Multiplayer.WireEnvelope COMMAND TestMultiplayerUnit --wire-envelope)
 add_test(NAME Multiplayer.WirePayload COMMAND TestMultiplayerUnit --wire-payload)
 add_test(NAME Multiplayer.ClientHello COMMAND TestMultiplayerUnit --client-hello)

@@ -209,6 +209,11 @@ namespace OutgoingTrafficTests
 bool Run();
 }
 
+namespace BaselineSendTests
+{
+bool Run();
+}
+
 namespace SerialSequenceTests
 {
 struct SequenceCase
@@ -445,6 +450,10 @@ int main(int ArgumentCount, char** Arguments)
 	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--outgoing-traffic") == 0)
 	{
 		return OutgoingTrafficTests::Run() ? EXIT_SUCCESS : EXIT_FAILURE;
+	}
+	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--baseline-send") == 0)
+	{
+		return BaselineSendTests::Run() ? EXIT_SUCCESS : EXIT_FAILURE;
 	}
 	if (ArgumentCount != 1)
 	{

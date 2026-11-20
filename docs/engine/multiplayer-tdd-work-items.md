@@ -21,7 +21,7 @@ Items marked **Implemented / Windows pending** have passing macOS checks for the
 | Stalker prerequisites and dedicated navigation | MP-005a–b | [W0 refactor regression](multiplayer-checkpoints/w0.md#stalker-refactor-regression), [W1 dedicated navigation](multiplayer-checkpoints/w0.md#w1-dedicated-navigation-check) |
 | Test harness, timing, spread and transport fixtures | MP-010, MP-011a–b, MP-012 | [W0 portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch), [two-client smoke](multiplayer-checkpoints/w0.md#run-the-two-client-check) |
 | Wire formats, admission and transport ownership | MP-020a–k, MP-021a–b, MP-022a–d, MP-023a–b, MP-024a, MP-025a–e, MP-026a–b | [W0 portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch), [two-client check](multiplayer-checkpoints/w0.md#run-the-two-client-check) where listed |
-| Reliable submission, snapshots and native traffic pacing | MP-027a–c | [W0 portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) |
+| Reliable submission, snapshots, native pacing and baseline streaming | MP-027a–d | [W0 portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) |
 | Combatant baseline, catch-up and snapshots | MP-037a–o | [W0 portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) |
 
 ## How to use this backlog
@@ -422,6 +422,12 @@ The [peer runbook](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch
 - **Design.** Resolve supported envelope tags to reliable control, reliable bulk or unreliable snapshots. Commands share the gameplay allowance and cosmetics use spare capacity. Count native pending bytes and sent but unacknowledged reliable bytes. Smaller bulk and gameplay ceilings leave room for essential control. The GNS bridge uses the same ordered reliable stream for control and bulk. [Policy](../../src/xrNetServer/Multiplayer/OutgoingTraffic.cpp), [GNS bridge](../../src/xrNetServer/Multiplayer/GnsOutgoingSend.h).
 - **Implemented / Windows pending.** Before pacing on base `9b290a38d`, a second bulk frame entered the native transport while the first was outstanding. The reviewed deterministic tests cover each current envelope tag, exact ceilings, native counters, reliable framing room, unknown tags and oversized frames. A UDP loopback test holds acknowledgements, paces the next baseline chunk, submits control and gameplay, defers cosmetics and resumes bulk after acknowledgement. All 46 portable tests passed on macOS arm64 in Debug, Release, and ASan/UBSan. All four GNS cases passed, with 12 consecutive additional passes of the pacing case. The fixture uses literal inputs and requires no map or seed.
 - [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) collects `outgoing-traffic.xml` and `gns-outgoing-traffic-pressure.xml` on Windows. MP-030 and the combat presentation items own the command and cosmetic wire schemas. The live version-one session owner and measured production budgets remain part of MP-027.
+
+#### MP-027d — Stream a baseline outside the control queue
+
+- **Design.** The peer owner keeps one immutable encoded baseline source. On each turn it offers at most one Begin, canonical chunk, or End. Queued control takes priority. A native refusal preserves the cursor and leaves the shared message sequence available to other traffic. The owner retires the cursor on a rebase, world change, connection close, or terminal failure. [Baseline sender](../../src/xrNetServer/Multiplayer/BaselineSend.h).
+- **Implemented / Windows pending.** On base `e1f257f89` the first transfer failed to submit its Begin. Reviewed cases cover wrapped sequence assignment, control between a refusal and retry, exact expiry, invalid inputs, empty baselines, terminal control and transport failure, and a full chunk plus a short tail assembled by the existing receiver. Inputs are fixed and require no map or seed.
+- [ ] **Complete when** the [portable batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) collects `baseline-send.xml` on Windows. Live integration requires the version-one session owner.
 
 ### MP-028 — Join by IP without GameSpy service availability
 

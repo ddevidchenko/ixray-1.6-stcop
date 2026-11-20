@@ -210,15 +210,39 @@ static bool CheckServerHandoff()
 	const auto Delivered = Queue.Peek(Output);
 	Passed &= Expect("transport accepts the retained event", Delivered && Queue.CommitSend(*Delivered).has_value());
 	const JoinBarrier Target{21, 13, 102, Queue.GetSubmittedWatermark()};
-	Passed &= Expect("barrier uses the submitted watermark", Target == Barrier && Server.DeclareBarrier(Identity, Target, Now + 1s).has_value() &&
-		Client.DeclareBarrier(Identity, Target).has_value());
-	Passed &= ExpectError("submitted events alone cannot produce readiness", Client.CompleteBarrier(Identity, Target, 27, Applier), ClientCatchUpError::BarrierPending);
-	Passed &= Expect("client applies the delivered event", Delivered && Client.ApplyEvent(*Delivered, Applier).has_value());
-	const auto Ack = Client.CompleteBarrier(Identity, Target, 27, Applier);
+	Passed &= Expect("barrier uses the submitted watermark", Target == Barrier && Server.DeclareBarrier(Identity, Target, Now + 1s).has_value());
+
 	std::array<u8, 46> Datagram{};
+	auto ReceiveDeclaration = [&Datagram, Target](JoinIdentity Peer)
+	{
+		const auto Size = Wire::EncodeServerJoinBarrier({Peer, 32, Target}, Datagram);
+		return Size ? Wire::DecodeServerJoinBarrier(xr_span(Datagram).first(*Size)) : std::unexpected(Size.error());
+	};
+
+	constexpr JoinIdentity OldWorld{Identity.ServerSession, Identity.WorldEpoch - 1, Identity.ConnectionEpoch};
+	const auto Stale = ReceiveDeclaration(OldWorld);
+	Passed &= Expect("the wire accepts a well-formed declaration from an earlier round", Stale.has_value());
+	if (Stale)
+	{
+		Passed &= ExpectError("the tracker rejects that declaration for the current round",
+			Client.DeclareBarrier(Stale->Identity, Stale->Barrier), ClientCatchUpError::IdentityMismatch);
+	}
+
+	const auto Declared = ReceiveDeclaration(Identity);
+	if (!Expect("the client decodes the server's declaration from the wire", Declared.has_value()))
+	{
+		return false;
+	}
+	Passed &= Expect("the client stages the decoded declaration",
+		Client.DeclareBarrier(Declared->Identity, Declared->Barrier).has_value());
+	Passed &= ExpectError("the decoded declaration alone cannot produce readiness",
+		Client.CompleteBarrier(Declared->Identity, Declared->Barrier, 27, Applier), ClientCatchUpError::BarrierPending);
+	Passed &= Expect("client applies the delivered event", Delivered && Client.ApplyEvent(*Delivered, Applier).has_value());
+	const auto Ack = Client.CompleteBarrier(Declared->Identity, Declared->Barrier, 27, Applier);
 	const auto Size = Ack ? Wire::EncodeReadyAcknowledgement(*Ack, Datagram) : std::unexpected(Wire::ClientJoinError::InvalidEnvelope);
 	const auto Decoded = Size ? Wire::DecodeReadyAcknowledgement(xr_span(Datagram).first(*Size)) : std::unexpected(Wire::ClientJoinError::InvalidEnvelope);
 	Passed &= Expect("server accepts the encoded acknowledgement only after client application", Decoded &&
+		Decoded->MessageSequence == 27 && Applier.LastBarrier == Target &&
 		Server.AcknowledgeBarrier(Decoded->Identity, Decoded->Barrier, Now + 2s).has_value() && Server.GetState() == PeerJoinState::ReadySpectator);
 	return Passed;
 }

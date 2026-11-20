@@ -21,9 +21,16 @@ constexpr u8 GoldenReady[] = {
 	0xd4, 0xc3, 0xb2, 0xa1, 0x04, 0x03, 0x02, 0x01, 0xef, 0xcd, 0xab, 0x89,
 	0x78, 0x56, 0x34, 0x12, 0xe0, 0xac, 0x68, 0x24, 0xfe, 0xff, 0xff, 0xff, 0x12, 0x34, 0x56, 0x78,
 };
+constexpr u8 GoldenDeclaration[] = {
+	0x49, 0x58, 0x4d, 0x50, 0x01, 0x00, 0x09, 0x00, 0x10, 0x00,
+	0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88,
+	0xd4, 0xc3, 0xb2, 0xa1, 0x04, 0x03, 0x02, 0x01, 0x43, 0x65, 0x87, 0xa9,
+	0x04, 0x03, 0x02, 0x01, 0x44, 0x33, 0x22, 0x11, 0x02, 0x00, 0x00, 0x00, 0xef, 0xcd, 0xab, 0x89,
+};
 constexpr JoinIdentity Identity{0x8877665544332211ull, 0xa1b2c3d4u, 0x01020304u};
 constexpr ClientMapLoaded Loaded{Identity, 0xfedcba98u};
 constexpr ReadyAcknowledgement Ready{Identity, 0x89abcdefu, {0x12345678u, 0x2468ace0u, 0xfffffffeu, 0x78563412u}};
+constexpr ServerJoinBarrier Declaration{Identity, 0xa9876543u, {0x01020304u, 0x11223344u, 2u, 0x89abcdefu}};
 constexpr std::size_t HeaderBytes = 30;
 constexpr std::size_t TypeOffset = 6;
 constexpr std::size_t SizeOffset = 8;
@@ -49,6 +56,19 @@ static bool ExpectError(const char* Step, const std::expected<Value, ClientJoinE
 	}
 	std::fprintf(stderr, "%s: expected %d, got %d\n", Step, static_cast<int>(Expected), Result ? -1 : static_cast<int>(Result.error()));
 	return false;
+}
+
+static bool CheckBarrierGolden()
+{
+	const auto Decoded = DecodeServerJoinBarrier(GoldenDeclaration);
+	bool Passed = Expect("golden server join barrier decodes identity, sequence and exact barrier", Decoded &&
+		Decoded->Identity == Declaration.Identity && Decoded->MessageSequence == Declaration.MessageSequence &&
+		Decoded->Barrier == Declaration.Barrier);
+	std::array<u8, sizeof(GoldenDeclaration)> Bytes{};
+	const auto Size = EncodeServerJoinBarrier(Declaration, Bytes);
+	Passed &= Expect("server join barrier encodes literal header and payload bytes", Size == sizeof(GoldenDeclaration) &&
+		std::ranges::equal(Bytes, GoldenDeclaration));
+	return Passed;
 }
 
 static bool CheckGolden()
@@ -105,7 +125,7 @@ static bool CheckDecoding(const u8 (&Golden)[Size], Decoder Decode, u8 OtherTag)
 	Bytes[TypeOffset] = OtherTag;
 	Passed &= ExpectError("other join tag cannot select a different typed decoder", Decode(Bytes), ClientJoinError::WrongMessageType);
 	Bytes[TypeOffset] = 0x02;
-	Passed &= ExpectError("server welcome cannot decode as a client join message", Decode(Bytes), ClientJoinError::WrongMessageType);
+	Passed &= ExpectError("server welcome cannot decode as a join control message", Decode(Bytes), ClientJoinError::WrongMessageType);
 
 	Bytes = std::to_array(Golden);
 	std::fill_n(Bytes.begin() + SessionOffset, 8, 0);
@@ -150,21 +170,22 @@ static bool CheckEncoding(const u8 (&Golden)[Size], Message Original, Encoder En
 	return Passed;
 }
 
-static bool CheckZeroAndFullWidthFields()
+template <std::size_t Size, class Message, class Decoder, class Encoder>
+static bool CheckZeroAndFullWidthFields(const u8 (&Golden)[Size], Message Original, Decoder Decode, Encoder Encode)
 {
-	constexpr ReadyAcknowledgement Boundary{{Identity.ServerSession, 0, Identity.ConnectionEpoch}, 0, {0, 0xffffffffu, 0xffffffffu, 0}};
-	auto Expected = std::to_array(GoldenReady);
+	const Message Boundary{{Original.Identity.ServerSession, 0, Original.Identity.ConnectionEpoch}, 0, {0, 0xffffffffu, 0xffffffffu, 0}};
+	auto Expected = std::to_array(Golden);
 	std::fill_n(Expected.begin() + WorldOffset, 4, 0);
 	std::fill_n(Expected.begin() + 26, 4, 0);
 	std::fill_n(Expected.begin() + HeaderBytes, 4, 0);
 	std::fill_n(Expected.begin() + HeaderBytes + 4, 8, 0xff);
 	std::fill_n(Expected.begin() + HeaderBytes + 12, 4, 0);
 	auto Incoming = Expected;
-	const auto Decoded = DecodeReadyAcknowledgement(Incoming);
+	const auto Decoded = Decode(Incoming);
 	Incoming.fill(0xa5);
 	bool Passed = Expect("zero and full-width fields decode into owned values", Decoded && Decoded->Identity == Boundary.Identity &&
 		Decoded->MessageSequence == 0 && Decoded->Barrier == Boundary.Barrier);
-	Passed &= Expect("initial world and full-width counters encode exactly", EncodeReadyAcknowledgement(Boundary, Incoming) == Expected.size() &&
+	Passed &= Expect("initial world and full-width counters encode exactly", Encode(Boundary, Incoming) == Expected.size() &&
 		Incoming == Expected);
 	return Passed;
 }
@@ -214,12 +235,16 @@ static bool CheckReadinessHandoff()
 
 bool Run()
 {
-	bool Passed = CheckGolden();
+	bool Passed = CheckBarrierGolden();
+	Passed &= CheckGolden();
 	Passed &= CheckDecoding(GoldenLoaded, DecodeClientMapLoaded, 0x05);
-	Passed &= CheckDecoding(GoldenReady, DecodeReadyAcknowledgement, 0x04);
+	Passed &= CheckDecoding(GoldenReady, DecodeReadyAcknowledgement, 0x09);
+	Passed &= CheckDecoding(GoldenDeclaration, DecodeServerJoinBarrier, 0x05);
 	Passed &= CheckEncoding(GoldenLoaded, Loaded, EncodeClientMapLoaded);
 	Passed &= CheckEncoding(GoldenReady, Ready, EncodeReadyAcknowledgement);
-	Passed &= CheckZeroAndFullWidthFields();
+	Passed &= CheckEncoding(GoldenDeclaration, Declaration, EncodeServerJoinBarrier);
+	Passed &= CheckZeroAndFullWidthFields(GoldenReady, Ready, DecodeReadyAcknowledgement, EncodeReadyAcknowledgement);
+	Passed &= CheckZeroAndFullWidthFields(GoldenDeclaration, Declaration, DecodeServerJoinBarrier, EncodeServerJoinBarrier);
 	Passed &= CheckReadinessHandoff();
 	if (!Passed)
 	{

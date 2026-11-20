@@ -34,6 +34,7 @@ static bool IsSupportedType(MessageType Type) noexcept
 	case MessageType::BaselineBegin:
 	case MessageType::BaselineChunk:
 	case MessageType::BaselineEnd:
+	case MessageType::ServerJoinBarrier:
 		return true;
 	}
 	return false;

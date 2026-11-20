@@ -22,6 +22,7 @@ enum class MessageType : u8
 	BaselineBegin = 0x06,
 	BaselineChunk = 0x07,
 	BaselineEnd = 0x08,
+	ServerJoinBarrier = 0x09,
 };
 
 enum class EnvelopeError

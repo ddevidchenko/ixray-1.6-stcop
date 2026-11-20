@@ -76,6 +76,7 @@ The following tags are assigned for version one. Additional tags become valid as
 | `BaselineBegin` | `0x06` |
 | `BaselineChunk` | `0x07` |
 | `BaselineEnd` | `0x08` |
+| `ServerJoinBarrier` | `0x09` |
 
 The envelope codec checks the complete message size and framing. Payload decoders and the admission state machine validate fields and identity before dispatch. The returned payload view borrows the receive buffer for the duration of decoding. [Codec](../../src/xrNetServer/Multiplayer/WireEnvelope.h), [independent golden frames](../../src/test/multiplayer/portable/WireEnvelopeTests.cpp).
 
@@ -111,7 +112,7 @@ Per-peer limits also require a server-wide allocation/work cap derived from the 
 | --- | --- | --- |
 | Client hello/admission, server welcome/reject | Build/protocol, content/rules identity, requested display name, bounded admission data; assigned session/connection, map, effective rates and rules | Reliable, bounded deadlines; transport/simulation admission state machine |
 | Initial-state begin/chunk/end | Baseline ID, session/epoch, capture tick, event watermark, checked record/chunk counts and total byte count | Reliable, bounded staging; no gameplay side effects from partial state |
-| Map loaded / ready acknowledgement / activation | Bound map-loaded confirmation, baseline/barrier ID, accepted snapshot tick and state-event watermark | Reliable; only the server activates a participant |
+| Map loaded / join barrier / ready acknowledgement / activation | Bound map-loaded confirmation, baseline/barrier ID, accepted snapshot tick and state-event watermark | Reliable; only the server activates a participant |
 | Player input | Command sequence/tick, move/look/held buttons, repeated unacknowledged discrete action records | Unreliable with bounded redundancy; simulation validates and retires each command/action once |
 | Action result | Action ID, accepted/rejected/expired, execution tick, reason and resulting shot ID where applicable | Reliable result; same result on duplicate requests |
 | Runtime entity-state batch | Snapshot ID/tick, current monotonic server clock anchor, required state-event watermark, typed length-bounded self-contained entity records | Unreliable; latest useful state per entity/life, no waiting for a lost previous batch |
@@ -186,6 +187,12 @@ Both messages travel from the client on the reliable control stream. The envelop
 | State-event watermark | `u32` |
 
 The decoders require the exact payload size and return owned values. Bind a decoded confirmation to the tracker for the receiving transport connection. `PeerJoin` checks the current identity and compares the acknowledgement with the server-declared barrier. [Codec](../../src/xrNetServer/Multiplayer/ClientJoin.h), [independent datagrams and readiness handoff](../../src/test/multiplayer/portable/ClientJoinTests.cpp).
+
+### Server join barrier
+
+The server sends `ServerJoinBarrier` on the ordered reliable control/state stream, scoped to the receiving peer by the bound envelope. Its exact 16-byte payload uses the four fields in the [ready acknowledgement layout](#client-join-confirmations) in the same order. The server and client use their own envelope message sequences. The barrier ID names the staged snapshot and the event watermark identifies the last event the client must apply before that snapshot. The server queues the declaration before any event beyond its watermark. Snapshot data and its framing follow the replication work items.
+
+The declaration and acknowledgement have distinct tags and decoders. A declaration only supplies the barrier values. The client checks the current identity and baseline, applies the required state, and sends the acknowledgement. [Codec](../../src/xrNetServer/Multiplayer/ClientJoin.h), [handoff test](../../src/test/multiplayer/portable/ClientCatchUpTests.cpp).
 
 ### Initial-state baseline transfer
 

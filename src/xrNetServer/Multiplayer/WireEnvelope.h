@@ -39,6 +39,11 @@ struct EnvelopeHeader
 	u32 ConnectionEpoch;
 	u32 MessageSequence;
 
+	[[nodiscard]] constexpr bool HasUnboundIdentity() const noexcept
+	{
+		return ServerSession == 0 && WorldEpoch == 0 && ConnectionEpoch == 0;
+	}
+
 	bool operator==(const EnvelopeHeader&) const = default;
 };
 

@@ -146,6 +146,25 @@ A `ServerWelcome` uses envelope tag `0x02`. The server assigns a nonzero session
 
 The payload spans 99 to 162 bytes and the decoder consumes it completely. The client resolves the map against the verified content manifest. Timing and rules profiles validate the advertised settings before use. [Codec](../../src/xrNetServer/Multiplayer/ServerWelcome.h), [independent golden datagram](../../src/test/multiplayer/portable/ServerWelcomeTests.cpp).
 
+### Admission reject
+
+An `AdmissionReject` uses envelope tag `0x03` during unbound admission. The server session, world epoch, and connection epoch are all zero. The envelope carries the server's message sequence and a payload of exactly one `u8` reason.
+
+| Reason | Byte | Meaning |
+| --- | --- | --- |
+| `MalformedHello` | `0x01` | The hello failed wire validation. |
+| `UnsupportedProtocol` | `0x02` | The peer's protocol version is unsupported. |
+| `IncompatibleBuild` | `0x03` | The build compatibility ID differs. |
+| `IncompatibleContent` | `0x04` | The content manifest ID differs. |
+| `IncompatibleRules` | `0x05` | The rules ID differs. |
+| `CredentialsRejected` | `0x06` | Required credentials are absent or invalid. |
+| `ServerFull` | `0x07` | No eligible match slot is available. |
+| `ServerBusy` | `0x08` | The pending-admission limit has been reached. |
+| `AdmissionTimedOut` | `0x09` | The initial admission deadline expired. |
+| `InvalidState` | `0x0a` | The request is invalid in the current admission state. |
+
+All other reason bytes are reserved and rejected. Client presentation maps these codes to local text. When peers have no shared envelope version, connection failure diagnostics surface the incompatibility. MP-022 owns the state transitions and selects the reason. [Codec](../../src/xrNetServer/Multiplayer/AdmissionReject.h), [independent golden datagram](../../src/test/multiplayer/portable/AdmissionRejectTests.cpp).
+
 ### Input and discrete actions
 
 Each command includes `u32 CommandSequence`, `u32 ClientTick`, signed `i8` forward/right input, `u16` yaw, `i16` pitch and a `u16` held-button mask. Declare direction normalization and button meanings in MP-030's golden fixtures. Yaw covers a full turn; pitch is bounded to the shared controller's allowed range. A client timestamp is evidence for bounded scheduling, not permission to choose an arbitrary execution/rewind time.

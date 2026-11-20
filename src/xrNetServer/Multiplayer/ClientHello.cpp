@@ -25,7 +25,7 @@ std::expected<ClientHello, ClientHelloError> DecodeClientHello(xr_span<const u8>
 	{
 		return std::unexpected(ClientHelloError::WrongMessageType);
 	}
-	if (Header.ServerSession != 0 || Header.WorldEpoch != 0 || Header.ConnectionEpoch != 0)
+	if (!Header.HasUnboundIdentity())
 	{
 		return std::unexpected(ClientHelloError::BoundHello);
 	}

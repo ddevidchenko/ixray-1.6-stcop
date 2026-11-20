@@ -39,6 +39,11 @@ namespace ServerWelcomeTests
 bool Run();
 }
 
+namespace AdmissionRejectTests
+{
+bool Run();
+}
+
 namespace SerialSequenceTests
 {
 struct SequenceCase
@@ -108,6 +113,10 @@ int main(int ArgumentCount, char** Arguments)
 	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--server-welcome") == 0)
 	{
 		return ServerWelcomeTests::Run() ? EXIT_SUCCESS : EXIT_FAILURE;
+	}
+	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--admission-reject") == 0)
+	{
+		return AdmissionRejectTests::Run() ? EXIT_SUCCESS : EXIT_FAILURE;
 	}
 	if (ArgumentCount != 1)
 	{

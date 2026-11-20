@@ -1,6 +1,6 @@
 # Multiplayer TDD work items
 
-The operator reports that W0 passed on Windows. The exact revision and result bundle are pending attachment. MP-010, MP-011a, MP-011b, MP-012, MP-020a, MP-020b, MP-020c and MP-020d have macOS evidence.
+The operator reports that W0 passed on Windows. The exact revision and result bundle are pending attachment. MP-010, MP-011a, MP-011b, MP-012, MP-020a, MP-020b, MP-020c, MP-020d and MP-020e have macOS evidence.
 
 Implements the [modern multiplayer plan](multiplayer-modernization-plan.md): 32 total human/bot combatants, simple DM, direct IP over GameNetworkingSockets first, human-like bots, authoritative simulation, prediction, lag compensation, and immediate local effects. Windows x64 is the initial runtime target; macOS remains usable for source work and portable tests. Hitscan, ballistics, and hybrid gunplay remain alternatives until the comparison gate.
 
@@ -189,6 +189,12 @@ The [peer runbook](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch
 - The welcome carries assigned session and connection identity, the content and rules IDs, the logical map ID, effective millihertz rates, and the initial respawn, protection, and round limits. Encoding stages a bounded payload before publishing the frame. [Server welcome wire layout](multiplayer-implementation-contracts.md#server-welcome), [codec](../../src/xrNetServer/Multiplayer/ServerWelcome.h).
 - **Mac checks passed / Windows pending.** The hand-authored welcome failed before implementation. The reviewed suite covers framing and typed truncation, fractional rates, zero-rate rejection, map byte bounds, unassigned identity, exact payload consumption, and atomic writes with overlapping buffers. Fixtures use literal data. [Tests](../../src/test/multiplayer/portable/ServerWelcomeTests.cpp).
 - [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) collects a passing `server-welcome.xml` on Windows.
+
+#### MP-020e — Encode and validate admission reject
+
+- The codec carries one stable reason byte in an unbound envelope and shares the unbound identity check with `ClientHello`. The client can display local text for each reason. [Admission reject wire layout](multiplayer-implementation-contracts.md#admission-reject), [codec](../../src/xrNetServer/Multiplayer/AdmissionReject.h).
+- **Mac checks passed / Windows pending.** The initial golden datagram failed before implementation. The reviewed suite verifies all 256 reason bytes, header and payload boundaries, unbound identity, preserved server sequence, and atomic encoding. Fixtures use literal data. [Tests](../../src/test/multiplayer/portable/AdmissionRejectTests.cpp).
+- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) collects a passing `admission-reject.xml` on Windows.
 
 ### MP-021 — Bound legacy envelope parsing and decompression
 

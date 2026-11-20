@@ -34,6 +34,20 @@ void moving_objects::on_level_load			()
 	m_tree					= new TREE(ai().level_graph().header().box(),ai().level_graph().header().cell_size()*.5f,16*1024,16*1024);
 }
 
+void moving_objects::UnloadArena()
+{
+#ifdef DEBUG
+	VERIFY(m_objects.empty());
+#endif
+	xr_delete(m_tree);
+	m_nearest_moving.clear();
+	m_collision_emitters.clear();
+	m_visited_emitters.clear();
+	m_collisions.clear();
+	m_previous_collisions.clear();
+	m_spatial_objects.clear();
+}
+
 void moving_objects::register_object		(moving_object *moving_object)
 {
 	VERIFY2					(

@@ -132,6 +132,12 @@ extern CUISequencer * g_tutorial2;
 void CLevel::net_Stop()
 {
 	Msg("- Disconnect");
+	const u64 ClosingArena = ai().ArenaWorkGeneration();
+	if (ai().StopArenaNavigation())
+	{
+		Msg("Arena navigation generation: map=%s closing=%llu",
+			map_data.m_name.c_str(), static_cast<unsigned long long>(ClosingArena));
+	}
 	ClientStartup.Cancel();
 	script_client_events.clear();
 

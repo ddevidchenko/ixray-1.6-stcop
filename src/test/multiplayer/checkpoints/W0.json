@@ -135,6 +135,11 @@
                 "step": "arena-nav-package"
             },
             {
+                "name": "Multiplayer.DedicatedArenaNavigation",
+                "successMessage": "Dedicated arena navigation checks passed",
+                "step": "dedicated-arena-nav"
+            },
+            {
                 "name": "Multiplayer.StalkerAuthority",
                 "successMessage": "Stalker authority checks passed",
                 "step": "stalker-authority"
@@ -307,9 +312,10 @@
         "clientTimeoutSeconds": 180,
         "logTimeoutSeconds": 15,
         "stalkerNavigation": {
-            "workItems": ["MP-005c", "MP-005d", "MP-106"],
+            "workItems": ["MP-005c", "MP-005d", "MP-106", "MP-107"],
             "files": ["level.ai", "level.game", "level.navlinks"],
-            "serverOption": "w1_stalker_navigation=1"
+            "serverOption": "bots=1",
+            "preListener": true
         },
         "observation": {
             "durationSeconds": 600,

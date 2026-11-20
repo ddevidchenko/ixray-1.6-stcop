@@ -1019,10 +1019,10 @@ These items expand MP-071. Follow the [navigation pipeline](multiplayer-navigati
 
 ### MP-107 — Bootstrap nav on the authoritative dedicated server
 
-- **Kind / runs / depends:** TDD; `W`; MP-023, MP-026, MP-031, MP-005d, MP-104–106.
-- **Red:** start dedicated DM with valid package but no `alife.spawn`; navigation becomes ready after collision load and before bot consumers. Missing/invalid nav cleanly rejects bot-enabled startup or permits only explicitly human-only mode. Unload/reload with a pending path job rejects the old map-generation result without reading freed graph memory.
-- **Green / seam:** explicit DM initialization in [Level_load.cpp](../../src/xrGame/Level_load.cpp), backed by a navigation owner/compatible [CAI_Space](../../src/xrGame/ai_space.cpp) adapter. Use the MP-005d level-only bootstrap and attach validated traversal edges before publishing readiness. Keep the walk grid, link table, and readers under the arena owner. Stop jobs and consumers before releasing the navigation data.
-- [ ] **Complete when:** the actual DS path initializes/queries/unloads nav independently of `OnClient()` and ALife actor population, including assertions-disabled validation and repeated map changes.
+- **Kind / runs / depends:** TDD; `P/W`. Uses MP-005d and MP-106. A live pending-path check needs an authoritative stalker from MP-005.
+- **Red:** validate bot options and order navigation before listener startup. Fail missing and corrupt input before any bind or internal connection attempt. Hold a queued request through teardown and reject it both between maps and after the next generation is ready. The portable startup and lifetime suite went RED before implementation. The Windows evidence tests also went RED before fault injection and rejection checks were wired.
+- **Implemented:** dedicated DM accepts `bots=1` and the W1 alias. It prepares collision and validates the MP-106 package before creating match entities or opening the listener. The normal level load reuses prepared collision. Omission or `bots=0` preserves the legacy human-only startup. During teardown, the arena closes to new path work until consumers release their reservations and queued builders. Deferred callbacks check their generation before touching path data. The next arena gets a new generation even when the same map reloads. [Startup tests](../../src/test/multiplayer/portable/DedicatedArenaNavigationTests.cpp), [Windows evidence tests](../../src/test/multiplayer/checkpoints/TestW0Evidence.ps1)
+- [ ] **Complete when:** the [Windows bootstrap check](multiplayer-checkpoints/w0.md#mp-107-dedicated-bootstrap-and-map-reload) records valid startup, pre-listener rejection, an assertions-disabled rejection, and repeated map load and teardown with a live stalker. The portable and synthetic runner checks passed locally. Windows engine acceptance is pending.
 
 ### MP-108 — Prove generated paths work through native stalker movement
 

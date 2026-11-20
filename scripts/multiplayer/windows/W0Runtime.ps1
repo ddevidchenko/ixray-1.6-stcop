@@ -210,12 +210,36 @@ function Invoke-W0Observation {
     return 'runtime_observation_passed'
 }
 
+function Set-W1FixtureFault {
+    param([string] $Runtime, [string] $Map, [string] $Fault)
+
+    $MapDirectory = Join-Path $Runtime "gamedata/levels/$Map"
+    $Package = Join-Path $MapDirectory 'level.navlinks'
+    switch ($Fault) {
+        'MissingGrid' { Remove-Item -LiteralPath (Join-Path $MapDirectory 'level.ai') }
+        'MissingPackage' { Remove-Item -LiteralPath $Package }
+        'CorruptPackage' {
+            $Bytes = [IO.File]::ReadAllBytes($Package)
+            $Bytes[$Bytes.Length - 1] = $Bytes[$Bytes.Length - 1] -bxor 1
+            [IO.File]::WriteAllBytes($Package, $Bytes)
+        }
+        default { throw "Unknown navigation fault $Fault." }
+    }
+}
+
 function Invoke-W0Runtime {
-    param([string] $Runtime, [string] $Map, $Config, [string] $Case, [string] $BinaryDirectory)
+    param([string] $Runtime, [string] $Map, $Config, [string] $Case, [string] $BinaryDirectory, [string] $NavigationFault = 'None')
 
     $ServerExecutable = Join-Path $BinaryDirectory 'xrServerCLI.exe'
     $ClientExecutable = Join-Path $BinaryDirectory 'xrEngine.exe'
     $Children = @()
+    $PreListenerCheck = $Case -eq 'StalkerNavigation' -and $Config.stalkerNavigation.PSObject.Properties['preListener'] -and
+        $Config.stalkerNavigation.preListener
+    if ($NavigationFault -ne 'None') {
+        if (!$PreListenerCheck) { throw 'This candidate does not support the dedicated navigation rejection check.' }
+        $Report.runtime.navigationFault = $NavigationFault
+        Set-W1FixtureFault $Runtime $Map $NavigationFault
+    }
     $Reservation = [Net.Sockets.Socket]::new([Net.Sockets.AddressFamily]::InterNetworkV6, [Net.Sockets.SocketType]::Dgram, [Net.Sockets.ProtocolType]::Udp)
     try {
         $Reservation.DualMode = $true
@@ -243,16 +267,28 @@ function Invoke-W0Runtime {
             return 'listener_failure_observed'
         }
 
+        if ($NavigationFault -ne 'None') {
+            Wait-W0Evidence 'navigation rejection before the listener' $Config.serverTimeoutSeconds {
+                $Outcome = Get-W1RejectionOutcome (Get-W0Log $ServerOutput) $Map $NavigationFault
+                if ($Outcome -ceq 'continued') { throw 'The server started its listener or attempted a connection with invalid navigation.' }
+                $Outcome -ceq 'rejected'
+            } $Children
+            $Report.runtime.navigationStatus = 'failed'
+            return 'w1_navigation_rejected'
+        }
+
         Wait-W0Evidence 'dedicated DM server readiness' $Config.serverTimeoutSeconds {
             $Output = Get-W0Log $ServerOutput
-            if ($Output -cmatch '(?m)^Failed to start server\.\r?$') { throw 'The server reported startup failure. See server.stdout.log.' }
             $ServerReady = @(Get-W0ReadyPeers $Output | Where-Object { $_.role -ceq 'server' -and $_.pid -eq $Server.process.Id }).Count -eq 1
             if ($Case -eq 'StalkerNavigation') {
-                $Navigation = Get-W1NavigationOutcome $Output $Map $ServerReady
+                $Navigation = Get-W1NavigationOutcome $Output $Map $ServerReady $PreListenerCheck
                 $Report.runtime.navigationStatus = $Navigation
                 if ($Navigation -ceq 'failed') { throw 'The dedicated server rejected the W1 navigation fixture. See server.stdout.log.' }
-                if ($Navigation -ceq 'not_loaded') { throw 'Dedicated DM became ready without W1 navigation. See server.stdout.log.' }
+                if ($Navigation -cin @('not_loaded', 'late', 'not_listening')) {
+                    throw 'The dedicated server did not prove navigation was ready before the listener. See server.stdout.log.'
+                }
             }
+            if ($Output -cmatch '(?m)^Failed to start server\.\r?$') { throw 'The server reported startup failure. See server.stdout.log.' }
             return $ServerReady
         } $Children
 

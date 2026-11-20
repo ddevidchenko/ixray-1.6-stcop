@@ -37,6 +37,11 @@ bool CanSpawn(const CSE_Abstract& Entity)
 	{
 		return true;
 	}
+	if (ai().ArenaNavigationStopping())
+	{
+		return false;
+	}
+
 	const auto* Grid = ai().get_level_graph();
 	const auto Navigation = ai().UsesArenaNavigation() ? CheckArena(Grid) : Check(ai().get_game_graph(), Grid);
 	if (Navigation == Status::Ready)

@@ -124,6 +124,11 @@ namespace ClientCatchUpTests
 bool Run();
 }
 
+namespace DedicatedArenaNavigationTests
+{
+bool Run();
+}
+
 namespace ArenaNavigationPackageTests
 {
 bool Run();
@@ -380,6 +385,11 @@ int main(int ArgumentCount, char** Arguments)
 	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--stalker-navigation") == 0)
 	{
 		return StalkerPrerequisitesTests::RunNavigation() ? EXIT_SUCCESS : EXIT_FAILURE;
+	}
+
+	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--dedicated-arena-nav") == 0)
+	{
+		return DedicatedArenaNavigationTests::Run() ? EXIT_SUCCESS : EXIT_FAILURE;
 	}
 
 	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--arena-nav-package") == 0)

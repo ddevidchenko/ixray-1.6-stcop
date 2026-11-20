@@ -41,6 +41,14 @@ CMovementManager::CMovementManager	(CCreature *object)
 
 CMovementManager::~CMovementManager	()
 {
+	if (m_level_path_builder)
+	{
+		m_level_path_builder->remove();
+	}
+	if (m_detail_path_builder)
+	{
+		m_detail_path_builder->remove();
+	}
 	xr_delete					(m_base_game_selector		);
 	xr_delete					(m_base_level_selector		);
 	
@@ -83,6 +91,8 @@ void CMovementManager::Load(const char* section)
 
 void CMovementManager::reinit		()
 {
+	level_path_builder().remove();
+	detail_path_builder().remove();
 	CancelArenaLadder(nullptr);
 	m_speed							= 0.f;
 	m_path_type						= ePathTypeNoPath;
@@ -175,7 +185,7 @@ void CMovementManager::update_path				()
 {
 	PROF_EVENT("Build Path::update")
 
-	if (!enabled() || wait_for_distributed_computation())
+	if (!enabled() || wait_for_distributed_computation() || ai().ArenaNavigationStopping())
 		return;
 
 	if (!game_path().evaluator())
@@ -396,6 +406,14 @@ bool CMovementManager::can_use_distributed_computations() const
 
 void CMovementManager::on_frame					(CPHMovementControl *movement_control, Fvector &dest_position)
 {
+	if (ai().ArenaNavigationStopping())
+	{
+		CancelArenaLadder(movement_control);
+		dest_position = object().Position();
+		m_speed = 0.f;
+		return;
+	}
+
 	if	(
 			enabled() &&
 			(m_path_state != ePathStatePathVerification) &&

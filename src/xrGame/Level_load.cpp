@@ -47,6 +47,32 @@ const char* CLevel::LoadMultiplayerGraph()
 	return nullptr;
 }
 
+bool CLevel::PrepareDedicatedArena(const GameDescriptionData& Description)
+{
+	const char* Map = Description.map_name;
+	const char* Version = Description.map_version;
+	const int LevelId = pApp->Level_ID(Map, Version, true);
+	if (LevelId < 0 || !PrepareLevelCollision(u32(LevelId)))
+	{
+		Msg("W1 navigation: status=failed map=%s reason=unable to prepare arena collision", Map);
+		return false;
+	}
+
+	g_pGamePersistent->SetLoadStageTitle("st_loading_ai_objects");
+	g_pGamePersistent->LoadTitle();
+	if (!ai().LoadArenaNavigation(true, Map, Version))
+	{
+		Msg("W1 navigation: status=failed map=%s reason=level.ai or level.navlinks unavailable or invalid", Map);
+		return false;
+	}
+
+	map_data.m_name = Map;
+	map_data.m_map_version = Version;
+	Msg("Arena navigation generation: map=%s ready=%llu", Map, static_cast<unsigned long long>(ai().ArenaWorkGeneration()));
+	Msg("W1 navigation: status=ready map=%s", Map);
+	return true;
+}
+
 bool CLevel::Load_GameSpecific_Before()
 {
 	// AI space
@@ -55,28 +81,19 @@ bool CLevel::Load_GameSpecific_Before()
 	string_path fn_game;
 
 	const auto* ServerGame = Server && Server->game ? Server->game->cast_game_sv_mp() : nullptr;
-	const bool W1Navigation = ServerGame && ServerGame->UsesW1StalkerNavigation();
+	const bool BotNavigation = ServerGame && ServerGame->RequiresBotNavigation();
+	if (BotNavigation && !ai().ArenaNavigationReady())
+	{
+		return false;
+	}
 
 	const auto GameType = GamePersistent().GameType();
 	// Remote clients can reach map load before the game mode arrives.
 	const bool ArenaClient = (GameType == eGameIDDeathmatch || GameType == eGameIDNoGame) && OnClient() &&
 		!FS.exist(fn_game, "$level$", "alife.spawn") && FS.exist(fn_game, "$level$", "level.ai");
-	if (W1Navigation || ArenaClient)
+	if (ArenaClient)
 	{
-		const bool Loaded = ai().LoadArenaNavigation(W1Navigation,
-			map_data.m_name.c_str(), map_data.m_map_version.c_str());
-		if (W1Navigation)
-		{
-			if (Loaded)
-			{
-				Msg("W1 navigation: status=ready map=%s", map_data.m_name.c_str());
-			}
-			else
-			{
-				Msg("W1 navigation: status=failed map=%s reason=level.ai or level.navlinks unavailable or invalid", map_data.m_name.c_str());
-			}
-		}
-		else if (!Loaded)
+		if (!ai().LoadArenaNavigation(false, map_data.m_name.c_str(), map_data.m_map_version.c_str()))
 		{
 			Msg("! Unable to load arena navigation from level.ai");
 		}
@@ -89,7 +106,7 @@ bool CLevel::Load_GameSpecific_Before()
 		}
 	}
 
-	if (!W1Navigation && !ai().get_alife())
+	if (!BotNavigation && !ai().get_alife())
 	{
 		const auto* GameGraph = ai().get_game_graph();
 		if (GameGraph && FS.exist(fn_game, "$level$", "level.ai") && HasSessionName() &&

@@ -15,11 +15,17 @@ param(
     [string] $Map,
     [ValidateSet('Join', 'ListenerFailure', 'Observe', 'StalkerNavigation')]
     [string] $RuntimeCase = 'Join',
+    [ValidateSet('None', 'MissingGrid', 'MissingPackage', 'CorruptPackage')]
+    [string] $NavigationFault = 'None',
+    [switch] $Shipping,
     [string] $WorkspaceRoot
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+if (($NavigationFault -ne 'None' -or $Shipping) -and ($Mode -ne 'BaselineRuntime' -or $RuntimeCase -ne 'StalkerNavigation')) {
+    throw '-NavigationFault and -Shipping require -Mode BaselineRuntime -RuntimeCase StalkerNavigation.'
+}
 
 function Invoke-CheckpointStep {
     param(
@@ -189,21 +195,24 @@ try {
 
     if ($Mode -in @('Peers', 'BaselineBuild', 'BaselineRuntime')) {
         $EngineBuild = if ($Mode -eq 'BaselineRuntime') { $Definition.BaselineBuild } else { $Config }
+        $EngineConfiguration = if ($Shipping) { 'Shipping' } else { $EngineBuild.configuration }
+        $Report.configuration = $EngineConfiguration
         if ($Mode -eq 'BaselineRuntime') {
             . (Join-Path $PSScriptRoot 'W0Evidence.ps1')
             . (Join-Path $PSScriptRoot 'W0Runtime.ps1')
             $RuntimeRoot = Initialize-W0Runtime $GameDataRoot $Map $Config $Workspace
         }
         $Configure = @('-S', $Source, '-B', $Build, '-A', 'x64', '-DIXRAY_MP=ON', '-DIXRAY_MP_SQL=OFF')
+        if ($Shipping) { $Configure += '-DDEVIXRAY_ENABLE_SHIPPING=ON' }
         if ($Mode -eq 'Peers') {
             $Configure += @('-DIXRAY_TESTS=ON', '-DIXRAY_MULTIPLAYER_VERIFY_TEST_FAILURE=ON')
         }
         $null = Invoke-CheckpointStep 'configure' $CMake $Configure $Source $EngineBuild.configureTimeoutSeconds
-        $BuildArguments = @('--build', $Build, '--config', $EngineBuild.configuration, '--parallel', '--target') + $EngineBuild.targets
+        $BuildArguments = @('--build', $Build, '--config', $EngineConfiguration, '--parallel', '--target') + $EngineBuild.targets
         $null = Invoke-CheckpointStep 'build' $CMake $BuildArguments $Source $EngineBuild.buildTimeoutSeconds
         if ($Mode -eq 'BaselineRuntime') {
-            $BinaryDirectory = Join-Path $Build "bin/$($EngineBuild.configuration)"
-            $Report.status = Invoke-W0Runtime $RuntimeRoot $Map $Config $RuntimeCase $BinaryDirectory
+            $BinaryDirectory = Join-Path $Build "bin/$EngineConfiguration"
+            $Report.status = Invoke-W0Runtime $RuntimeRoot $Map $Config $RuntimeCase $BinaryDirectory $NavigationFault
         }
         elseif ($Mode -eq 'BaselineBuild') {
             $Report.status = 'build_passed'

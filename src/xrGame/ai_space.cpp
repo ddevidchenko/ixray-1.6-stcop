@@ -134,7 +134,7 @@ bool CAI_Space::load				(const char* level_name)
 
 bool CAI_Space::LoadArenaNavigation(bool LoadLadders, xr_string_view Map, xr_string_view Version)
 {
-	if (Device.IsEditorMode() || m_game_graph || m_alife_simulator)
+	if (Device.IsEditorMode() || m_game_graph || m_alife_simulator || ArenaLifetime.Loaded())
 	{
 		return false;
 	}
@@ -148,18 +148,17 @@ bool CAI_Space::LoadArenaNavigation(bool LoadLadders, xr_string_view Map, xr_str
 	xr_unique_ptr<Multiplayer::ArenaLadderNavigation> Ladders;
 	if (LoadLadders)
 	{
-		Ladders.reset(new Multiplayer::ArenaLadderNavigation(*Grid, ArenaGeneration + 1));
+		Ladders.reset(new Multiplayer::ArenaLadderNavigation(*Grid, ArenaLifetime.NextGeneration()));
 		if (!Ladders->Load(Map, Version, Grid->ArenaBytes()))
 		{
 			return false;
 		}
 	}
 	unload();
-	++ArenaGeneration;
 	ArenaLadders = std::move(Ladders);
 	m_level_graph = Grid.release();
-	ArenaNavigation = true;
 	StartLevelNavigation();
+	ArenaLifetime.Publish();
 	return true;
 }
 
@@ -174,7 +173,11 @@ void CAI_Space::StartLevelNavigation()
 
 void CAI_Space::unload				(bool reload)
 {
-	ArenaNavigation = false;
+	ArenaLifetime.Stop();
+	if (ArenaLifetime.Loaded())
+	{
+		m_moving_objects->UnloadArena();
+	}
 	ArenaLadders.reset();
 	script_engine().unload	();
 
@@ -182,6 +185,7 @@ void CAI_Space::unload				(bool reload)
 
 	if(!Device.IsEditorMode()) xr_delete(m_level_graph);
 
+	ArenaLifetime.Release();
 	m_cover_manager->clear();
 	if (!reload)
 	{

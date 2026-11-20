@@ -37,6 +37,42 @@ Assert-Result ((Get-W1NavigationOutcome $NavigationReady 'mp_atp' $true) -ceq 'r
 Assert-Result ((Get-W1NavigationOutcome "$NavigationReady extra" 'mp_atp' $true) -ceq 'not_loaded') 'A malformed readiness record cannot pass.'
 Assert-Result ((Get-W1NavigationOutcome "$NavigationFailed`nW1 navigation: status=ready map=mp_other" 'mp_other') -ceq 'ready') 'Failures for other maps do not override matched evidence.'
 
+$ListenerReady = '[SteamNetServer] created on port 5446'
+$MissingGrid = 'Arena navigation: map=mp_atp file=level.ai reason=missing or invalid native grid'
+$BadPackage = 'Arena navigation: map=mp_atp version=1.0 file=level.navlinks reason=traversal size or SHA-256 mismatch'
+$MissingPackage = 'Arena navigation: map=mp_atp version=1.0 file=level.navlinks reason=navigation package missing'
+$RejectedGrid = "$MissingGrid`n$NavigationFailed`n$StartupFailure"
+$RejectedPackage = "$BadPackage`n$NavigationFailed`n$StartupFailure"
+Assert-Result ((Get-W1NavigationOutcome "$ListenerReady`n$NavigationReady" 'mp_atp' $true $true) -ceq 'late') 'Readiness after opening the listener fails the dedicated bootstrap check.'
+Assert-Result ((Get-W1NavigationOutcome "$NavigationReady`n$ListenerReady" 'mp_atp' $true $true) -ceq 'ready') 'Validated navigation precedes the listener.'
+Assert-Result ((Get-W1NavigationOutcome $NavigationReady 'mp_atp' $true $true) -ceq 'not_listening') 'Dedicated readiness also requires evidence of the listener opening after validation.'
+Assert-Result ((Get-W1RejectionOutcome $RejectedGrid 'mp_atp' 'MissingGrid') -ceq 'rejected') 'Missing grid rejection has matching map, input, and terminal startup failure.'
+Assert-Result ((Get-W1RejectionOutcome $RejectedPackage 'mp_atp' 'CorruptPackage') -ceq 'rejected') 'Corrupt payload rejection identifies the actual package error.'
+Assert-Result ((Get-W1RejectionOutcome "$MissingPackage`n$NavigationFailed`n$StartupFailure" 'mp_atp' 'MissingPackage') -ceq 'rejected') 'A missing package produces its own rejection reason.'
+Assert-Result ((Get-W1RejectionOutcome $RejectedPackage 'mp_atp' 'MissingPackage') -ceq 'pending') 'A different navigation failure cannot pass an injected fault.'
+Assert-Result ((Get-W1RejectionOutcome "$ListenerReady`n$RejectedGrid" 'mp_atp' 'MissingGrid') -ceq 'continued') 'The listener must never have opened on a bad navmesh.'
+Assert-Result ((Get-W1RejectionOutcome "$RejectedGrid`n[SteamNetServer] Failed to open listener on port 5446 (1)" 'mp_atp' 'MissingGrid') -ceq 'continued') 'An attempted listener bind contradicts navigation rejection.'
+Assert-Result ((Get-W1RejectionOutcome "$RejectedGrid`n$InternalJoin" 'mp_atp' 'MissingGrid') -ceq 'continued') 'An internal connect attempt contradicts rejection.'
+Assert-Result ((Get-W1RejectionOutcome "$NavigationFailed`n$StartupFailure" 'mp_atp' 'MissingGrid') -ceq 'pending') 'Generic failure without matching asset evidence cannot pass.'
+Assert-Result ((Get-W1RejectionOutcome "$StartupFailure`n$MissingGrid`n$NavigationFailed" 'mp_atp' 'MissingGrid') -ceq 'pending') 'A prior startup failure cannot explain later output.'
+
+$FaultRoot = Join-Path ([IO.Path]::GetTempPath()) ('w1-fault-' + [guid]::NewGuid().ToString('N'))
+try {
+    $MapDir = (New-Item -ItemType Directory -Path (Join-Path $FaultRoot 'gamedata/levels/mp_atp') -Force).FullName
+    $PackagePath = Join-Path $MapDir 'level.navlinks'
+    $GridPath = Join-Path $MapDir 'level.ai'
+    [IO.File]::WriteAllBytes($GridPath, [byte[]] (9, 8))
+    [IO.File]::WriteAllBytes($PackagePath, [byte[]] (1, 2, 3))
+    Set-W1FixtureFault $FaultRoot 'mp_atp' 'CorruptPackage'
+    Assert-Result ((([IO.File]::ReadAllBytes($PackagePath)) -join ',') -ceq '1,2,2') 'Corruption changes payload bytes while preserving the package size.'
+    Set-W1FixtureFault $FaultRoot 'mp_atp' 'MissingPackage'
+    Assert-Result (!(Test-Path -LiteralPath $PackagePath) -and (Test-Path -LiteralPath $GridPath)) 'Missing-package injection leaves the grid intact.'
+    Set-W1FixtureFault $FaultRoot 'mp_atp' 'MissingGrid'
+    Assert-Result (!(Test-Path -LiteralPath $GridPath)) 'Missing-grid injection removes the staged grid.'
+} finally {
+    Remove-Item -LiteralPath $FaultRoot -Force -Recurse
+}
+
 $TransportOnly = "[SteamNetClient] Connected to server`n[SteamNetServer] server client connected"
 Assert-Result (@(Get-W0ReadyPeers $TransportOnly).Count -eq 0) 'Transport connections do not establish DM readiness.'
 $Peers = @(Get-W0ReadyPeers "DM ready: role=server peer=1 pid=21`r`nDM ready: role=remote peer=2 pid=22`nDM ready: role=remote peer=2 pid=22`nname: DM ready: role=remote peer=3 pid=23")

@@ -170,6 +170,8 @@ bool CLevel::net_start2				()
 		if ((m_connect_server_err=Server->Connect(m_caServerOptions, game_descr))!=xrServer::ErrNoError)
 		{
 			net_start_result_total = false;
+			Server->Disconnect();
+			xr_delete(Server);
 			Msg				("! Failed to start server.");
 			return true;
 		}
@@ -265,9 +267,11 @@ bool CLevel::net_start5				()
 bool CLevel::net_start6				()
 {
 	PROF_EVENT("CLevel::net_start6");
-	//init bullet manager
-	BulletManager().Clear		();
-	BulletManager().Load		();
+	BulletManager().Clear();
+	if (net_start_result_total)
+	{
+		BulletManager().Load();
+	}
 
 	pApp->LoadEnd				();
 

@@ -47,6 +47,8 @@ bool	CLevel::net_start_client1				()
 }
 
 #include "xrServer.h"
+#include "ai_space.h"
+#include "game_sv_mp.h"
 
 bool	CLevel::net_start_client2				()
 {
@@ -108,8 +110,23 @@ bool	CLevel::net_start_client3				()
 			level_name		= get_net_DescriptionData().map_name;
 			level_ver		= get_net_DescriptionData().map_version;
 			download_url	= get_net_DescriptionData().download_url;
-			rescan_mp_archives(); //because if we are using psNET_direct_connect, we not download map...
 		}
+		// The authoritative arena already resolved its assets before the listener opened.
+		// The local handshake must use that same map and version.
+		const auto* ServerGame = Server && Server->game ? Server->game->cast_game_sv_mp() : nullptr;
+		const bool PreparedArena = ServerGame && ServerGame->RequiresBotNavigation();
+		if (PreparedArena && (xr_strcmp(level_name, map_data.m_name.c_str()) ||
+			xr_strcmp(level_ver, map_data.m_map_version.c_str()) || !ai().ArenaNavigationReady()))
+		{
+			Msg("! The local client description does not match the prepared dedicated arena");
+			StopClientStartup();
+			return true;
+		}
+		if (!PreparedArena && !psNET_direct_connect)
+		{
+			rescan_mp_archives();
+		}
+
 		// Determine internal level-ID
 		int						level_id = pApp->Level_ID(level_name, level_ver, true);
 		if (level_id==-1)	
@@ -135,7 +152,12 @@ bool	CLevel::net_start_client3				()
 		
 		deny_m_spawn			= false;
 		// Load level
-		R_ASSERT2				(Load(level_id),"Loading failed.");
+		if (!Load(u32(level_id)))
+		{
+			Msg("! Loading level '%s' failed", level_name);
+			StopClientStartup();
+			return true;
+		}
 		map_data.m_level_geom_crc32 = 0;
 		if (!IsGameTypeSingle())
 			CalculateLevelCrc32		();

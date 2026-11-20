@@ -9,6 +9,7 @@
 #pragma once
 
 #include "Multiplayer/ArenaLadderNavigation.h"
+#include "Multiplayer/DedicatedArenaNavigation.h"
 
 class CGameGraph;
 class CGameLevelCrossTable;
@@ -47,8 +48,7 @@ private:
 			bool						load					(const char* level_name);
 	[[nodiscard]] bool LoadArenaNavigation(bool LoadLadders, xr_string_view Map, xr_string_view Version);
 	void StartLevelNavigation();
-	bool ArenaNavigation = false;
-	u32 ArenaGeneration = 0;
+	Multiplayer::DedicatedArena::Lifetime ArenaLifetime;
 	xr_unique_ptr<Multiplayer::ArenaLadderNavigation> ArenaLadders;
 			void						unload					(bool reload = false);
 			void						patrol_path_storage_raw	(IReader &stream);
@@ -66,7 +66,12 @@ public:
 	IC		IGameGraph					*get_game_graph			() const;
 	IC		ILevelGraph					&level_graph			() const;
 	IC		const ILevelGraph			*get_level_graph		() const;
-	[[nodiscard]] bool UsesArenaNavigation() const noexcept { return ArenaNavigation; }
+	[[nodiscard]] bool UsesArenaNavigation() const noexcept { return ArenaLifetime.Loaded(); }
+	bool ArenaNavigationReady() const { return ArenaLifetime.Ready(); }
+	bool ArenaNavigationStopping() const { return ArenaLifetime.Loaded() && !ArenaLifetime.Ready(); }
+	u64 ArenaWorkGeneration() const { return ArenaLifetime.Generation(); }
+	bool CanRunArenaWork(u64 Generation) const { return ArenaLifetime.CanRun(Generation); }
+	bool StopArenaNavigation() { return ArenaLifetime.Stop(); }
 	Multiplayer::ArenaLadderNavigation* ArenaLadderLinks() const { return ArenaLadders.get(); }
 			const IGameLevelCrossTable	&cross_table			() const;
 			const IGameLevelCrossTable	*get_cross_table		() const;

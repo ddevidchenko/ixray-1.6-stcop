@@ -13,6 +13,7 @@
 #include "game_cl_base_weapon_usage_statistic.h"
 #include "ai_space.h"
 #include "Multiplayer/StalkerNavigation.h"
+#include "Multiplayer/DedicatedArenaNavigation.h"
 #include "object_broker.h"
 #include "file_transfer.h"
 #include "screenshot_server.h"
@@ -2271,16 +2272,6 @@ xrServer::EConnect xrServer::Connect(shared_str& session_name, GameDescriptionDa
 		return ErrConnect;
 	}
 
-	if (game->Type() != eGameIDSingle)
-	{
-		m_file_transfers = new file_transfer::server_site();
-		initialize_screenshot_proxies();
-		LoadServerInfo();
-		xr_auth_strings_t tmp_ignore;
-		xr_auth_strings_t tmp_check;
-		fill_auth_check_params(tmp_ignore, tmp_check);
-		FS.auth_generate(tmp_ignore, tmp_check);
-	}
 #ifdef DEBUG
 	Msg("* Created server_game %s", game->type_name());
 #endif
@@ -2290,9 +2281,40 @@ xrServer::EConnect xrServer::Connect(shared_str& session_name, GameDescriptionDa
 	xr_strcpy(game_descr.map_version, game_sv_GameState::parse_level_version(session_name.c_str()).c_str());
 	xr_strcpy(game_descr.download_url, get_map_download_url(game_descr.map_name, game_descr.map_version));
 
-	game->Create(session_name);
+	using namespace Multiplayer::DedicatedArena;
+	auto* ServerGame = game->cast_game_sv_mp();
+	const auto Navigation = ParseMode(g_dedicated_server && ServerGame && game->Type() == eGameIDDeathmatch,
+		*session_name);
+	if (ServerGame)
+	{
+		ServerGame->BotNavigationRequired = Navigation == Mode::Bots;
+	}
 
-	return IPureServer::Connect(*session_name, game_descr);
+	const auto Started = StartServer(Navigation, [&]
+	{
+		return Level().PrepareDedicatedArena(game_descr);
+	}, [&]
+	{
+		if (game->Type() != eGameIDSingle)
+		{
+			m_file_transfers = new file_transfer::server_site();
+			initialize_screenshot_proxies();
+			LoadServerInfo();
+			xr_auth_strings_t tmp_ignore;
+			xr_auth_strings_t tmp_check;
+			fill_auth_check_params(tmp_ignore, tmp_check);
+			FS.auth_generate(tmp_ignore, tmp_check);
+		}
+
+		game->Create(session_name);
+		return IPureServer::Connect(*session_name, game_descr) == ErrNoError;
+	});
+
+	if (Started == Startup::InvalidOptions)
+	{
+		Msg("W1 navigation: status=failed map=%s reason=invalid bot option for this server mode", game_descr.map_name);
+	}
+	return Started == Startup::Started ? ErrNoError : ErrConnect;
 }
 
 

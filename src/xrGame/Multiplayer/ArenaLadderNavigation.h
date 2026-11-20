@@ -28,10 +28,10 @@ public:
 		f32 Cost;
 	};
 
-	ArenaLadderNavigation(const ILevelGraph& Grid, u32 Generation) : Grid(Grid), MapGeneration(Generation) {}
+	ArenaLadderNavigation(const ILevelGraph& Grid, u64 Generation) : Grid(Grid), MapGeneration(Generation) {}
 
 	bool Load(xr_string_view Map, xr_string_view Version, xr_span<const u8> GridBytes);
-	u32 Generation() const { return MapGeneration; }
+	u64 Generation() const { return MapGeneration; }
 	u32 BindingRevision(u32 Index) const { return Bindings[Links[Index].BindingId].Revision; }
 	bool HasLinks() const { return !Links.empty(); }
 	void Register(const CClimableObject& Ladder);
@@ -48,7 +48,7 @@ public:
 
 private:
 	const ILevelGraph& Grid;
-	u32 MapGeneration;
+	u64 MapGeneration;
 	xr_vector<Binding> Bindings;
 	xr_vector<Edge> Links;
 };

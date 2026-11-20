@@ -175,6 +175,28 @@ void IGame_Level::Load_GameSpecific_CFORM(CDB::TRI* tris, size_t count)
 	}
 }
 
+bool IGame_Level::PrepareLevelCollision(u32 LevelId)
+{
+	if (PreparedCollisionLevel != u32(-1))
+	{
+		return PreparedCollisionLevel == LevelId;
+	}
+
+	g_pGamePersistent->SetLoadStageTitle("st_loading_cform");
+	g_pGamePersistent->LoadTitle	();
+
+	ObjectSpace.Load
+	(
+		[](Fvector * V, size_t Vcnt, CDB::TRI * T, size_t Tcnt, void* params)
+		{
+			g_pGameLevel->Load_GameSpecific_CFORM(T, Tcnt);
+		}
+	);
+
+	PreparedCollisionLevel = LevelId;
+	return true;
+}
+
 bool IGame_Level::Load			(u32 dwNum) 
 {
 	PROF_EVENT("IGame_Level::Load");
@@ -194,25 +216,22 @@ bool IGame_Level::Load			(u32 dwNum)
 	// Open
 	g_pGamePersistent->SetLoadStageTitle	("st_opening_stream");
 	g_pGamePersistent->LoadTitle	();
-	IReader* LL_Stream			= FS.r_open	("$level$","level");
-	IReader	&fs					= *LL_Stream;
+	auto LevelStream = FS.rg_open("$level$", "level");
+	if (!LevelStream)
+	{
+		return false;
+	}
+	IReader& fs = *LevelStream;
 
 	// Header
 	hdrLEVEL					H;
 	fs.r_chunk_safe				(fsL_HEADER,&H,sizeof(H));
 	R_ASSERT2					(XRCL_PRODUCTION_VERSION==H.XRLC_version,"Incompatible level version.");
 
-	// CForms
-	g_pGamePersistent->SetLoadStageTitle("st_loading_cform");
-	g_pGamePersistent->LoadTitle	();
-
-	ObjectSpace.Load
-	(
-		[](Fvector * V, size_t Vcnt, CDB::TRI * T, size_t Tcnt, void* params)
-		{
-			g_pGameLevel->Load_GameSpecific_CFORM(T, Tcnt);
-		}
-	);
+	if (!PrepareLevelCollision(dwNum))
+	{
+		return false;
+	}
 
 	//Sound->set_geometry_occ		( &Static );
 	Sound->set_geometry_occ		(ObjectSpace.GetStaticModel	());
@@ -232,15 +251,17 @@ bool IGame_Level::Load			(u32 dwNum)
 	catch (...) {
 		Msg("Level data empty: %s", temp);
 	}
-	Render->level_Load			(LL_Stream);
+	Render->level_Load(&fs);
 
 	// Objects
 	g_pGamePersistent->Environment().mods_load	();
-	R_ASSERT					(Load_GameSpecific_Before());
+	if (!Load_GameSpecific_Before())
+	{
+		return false;
+	}
 	Objects.Load				();
 
 	// Done
-	FS.r_close					( LL_Stream );
 	bReady						= true;
 
 	if (!g_dedicated_server) {

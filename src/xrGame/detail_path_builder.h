@@ -10,6 +10,7 @@
 
 #include "movement_manager.h"
 #include "detail_path_manager.h"
+#include "ai_space.h"
 
 class CDetailPathBuilder {
 private:
@@ -18,7 +19,24 @@ private:
 protected:
 	CMovementManager		*m_object;
 
+	void Defer(const xr_delegate<void()>& Work)
+	{
+		ScheduledGeneration = ai().ArenaWorkGeneration();
+		if (ai().CanRunArenaWork(ScheduledGeneration))
+		{
+			m_object->m_wait_for_distributed_computation = true;
+			Device.seqParallel.push_back(Work);
+		}
+	}
+
+	bool BeginDeferred()
+	{
+		m_object->m_wait_for_distributed_computation = false;
+		return ai().CanRunArenaWork(ScheduledGeneration);
+	}
+
 private:
+	u64 ScheduledGeneration = 0;
 	const PATH				*m_level_path;
 	u32						m_path_vertex_index;
 
@@ -37,8 +55,7 @@ public:
 
 			void			register_to_process	()
 	{
-		m_object->m_wait_for_distributed_computation	= true;
-		Device.seqParallel.push_back	(xr_make_delegate(this,&CDetailPathBuilder::process));
+		Defer(xr_make_delegate(this, &CDetailPathBuilder::ProcessDeferred));
 	}
 
 			void			process_impl	(bool separate_computing = true)
@@ -67,6 +84,16 @@ public:
 		process_impl		();
 	}
 
+private:
+	void ProcessDeferred()
+	{
+		if (BeginDeferred())
+		{
+			process_impl(false);
+		}
+	}
+
+public:
 	IC		void			remove			()
 	{
 		if (m_object->m_wait_for_distributed_computation)

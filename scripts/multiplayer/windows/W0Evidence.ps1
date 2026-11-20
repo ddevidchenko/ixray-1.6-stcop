@@ -17,18 +17,59 @@ function Get-W0ListenerOutcome {
 }
 
 function Get-W1NavigationOutcome {
-    param([string] $Output, [string] $Map, [bool] $ServerReady)
+    param([string] $Output, [string] $Map, [bool] $ServerReady, [bool] $RequireBeforeListener)
 
     $Ready = $false
+    $Opened = $false
+    $Late = $false
     $FailurePrefix = "W1 navigation: status=failed map=$Map reason="
     foreach ($Line in ($Output -split '\r?\n')) {
         if ($Line.StartsWith($FailurePrefix, [StringComparison]::Ordinal) -and $Line.Length -gt $FailurePrefix.Length) {
             return 'failed'
         }
         if ($Line -ceq "W1 navigation: status=ready map=$Map") { $Ready = $true }
+        if ($RequireBeforeListener -and $Line -cmatch '^\[SteamNetServer\] created on port [0-9]+$') {
+            $Opened = $true
+            $Late = $Late -or !$Ready
+        }
     }
-    if ($Ready) { return 'ready' }
+    if ($Late) { return 'late' }
+    if ($Ready) {
+        if ($RequireBeforeListener -and $ServerReady -and !$Opened) { return 'not_listening' }
+        return 'ready'
+    }
     if ($ServerReady) { return 'not_loaded' }
+    return 'pending'
+}
+
+function Get-W1RejectionOutcome {
+    param([string] $Output, [string] $Map, [string] $Fault)
+
+    if ($Output -cmatch '(?m)^\[SteamNetServer\] (created on port |Failed to (open listener|listen) on port )' -or
+        $Output -cmatch '(?m)^\[SteamNetClient\] Connecting to server at ' -or
+        @(Get-W0ReadyPeers $Output).Count -ne 0) {
+        return 'continued'
+    }
+
+    $Expected = switch ($Fault) {
+        'MissingGrid' { 'file=level.ai reason=missing or invalid native grid' }
+        'MissingPackage' { 'file=level.navlinks reason=navigation package missing' }
+        'CorruptPackage' { 'file=level.navlinks reason=traversal size or SHA-256 mismatch' }
+        default { throw "Unknown navigation fault $Fault." }
+    }
+    $Diagnostic = '^Arena navigation: map=' + [regex]::Escape($Map) + '( version=[^ ]+)? ' + [regex]::Escape($Expected) + '$'
+    $FailurePrefix = "W1 navigation: status=failed map=$Map reason="
+    $SawAsset = $false
+    $SawRejection = $false
+    $Failed = $false
+    foreach ($Line in ($Output -split '\r?\n')) {
+        if ($Line -ceq "W1 navigation: status=ready map=$Map") { return 'continued' }
+        if ($Line -cmatch $Diagnostic) { $SawAsset = $true }
+        if ($SawAsset -and $Line.StartsWith($FailurePrefix, [StringComparison]::Ordinal) -and
+            $Line.Length -gt $FailurePrefix.Length) { $SawRejection = $true }
+        if ($SawRejection -and $Line -ceq 'Failed to start server.') { $Failed = $true }
+    }
+    if ($Failed) { return 'rejected' }
     return 'pending'
 }
 

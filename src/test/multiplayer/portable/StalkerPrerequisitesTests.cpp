@@ -1,6 +1,6 @@
 #include "../../../xrGame/Multiplayer/StalkerNavigation.h"
 #include "../../../xrGame/Multiplayer/StalkerAuthority.h"
-#include "../../../xrGame/Multiplayer/W1NavigationOption.h"
+#include "../../../xrGame/Multiplayer/DedicatedArenaNavigation.h"
 
 #include <cstdio>
 #include <map>
@@ -154,7 +154,11 @@ bool RunNavigation()
 
 bool RunW1Option()
 {
-	using StalkerNavigation::W1Requested;
+	using namespace Multiplayer::DedicatedArena;
+	const auto W1Requested = [](bool DedicatedDeathmatch, xr_string_view Options)
+	{
+		return ParseMode(DedicatedDeathmatch, Options) == Mode::Bots;
+	};
 	bool Passed = Expect("ordinary dedicated DM leaves W1 disabled", !W1Requested(true, "arena/deathmatch/maxplayers=32"));
 	Passed &= Expect("dedicated DM accepts a final opt-in", W1Requested(true, "arena/deathmatch/w1_stalker_navigation=1"));
 	Passed &= Expect("dedicated DM accepts an opt-in between options", W1Requested(true, "arena/deathmatch/w1_stalker_navigation=1/public=0"));

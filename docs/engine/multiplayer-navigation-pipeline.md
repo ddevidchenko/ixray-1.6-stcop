@@ -143,11 +143,11 @@ The loader resolves the map through `$level$` and the game materials through `$g
 
 ### Server load and unload contract
 
-1. Load the selected arena's collision and validate its native walk grid. Use the graph-free arena initialization path for bot-enabled DM. Create cover, moving-object services and door caches from the level graph before enabling bot spawn.
+1. Dedicated DM with `bots=1` prepares collision and validates the arena navigation before opening the listener or creating match entities. The loopback client uses the same selected map and prepared collision. Create cover, moving-object services and door caches from the level graph before enabling bot spawn.
 2. Validate traversal edges against the grid and the resolved ladder volumes before publishing the graph. Retain the native grid reader as long as runtime nodes reference it.
 3. Pass level-vertex IDs through spawn, patrol or tactical selection, and route execution. Keep game-graph selectors and cross-level commands in the legacy ALife and FreeMP paths. Remote player-facing bot state uses replication.
-4. When required navigation is missing or invalid, the bot-enabled scenario fails with a map and file diagnostic. An explicitly human-only setup can run separately.
-5. On unload, stop path jobs and consumers before releasing the level graph, traversal links, caches, and readers. Late results carry their arena generation and cannot apply to a replacement.
+4. When required navigation is missing or invalid, bot-enabled startup fails with a map and file diagnostic. Omit the bot option or set `bots=0` for the normal human DM startup.
+5. On unload, stop scheduling arena path work before destroying consumers. Keep graph data alive during object cleanup so stalkers can release ladder reservations. Deferred builders check their generation before reading path data. Discard queued builders before releasing the walk grid, links, caches, and readers.
 
 ### How bots consume it
 

@@ -137,7 +137,7 @@ protected:
 	bool					m_path_actuality;
 	bool					m_extrapolate_path;
 	bool					m_build_at_once;
-	bool					m_wait_for_distributed_computation;
+	bool					m_wait_for_distributed_computation = false;
 
 private:
 	EPathState				m_path_state;
@@ -156,8 +156,8 @@ public:
 	CPatrolPathManager		*m_patrol_path_manager;
 	CRestrictedObject		*m_restricted_object;
 	CLocationManager		*m_location_manager;
-	CLevelPathBuilder		*m_level_path_builder;
-	CDetailPathBuilder		*m_detail_path_builder;
+	CLevelPathBuilder		*m_level_path_builder = nullptr;
+	CDetailPathBuilder		*m_detail_path_builder = nullptr;
 	CCreature			*m_object;
 
 private:
@@ -169,7 +169,7 @@ private:
 		u32 BlockedAt = 0;
 		u32 LastPlan = 0;
 		u64 ReleasedOnStep = 0;
-		u32 MapGeneration = 0;
+		u64 MapGeneration = 0;
 		u32 LadderRevision = 0;
 		bool PlanDelayed = false;
 		bool Recovering = false;

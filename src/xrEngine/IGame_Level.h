@@ -61,6 +61,12 @@ protected:
 	// temporary
 	xr_vector<ISpatialShared>	snd_ER;
 
+	// A dedicated arena can prepare collision before binding its listener.
+	[[nodiscard]] bool PrepareLevelCollision(u32 LevelId);
+
+private:
+	u32 PreparedCollisionLevel = u32(-1);
+
 public:
 	struct ScheduledCallbackItem
 	{

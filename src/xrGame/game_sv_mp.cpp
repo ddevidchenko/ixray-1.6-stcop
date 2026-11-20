@@ -1,6 +1,5 @@
 #include "StdAfx.h"
 #include "game_sv_mp.h"
-#include "Multiplayer/W1NavigationOption.h"
 #include "xrServer.h"
 #include "xrMessages.h"
 #include "xrServer_Object_Base.h"
@@ -539,12 +538,9 @@ void game_sv_mp::Create (shared_str &options)
 
 	string_path file_name;
 
-#ifndef SHIPPING_BUILD
-	W1StalkerNavigation = StalkerNavigation::W1Requested(g_dedicated_server && Type() == eGameIDDeathmatch, *options);
-#endif
-	if (W1StalkerNavigation)
+	if (RequiresBotNavigation())
 	{
-		Msg("* W1: using level-only stalker navigation");
+		Msg("* DM bots: using dedicated arena navigation");
 	}
 	else if (FS.exist(file_name, "$level$", "alife", ".spawn"))
 	{

@@ -72,8 +72,7 @@ public:
 		if ( Device.dwTimeGlobal < m_last_fail_time + time_to_wait_after_fail )
 			return;
 
-		m_object->m_wait_for_distributed_computation	= true;
-		Device.seqParallel.push_back(xr_make_delegate(this,&CLevelPathBuilder::process));
+		Defer(xr_make_delegate(this, &CLevelPathBuilder::ProcessDeferred));
 	}
 
 	void process_impl()
@@ -113,11 +112,21 @@ public:
 		m_object->build_level_path			();
 	}
 
+private:
+	void ProcessDeferred()
+	{
+		if (BeginDeferred())
+		{
+			process();
+		}
+	}
+
+public:
 	IC void remove()
 	{
 		if (m_object->m_wait_for_distributed_computation)
 			m_object->m_wait_for_distributed_computation = false;
 
-		Device.remove_from_seq_parallel(xr_make_delegate(this, &CLevelPathBuilder::process));
+		Device.remove_from_seq_parallel(xr_make_delegate(this, &CLevelPathBuilder::ProcessDeferred));
 	}
 };

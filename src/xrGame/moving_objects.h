@@ -94,6 +94,7 @@ public:
 
 public:
 			void				on_level_load			();
+			void				UnloadArena();
 			void				on_object_move			(moving_object *moving_object);
 
 public:

@@ -146,6 +146,8 @@ protected:
 	xr_unique_ptr<IReader> MultiplayerSpawnFile;
 	xr_unique_ptr<IReader> MultiplayerGraphChunk;
 	[[nodiscard]] const char* LoadMultiplayerGraph();
+	friend class xrServer;
+	[[nodiscard]] bool PrepareDedicatedArena(const GameDescriptionData& Description);
 
 	xr_deque<NET_Packet>		script_client_events;
 

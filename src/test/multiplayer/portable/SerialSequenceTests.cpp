@@ -194,6 +194,11 @@ bool Run();
 bool RunRouter();
 }
 
+namespace ReliableSendQueueTests
+{
+bool Run();
+}
+
 namespace SerialSequenceTests
 {
 struct SequenceCase
@@ -418,6 +423,10 @@ int main(int ArgumentCount, char** Arguments)
 	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--transport-inbox") == 0)
 	{
 		return TransportInboxTests::Run() ? EXIT_SUCCESS : EXIT_FAILURE;
+	}
+	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--reliable-send-queue") == 0)
+	{
+		return ReliableSendQueueTests::Run() ? EXIT_SUCCESS : EXIT_FAILURE;
 	}
 	if (ArgumentCount != 1)
 	{

@@ -19,3 +19,6 @@ set_target_properties(TestMultiplayerGns PROPERTIES CXX_STANDARD 23 CXX_STANDARD
 
 add_test(NAME Multiplayer.GnsLoopback COMMAND TestMultiplayerGns)
 set_tests_properties(Multiplayer.GnsLoopback PROPERTIES LABELS multiplayer TIMEOUT 30)
+
+add_test(NAME Multiplayer.GnsReliableSendPressure COMMAND TestMultiplayerGns --reliable-send-pressure)
+set_tests_properties(Multiplayer.GnsReliableSendPressure PROPERTIES LABELS multiplayer TIMEOUT 10)

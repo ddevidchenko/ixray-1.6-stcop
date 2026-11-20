@@ -182,6 +182,10 @@ GNS delivery does not establish application causality across message classes. Va
 
 Start with one ordered reliable control/state stream per peer plus independently sequenced unreliable gameplay state. Use a small number of GNS lanes only if supported by the pinned dependency and justified by measurements; application queues/limits are required either way. Do not assume today's upstream headers match this checkout's packaged library.
 
+### Reliable outbound submission
+
+The version-one transport owner uses one reliable FIFO for each peer generation. Its slot span, encoded byte budget and maximum pending age are supplied by the owner. One submission call offers the oldest frame to GNS at most once. GNS acceptance retires the frame from the application queue. Buffer refusal keeps the frame with its original enqueue time. At the age limit the owner receives a close-required result before another send can begin. Slot or byte exhaustion and terminal GNS errors also require closure. The owner can record the queued count, bytes, oldest age and first failure before retiring the queue with the connection. These metrics describe application backlog. Native send-buffer pacing and the production queue limits belong to the integrated transport. [Queue](../../src/xrNetServer/Multiplayer/ReliableSendQueue.h), [GNS adapter](../../src/xrNetServer/Multiplayer/GnsReliableSend.h).
+
 ### Client hello
 
 A `ClientHello` uses envelope tag `0x01` and carries protocol version `1` in the envelope. The server session, world epoch, and connection epoch are zero for this unbound message. The envelope carries the caller's message sequence.

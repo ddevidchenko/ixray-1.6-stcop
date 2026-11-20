@@ -2,6 +2,7 @@ add_library(xrNetServerMultiplayer OBJECT
     SerialSequence.cpp SerialSequence.h
     WireEndian.h
     WireEnvelope.cpp WireEnvelope.h
+    ReliableSendQueue.h
     WirePayload.cpp WirePayload.h
     CompatibilityId.h
     ClientHello.cpp ClientHello.h

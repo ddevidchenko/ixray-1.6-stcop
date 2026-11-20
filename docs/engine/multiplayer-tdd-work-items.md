@@ -21,6 +21,7 @@ Items marked **Implemented / Windows pending** have passing macOS checks for the
 | Stalker prerequisites and dedicated navigation | MP-005a–b | [W0 refactor regression](multiplayer-checkpoints/w0.md#stalker-refactor-regression), [W1 dedicated navigation](multiplayer-checkpoints/w0.md#w1-dedicated-navigation-check) |
 | Test harness, timing, spread and transport fixtures | MP-010, MP-011a–b, MP-012 | [W0 portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch), [two-client smoke](multiplayer-checkpoints/w0.md#run-the-two-client-check) |
 | Wire formats, admission and transport ownership | MP-020a–k, MP-021a–b, MP-022a–d, MP-023a–b, MP-024a, MP-025a–e, MP-026a–b | [W0 portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch), [two-client check](multiplayer-checkpoints/w0.md#run-the-two-client-check) where listed |
+| Reliable outbound submission | MP-027a | [W0 portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) |
 | Combatant baseline, catch-up and snapshots | MP-037a–o | [W0 portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) |
 
 ## How to use this backlog
@@ -403,6 +404,12 @@ The [peer runbook](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch
 - **Red:** saturate outgoing capacity; stale snapshots are replaced while essential admission/lifecycle messages either progress within limits or cause an explicit disconnect. A send refusal is not recorded as successful delivery. Bulk data cannot indefinitely delay gameplay.
 - **Green / seam:** explicit command/snapshot/control/cosmetic traffic policy replacing blanket flag/batching assumptions in [NET_Messages.h](../../src/xrNetServer/NET_Messages.h) and sender code. Use supported GNS lanes only after header/library capability checks.
 - [ ] **Complete when:** deterministic and real-peer pressure tests expose queue age/bytes and maintain documented bounds without unbounded reliable backlog.
+
+#### MP-027a — Bound reliable frame submission per peer
+
+- **Design.** The version-one session owner gives each peer generation a FIFO with fixed storage, a byte budget and a monotonic age limit. The queue copies encoded frames and makes at most one native attempt per submission call. A full queue, expired head, or terminal native error gives the owner a stable reason to close the connection. GNS buffer pressure preserves the same head for a later turn. [Reliable queue](../../src/xrNetServer/Multiplayer/ReliableSendQueue.h), [GNS adapter](../../src/xrNetServer/Multiplayer/GnsReliableSend.h).
+- **Implemented / Windows pending.** On base `71fd39c1b`, portable tests failed before queue retention and the pinned GNS peer test failed when the native buffer refusal was classified as terminal. The reviewed deterministic tests exercise ownership of frame bytes, exact slot and byte limits, ring reuse, one attempt per turn, peer isolation, original enqueue age, expiry precedence and terminal outcomes. The UDP loopback fixture forces a per-connection send-buffer refusal, restores capacity, and checks reliable ordered delivery and the closed-handle result. All 44 portable cases passed on macOS arm64 in Debug, Release, and ASan/UBSan builds. Both peer cases passed, with 12 consecutive additional passes of the pressure case. Both fixtures use literal inputs and require no map or seed. MP-012 and MP-025 provide the portable and peer contracts provisionally for Windows.
+- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) records passing `reliable-send-queue.xml` and `gns-reliable-send-pressure.xml` on Windows. Snapshot replacement, command and cosmetic policy, bulk pacing and live version-one integration continue under MP-027 after the corresponding gates.
 
 ### MP-028 — Join by IP without GameSpy service availability
 

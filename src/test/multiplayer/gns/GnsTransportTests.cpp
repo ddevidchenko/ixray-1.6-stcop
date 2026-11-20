@@ -4,7 +4,10 @@
 #include "../../../xrNetServer/Multiplayer/GnsEndpoint.h"
 #include "../../../xrNetServer/Multiplayer/GnsRuntime.h"
 #include "../../../xrNetServer/Multiplayer/GnsReceive.h"
+#include "../../../xrNetServer/Multiplayer/GnsReliableSend.h"
 #include "../../../xrNetServer/Multiplayer/TransportEventRouter.h"
+
+#include <steam/isteamnetworkingutils.h>
 
 #include <algorithm>
 #include <array>
@@ -833,9 +836,11 @@ public:
 		return TransportStatus::Success;
 	}
 
+	HSteamNetConnection GetHandle(Peer Side) const { return Handles[static_cast<std::size_t>(Side)]; }
+
 	TransportStatus Send(Peer Sender, MessageView Message)
 	{
-		const auto Handle = Handles[static_cast<std::size_t>(Sender)];
+		const auto Handle = GetHandle(Sender);
 		if (Handle == k_HSteamNetConnection_Invalid)
 		{
 			return TransportStatus::Closed;
@@ -867,6 +872,11 @@ public:
 		{
 			const auto Release = [](SteamNetworkingMessage_t* Incoming) { Incoming->Release(); };
 			const std::unique_ptr<SteamNetworkingMessage_t, decltype(Release)> Incoming(Raw, Release);
+			if (!(Incoming->m_nFlags & k_nSteamNetworkingSend_Reliable))
+			{
+				std::fputs("GNS loopback expected a reliable frame\n", stderr);
+				return {TransportStatus::Failed, {}};
+			}
 			std::vector<u8> Bytes(static_cast<std::size_t>(Incoming->m_cbSize));
 			if (!Bytes.empty())
 			{
@@ -930,11 +940,88 @@ static ReceivedMessage AwaitReceive(GnsTransport& Link, Peer Receiver)
 	std::fprintf(stderr, "GNS receive deadline expired for peer %d\n", static_cast<int>(Receiver));
 	return {TransportStatus::Empty, {}};
 }
+
+static bool CheckReliableSendPressure()
+{
+	using namespace Multiplayer;
+	ProcessRuntime Runtime;
+	GnsTransport Link(Runtime);
+	if (!ExpectStatus("open a UDP loopback pair for reliable send pressure", Link.Connect(), TransportStatus::Success))
+	{
+		return false;
+	}
+	const auto Handle = Link.GetHandle(Peer::First);
+	auto& Sockets = *SteamNetworkingSockets();
+	auto& Utils = *SteamNetworkingUtils();
+	const auto SetBufferLimit = [&](int Limit)
+	{
+		return Utils.SetConnectionConfigValueInt32(Handle, k_ESteamNetworkingConfig_SendBufferSize, Limit);
+	};
+	const auto Send = [&](xr_span<const u8> Bytes) noexcept { return SubmitGnsReliable(Sockets, Handle, Bytes); };
+	constexpr u8 First[] = {0x7a, 0x00, 0x87};
+	constexpr u8 Second[] = {0xc4, 0x09, 0xfe, 0x51};
+	if (!SetBufferLimit(2))
+	{
+		std::fputs("could not set the GNS connection send buffer limit\n", stderr);
+		return false;
+	}
+	if (Send(First) != ReliableSendAttempt::Backpressured)
+	{
+		std::fputs("the GNS buffer refusal must be classified as retryable pressure\n", stderr);
+		return false;
+	}
+
+	xr_array<ReliableSendQueue::Slot, 2> Slots;
+	ReliableSendQueue Queue(Slots, 7, 25);
+	if (Queue.Enqueue(First, 100) != ReliableEnqueueResult::Queued ||
+		Queue.Enqueue(Second, 101) != ReliableEnqueueResult::Queued ||
+		Queue.SubmitNext(103, Send) != ReliableSendResult::Backpressured ||
+		Queue.Inspect(103) != ReliableSendQueue::Status{2, 7, 3, ReliableSendFailure::None})
+	{
+		std::fputs("GNS pressure must leave both frames pending with their original ages\n", stderr);
+		return false;
+	}
+	if (!SetBufferLimit(64) ||
+		Queue.SubmitNext(104, Send) != ReliableSendResult::Submitted ||
+		Queue.SubmitNext(105, Send) != ReliableSendResult::Submitted ||
+		Queue.Inspect(105) != ReliableSendQueue::Status{0, 0, 0, ReliableSendFailure::None})
+	{
+		std::fputs("restoring GNS capacity must allow both frames to submit\n", stderr);
+		return false;
+	}
+	const auto ReceivedFirst = AwaitReceive(Link, Peer::Second);
+	const auto ReceivedSecond = AwaitReceive(Link, Peer::Second);
+	if (ReceivedFirst.Status != TransportStatus::Success || !std::ranges::equal(ReceivedFirst.Bytes, First) ||
+		ReceivedSecond.Status != TransportStatus::Success || !std::ranges::equal(ReceivedSecond.Bytes, Second))
+	{
+		std::fputs("the remote peer must receive the two distinct frames in order\n", stderr);
+		return false;
+	}
+
+	if (Link.Close(Peer::First) != TransportStatus::Success || Queue.Enqueue(First, 106) != ReliableEnqueueResult::Queued ||
+		Queue.SubmitNext(107, Send) != ReliableSendResult::CloseRequired ||
+		Queue.Inspect(107) != ReliableSendQueue::Status{1, 3, 1, ReliableSendFailure::Transport})
+	{
+		std::fputs("a closed GNS handle must cause a terminal queue result\n", stderr);
+		return false;
+	}
+	std::puts("GNS reliable send pressure checks passed");
+	return true;
+}
 }
 
-int main()
+int main(int ArgumentCount, char** Arguments)
 {
 	using namespace GnsTransportTests;
+	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--reliable-send-pressure") == 0)
+	{
+		return CheckReliableSendPressure() ? EXIT_SUCCESS : EXIT_FAILURE;
+	}
+	if (ArgumentCount != 1)
+	{
+		std::fputs("Unexpected GNS test arguments\n", stderr);
+		return EXIT_FAILURE;
+	}
 	bool Passed = CheckSharedRuntime();
 	Passed &= CheckFailureAndRetry();
 	Passed &= CheckProcessIdentity();

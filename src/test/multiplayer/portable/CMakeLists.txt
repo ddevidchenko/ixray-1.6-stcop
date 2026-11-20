@@ -15,6 +15,7 @@ add_executable(TestMultiplayerUnit
     WeaponSpreadTests.cpp
     ScriptedTransportTests.cpp
     TransportInboxTests.cpp
+    ReliableSendQueueTests.cpp
     WireEnvelopeTests.cpp
     WirePayloadTests.cpp
     ClientHelloTests.cpp
@@ -60,6 +61,8 @@ add_test(NAME Multiplayer.ScriptedTransport COMMAND TestMultiplayerUnit --script
 add_test(NAME Multiplayer.TransportInbox COMMAND TestMultiplayerUnit --transport-inbox)
 add_test(NAME Multiplayer.TransportEventRouter COMMAND TestMultiplayerUnit --transport-event-router)
 set_tests_properties(Multiplayer.TransportInbox Multiplayer.TransportEventRouter PROPERTIES TIMEOUT 10)
+add_test(NAME Multiplayer.ReliableSendQueue COMMAND TestMultiplayerUnit --reliable-send-queue)
+set_tests_properties(Multiplayer.ReliableSendQueue PROPERTIES LABELS multiplayer)
 add_test(NAME Multiplayer.WireEnvelope COMMAND TestMultiplayerUnit --wire-envelope)
 add_test(NAME Multiplayer.WirePayload COMMAND TestMultiplayerUnit --wire-payload)
 add_test(NAME Multiplayer.ClientHello COMMAND TestMultiplayerUnit --client-hello)

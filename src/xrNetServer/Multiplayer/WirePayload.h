@@ -17,6 +17,18 @@ enum class PayloadError
 	NonFiniteFloat,
 };
 
+struct PayloadRecordView
+{
+	u8 Kind;
+	xr_span<const u8> Payload;
+};
+
+enum class PayloadRecordError
+{
+	TruncatedHeader,
+	TruncatedPayload,
+};
+
 template <class Value>
 concept WireInteger = std::same_as<Value, u8> || std::same_as<Value, u16> || std::same_as<Value, u32> || std::same_as<Value, u64> ||
 	std::same_as<Value, s8> || std::same_as<Value, s16>;
@@ -40,6 +52,7 @@ public:
 	}
 
 	[[nodiscard]] std::expected<xr_span<const u8>, PayloadError> ReadBytes(std::size_t Count) noexcept;
+	[[nodiscard]] std::expected<PayloadRecordView, PayloadRecordError> ReadRecord() noexcept;
 	[[nodiscard]] std::expected<f32, PayloadError> ReadFiniteFloat() noexcept;
 	[[nodiscard]] std::expected<xr_string_view, PayloadError> ReadUtf8(std::size_t MaxBytes) noexcept;
 	[[nodiscard]] std::size_t RemainingBytes() const noexcept { return Unread.size(); }

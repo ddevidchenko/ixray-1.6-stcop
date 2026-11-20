@@ -7,11 +7,7 @@
 
 namespace Multiplayer
 {
-struct BaselineRecordView
-{
-	u8 Kind;
-	xr_span<const u8> Payload;
-};
+using BaselineRecordView = Wire::PayloadRecordView;
 
 class IBaselineRecordSchema
 {

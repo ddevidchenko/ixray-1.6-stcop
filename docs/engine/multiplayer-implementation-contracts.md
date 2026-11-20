@@ -94,6 +94,7 @@ The following tags are assigned for version one. Additional tags become valid as
 | `BaselineEnd` | `0x08` |
 | `ServerJoinBarrier` | `0x09` |
 | `CatchUpStateEvent` | `0x0a` |
+| `SnapshotBatch` | `0x0b` |
 
 The envelope codec checks the complete message size and framing. Payload decoders and the admission state machine validate fields and identity before dispatch. The returned payload view borrows the receive buffer for the duration of decoding. [Codec](../../src/xrNetServer/Multiplayer/WireEnvelope.h), [independent golden frames](../../src/test/multiplayer/portable/WireEnvelopeTests.cpp).
 
@@ -228,6 +229,23 @@ The server sends `CatchUpStateEvent` on the ordered reliable control/state strea
 | Life ID | Nonzero `u32` |
 
 World epoch, baseline ID, ticks and sequences allow zero. The durable event ID identifies the same event when sent to different recipients. The decoder returns owned event fields and a view of the checked frame for catch-up retention and application. Keep the datagram alive and unchanged until the queue copies the bytes or the client finishes applying them. The world adapter resolves the exact body in the current world and checks its participant before retiring it. The portable replica registry applies despawns to checked body identities. Other event kinds, live delivery, and engine world application follow separately. [Codec](../../src/xrNetServer/Multiplayer/CatchUpDespawn.h), [wire and handoff tests](../../src/test/multiplayer/portable/CatchUpDespawnTests.cpp).
+
+### Live snapshot batch
+
+The server sends `SnapshotBatch` on the unreliable state stream using the bound envelope for the receiving peer. The payload starts with a 22-byte header.
+
+| Payload field in order | Encoding |
+| --- | --- |
+| Snapshot ID | `u32` |
+| Authoritative server tick | `u32` |
+| Monotonic server clock anchor | `u64` milliseconds from a server-session monotonic origin |
+| Required applied state-event watermark | `u32` for this recipient |
+| Record count | `u16` from 1 through 32 |
+| Records | In order, each with a `u8` kind, a `u16` body byte count and that many body bytes |
+
+The current framing assigns `0x01` to public human combatants and `0x02` to public stalker combatants. It rejects unknown kinds, empty bodies, missing records and trailing bytes before returning a cursor. The 1,100-byte frame cap includes all headers and records. Zero is valid for the clock anchor, snapshot ID, tick and watermark. Batches can share a tick and arrive in any order.
+
+The header is copied. Record views borrow the unchanged datagram. Typed codecs define and validate record bodies before the receiver applies any record in the batch. Current connection and world checks, body lifetime, tick ordering and applied-event gating belong to the receiver. [Batch codec](../../src/xrNetServer/Multiplayer/SnapshotBatch.h), [framing tests](../../src/test/multiplayer/portable/SnapshotBatchTests.cpp).
 
 ### Initial-state baseline transfer
 

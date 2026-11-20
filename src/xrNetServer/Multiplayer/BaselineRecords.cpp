@@ -2,25 +2,6 @@
 
 namespace Multiplayer
 {
-static std::expected<BaselineRecordView, BaselineRecordsError> ReadRecord(Wire::PayloadReader& Reader) noexcept
-{
-	// Commit the cursor advance only after the entire record fits.
-	auto Candidate = Reader;
-	const auto Kind = Candidate.ReadInteger<u8>();
-	const auto Size = Candidate.ReadInteger<u16>();
-	if (!Kind || !Size)
-	{
-		return std::unexpected(BaselineRecordsError::TruncatedHeader);
-	}
-	const auto Payload = Candidate.ReadBytes(*Size);
-	if (!Payload)
-	{
-		return std::unexpected(BaselineRecordsError::TruncatedPayload);
-	}
-	Reader = Candidate;
-	return BaselineRecordView{*Kind, *Payload};
-}
-
 BaselineRecords::BaselineRecords(const StagedBaseline& Baseline) noexcept
 	: Identity(Baseline.Identity), Manifest(Baseline.Manifest), Reader(Baseline.Data)
 {
@@ -53,10 +34,11 @@ std::expected<BaselineRecords, BaselineRecordsError> BaselineRecords::Validate(c
 		{
 			return std::unexpected(BaselineRecordsError::MissingRecords);
 		}
-		const auto Record = ReadRecord(Validation);
+		const auto Record = Validation.ReadRecord();
 		if (!Record)
 		{
-			return std::unexpected(Record.error());
+			return std::unexpected(Record.error() == Wire::PayloadRecordError::TruncatedHeader ?
+				BaselineRecordsError::TruncatedHeader : BaselineRecordsError::TruncatedPayload);
 		}
 		if (!Schema.Validate(*Record))
 		{
@@ -76,7 +58,7 @@ std::optional<BaselineRecordView> BaselineRecords::Next() noexcept
 	{
 		return std::nullopt;
 	}
-	const auto Record = ReadRecord(Reader);
+	const auto Record = Reader.ReadRecord();
 	if (!Record)
 	{
 		return std::nullopt;

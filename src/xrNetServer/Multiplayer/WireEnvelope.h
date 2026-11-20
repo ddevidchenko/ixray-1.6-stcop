@@ -24,6 +24,7 @@ enum class MessageType : u8
 	BaselineEnd = 0x08,
 	ServerJoinBarrier = 0x09,
 	CatchUpStateEvent = 0x0a,
+	SnapshotBatch = 0x0b,
 };
 
 enum class EnvelopeError

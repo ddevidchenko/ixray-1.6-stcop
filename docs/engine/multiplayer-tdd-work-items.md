@@ -235,6 +235,12 @@ The [peer runbook](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch
 - **Mac checks passed / Windows pending.** The independent golden frame failed to encode and decode before implementation on base `87003582a`. The reviewed tests cover framing and typed truncation, wrong tags, unbound scopes, unsupported kinds, invalid and boundary field values, atomic writes, and reuse of receive storage. The handoff exercises the queue, combatant registry, and readiness trackers with sequence wrap and rejects stale scope, life and participant references before acknowledging the exact despawn. All 28 portable tests passed in Debug, Release, and ASan/UBSan on macOS arm64. Fixtures use literal input and no seed or game assets. [Tests](../../src/test/multiplayer/portable/CatchUpDespawnTests.cpp).
 - [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) records a passing `catch-up-despawn.xml` on Windows. Additional event kinds, live delivery and world application remain open in MP-037.
 
+#### MP-020j — Frame live snapshot batches
+
+- Assign bound tag `0x0b` and encode the snapshot ID, server tick, monotonic clock anchor and required applied-event watermark. Validate the complete count and typed record framing before publishing a cursor. Share checked record framing with baseline decoding. [Wire contract](multiplayer-implementation-contracts.md#live-snapshot-batch).
+- **Mac checks passed / Windows pending.** The independent golden datagram failed to encode and decode before implementation on base `aab5c2afb`. Reviewed tests cover malformed final records, all truncated prefixes with and without corrected envelope lengths, byte and count caps, unbound scopes, borrowed record data and atomic encoding with overlapping buffers. All 31 portable tests passed in Debug, Release, and ASan/UBSan on macOS arm64. Fixtures use literal bytes and no seed or game assets. [Tests](../../src/test/multiplayer/portable/SnapshotBatchTests.cpp).
+- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) records a passing `snapshot-batch.xml` on Windows. Typed combatant bodies and runtime delivery remain open.
+
 ### MP-021 — Bound legacy envelope parsing and decompression
 
 - **Kind / runs / depends:** TDD; `P` where extracted, `W`; MP-003, MP-010, MP-020.
@@ -445,7 +451,7 @@ The [peer runbook](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch
 
 - Seed the per-body tick from trusted imported state. Require the current receiver and world, exact body identity, a newer tick, and a locally applied event frontier that covers the update. Record the tick after successful application only. [Live snapshot contract](multiplayer-implementation-contracts.md#live-replica-snapshot-application).
 - **Mac checks passed / Windows pending.** The first tests on base `ac8bfd2cc` exposed out-of-order and duplicate updates overwriting state. Reviewed coverage includes recovery after loss, per-body ticks, applied-event gating with the real catch-up tracker, failed application and retry, serial wrap and ambiguity, old lives, and a new world epoch. All 30 portable tests passed in Debug, Release, and ASan/UBSan on macOS arm64. Fixtures use literal data and no seed or assets. [Snapshot tests](../../src/test/multiplayer/portable/ReplicaSnapshotTests.cpp).
-- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) records a passing `replica-snapshot.xml` on Windows. Payload decoding, baseline world import, and runtime integration remain open in MP-037.
+- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) records a passing `replica-snapshot.xml` on Windows. Batch framing continues in MP-020j. Typed payload decoding, baseline world import, and runtime integration remain open.
 
 ### MP-038 — Make death, score, round flow, and spectator state authoritative
 

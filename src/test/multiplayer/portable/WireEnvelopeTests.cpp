@@ -112,7 +112,7 @@ static bool CheckHeaderRejection()
 	}
 	for (u16 Tag = 0; Tag <= 0xff; ++Tag)
 	{
-		if (Tag >= 1 && Tag <= 0x0a)
+		if (Tag >= 1 && Tag <= 0x0b)
 		{
 			continue;
 		}

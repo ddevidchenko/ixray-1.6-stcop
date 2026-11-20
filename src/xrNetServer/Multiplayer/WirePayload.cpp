@@ -84,6 +84,24 @@ std::expected<xr_span<const u8>, PayloadError> PayloadReader::ReadBytes(std::siz
 	return Bytes;
 }
 
+std::expected<PayloadRecordView, PayloadRecordError> PayloadReader::ReadRecord() noexcept
+{
+	auto Cursor = *this;
+	const auto Kind = Cursor.ReadInteger<u8>();
+	const auto Size = Cursor.ReadInteger<u16>();
+	if (!Kind || !Size)
+	{
+		return std::unexpected(PayloadRecordError::TruncatedHeader);
+	}
+	const auto Payload = Cursor.ReadBytes(*Size);
+	if (!Payload)
+	{
+		return std::unexpected(PayloadRecordError::TruncatedPayload);
+	}
+	*this = Cursor;
+	return PayloadRecordView{*Kind, *Payload};
+}
+
 std::expected<f32, PayloadError> PayloadReader::ReadFiniteFloat() noexcept
 {
 	auto Cursor = *this;

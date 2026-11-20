@@ -36,6 +36,7 @@ static bool IsSupportedType(MessageType Type) noexcept
 	case MessageType::BaselineEnd:
 	case MessageType::ServerJoinBarrier:
 	case MessageType::CatchUpStateEvent:
+	case MessageType::SnapshotBatch:
 		return true;
 	}
 	return false;

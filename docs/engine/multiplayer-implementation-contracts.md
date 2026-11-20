@@ -72,7 +72,7 @@ During loading and play, the owner pumps at most 64 native datagrams per endpoin
 
 ### Legacy multipacket receive framing
 
-A legacy datagram fits in 32 KiB and begins with the one-byte single or merged tag followed by the little-endian 16-bit decoded byte count. The active format carries an encoding marker. Raw bodies must have exactly the declared length. A checksummed packed body needs the complete checksum and encoded data before it can reach the decompressor. Decoder output must report the declared length before the record pass.
+A legacy datagram fits in 32 KiB and begins with the one-byte single or merged tag followed by the little-endian 16-bit decoded byte count. The active format carries an encoding marker. Raw bodies must have exactly the declared length. A packed body carries a four-byte little-endian CRC-32/ISO-HDLC checksum immediately before the LZO block. Validate the checksum over exactly the transmitted block bytes before decoding. LZO uses the declared decoded size as its output capacity, rejects invalid or unconsumed input, and must produce exactly the declared length before the record pass. Both peers need this checksum rule and the same optional dictionary for packed traffic.
 
 Each legacy game record contains at least a 16-bit message type and occupies fewer than 16 KiB. Merged bodies prefix each record with a little-endian 16-bit length. Validate the entire decoded body before handing any record to the receiver or writing the receive trace. The validated cursor borrows the bytes until dispatch completes. [Legacy framing](../../src/xrNetServer/Multiplayer/LegacyMultipacket.h), [live receiver](../../src/xrNetServer/NET_Common.cpp).
 

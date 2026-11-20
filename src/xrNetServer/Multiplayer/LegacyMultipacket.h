@@ -75,6 +75,41 @@ namespace Detail
 	}
 	return false;
 }
+
+struct BodyView
+{
+	BodyEncoding Encoding;
+	xr_span<const u8> Payload;
+};
+
+[[nodiscard]] inline std::expected<BodyView, MultipacketError> ReadBody(
+	xr_span<const u8> Body, BodyFraming Framing) noexcept
+{
+	if (Framing == BodyFraming::Untagged)
+	{
+		return BodyView{BodyEncoding::Raw, Body};
+	}
+	if (Body.empty())
+	{
+		return std::unexpected(MultipacketError::TruncatedHeader);
+	}
+	const u8 Tag = Body.front();
+	const auto Payload = Body.subspan(1);
+	if (Tag == RawTag)
+	{
+		return BodyView{BodyEncoding::Raw, Payload};
+	}
+	if (Tag != CompressedTag)
+	{
+		return std::unexpected(MultipacketError::InvalidCompressionTag);
+	}
+	const auto ChecksumSize = Framing == BodyFraming::Checksummed ? sizeof(u32) : 0;
+	if (Payload.size() <= ChecksumSize)
+	{
+		return std::unexpected(MultipacketError::TruncatedCompressedBody);
+	}
+	return BodyView{BodyEncoding::Compressed, Payload};
+}
 }
 
 [[nodiscard]] inline std::expected<MultipacketEnvelope, MultipacketError> ReadEnvelope(
@@ -100,34 +135,16 @@ namespace Detail
 		return std::unexpected(MultipacketError::InvalidDecodedSize);
 	}
 
-	auto Payload = Datagram.subspan(HeaderSize);
-	if (Framing != BodyFraming::Untagged)
+	const auto Body = Detail::ReadBody(Datagram.subspan(HeaderSize), Framing);
+	if (!Body)
 	{
-		if (Payload.empty())
-		{
-			return std::unexpected(MultipacketError::TruncatedHeader);
-		}
-		const u8 CompressionTag = Payload.front();
-		Payload = Payload.subspan(1);
-		if (CompressionTag == CompressedTag)
-		{
-			const auto ChecksumSize = Framing == BodyFraming::Checksummed ? sizeof(u32) : 0;
-			if (Payload.size() <= ChecksumSize)
-			{
-				return std::unexpected(MultipacketError::TruncatedCompressedBody);
-			}
-			return MultipacketEnvelope{Layout, BodyEncoding::Compressed, Size, Payload};
-		}
-		if (CompressionTag != RawTag)
-		{
-			return std::unexpected(MultipacketError::InvalidCompressionTag);
-		}
+		return std::unexpected(Body.error());
 	}
-	if (Payload.size() != Size)
+	if (Body->Encoding == BodyEncoding::Raw && Body->Payload.size() != Size)
 	{
 		return std::unexpected(MultipacketError::DecodedSizeMismatch);
 	}
-	return MultipacketEnvelope{Layout, BodyEncoding::Raw, Size, Payload};
+	return MultipacketEnvelope{Layout, Body->Encoding, Size, Body->Payload};
 }
 
 // The cursor and its records borrow the immutable decoded bytes for the same lifetime.

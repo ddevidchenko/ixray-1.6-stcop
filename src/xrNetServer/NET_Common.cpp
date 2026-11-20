@@ -5,20 +5,7 @@
 
 //------------------------------------------------------------------------------
 
-#pragma pack( push )
-#pragma pack( 1 )
-struct MultipacketHeader
-{
-    u8  tag;
-    u16 unpacked_size;
-};
-#pragma pack( pop )
-
-//------------------------------------------------------------------------------
-
-static NET_Compressor   Compressor;
-static constexpr unsigned MaxMultipacketSize = Multiplayer::Legacy::MaxDatagramSize;
-static_assert(sizeof(MultipacketHeader) == Multiplayer::Legacy::HeaderSize);
+static NET_Compressor Compressor;
 static_assert(NET_PacketSizeLimit == Multiplayer::Legacy::RecordSizeLimit);
 static_assert(NET_TAG_NONMERGED == Multiplayer::Legacy::SingleTag && NET_TAG_MERGED == Multiplayer::Legacy::MergedTag);
 static_assert(NET_TAG_NONCOMPRESSED == Multiplayer::Legacy::RawTag && NET_TAG_COMPRESSED == Multiplayer::Legacy::CompressedTag);
@@ -89,21 +76,20 @@ void MultipacketSender::_FlushSendBuffer( u32 timeout, Buffer* buf )
     // expected to be called between '_buf_cs' enter/leave
     if( buf->buffer.B.count )
     {
-        // compress data
+        using namespace Multiplayer::Legacy;
+        xr_array<u8, MaxDatagramSize> Packet;
+        const auto Body = xr_span(Packet).subspan<HeaderSize>();
+        const u16 CompressedSize = Compressor.Compress(Body.data(), static_cast<u32>(Body.size()),
+            buf->buffer.B.data, buf->buffer.B.count);
+        if (CompressedSize == 0)
+        {
+            buf->buffer.B.count = 0;
+            return;
+        }
 
-        unsigned            comp_sz     = Compressor.compressed_size( buf->buffer.B.count );        
-        u8                  packet_data[MaxMultipacketSize];
-        MultipacketHeader*  header      = (MultipacketHeader*)packet_data;
-
-        R_ASSERT(comp_sz < sizeof(packet_data)-sizeof(MultipacketHeader));
-        R_ASSERT(comp_sz < 65535);
-
-        comp_sz = Compressor.Compress( packet_data+sizeof(MultipacketHeader), sizeof(packet_data)-sizeof(MultipacketHeader), 
-                                       buf->buffer.B.data, buf->buffer.B.count 
-                                     );
-
-        header->tag             = NET_TAG_MERGED;
-        header->unpacked_size   = (u16)buf->buffer.B.count;
+        Packet.front() = MergedTag;
+        Multiplayer::Wire::Detail::WriteLittleEndian<u16>(xr_span(Packet).subspan<1, sizeof(u16)>(),
+            static_cast<u16>(buf->buffer.B.count));
 		
         // dump/log if needed
 
@@ -134,7 +120,7 @@ void MultipacketSender::_FlushSendBuffer( u32 timeout, Buffer* buf )
 		
         // do send
         
-        _SendTo_LL( packet_data, comp_sz+sizeof(MultipacketHeader), buf->last_flags, timeout );
+        _SendTo_LL(Packet.data(), static_cast<u32>(HeaderSize + CompressedSize), buf->last_flags, timeout);
         buf->buffer.B.count = 0;        
     } // if buffer not empty
 }
@@ -209,7 +195,7 @@ void MultipacketReciever::RecievePacket(const void* packet_data, u32 packet_sz, 
 
 	xr_array<u8, MaxDecodedSize> Storage;
 	const auto Packed = Datagram.subspan(HeaderSize);
-	const u16 Produced = Compressor.Decompress(Storage.data(), static_cast<u32>(Storage.size()),
+	const u16 Produced = Compressor.Decompress(Storage.data(), Envelope->DecodedSize,
 		const_cast<u8*>(Packed.data()), static_cast<u32>(Packed.size()));
 	if (Produced == Envelope->DecodedSize)
 	{

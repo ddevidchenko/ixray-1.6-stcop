@@ -240,7 +240,13 @@ try {
             throw 'Expected assertion did not fail. See deliberate-failure.xml.'
         }
         if ($Mode -eq 'Peers') {
-            Invoke-AssertedCTest $CTest $CTestArgs $Source $Config.testTimeoutSeconds $Config.test
+            $PeerTests = @($Config.test)
+            if ($Config.PSObject.Properties['additionalTests']) {
+                $PeerTests += $Config.additionalTests
+            }
+            foreach ($Test in $PeerTests) {
+                Invoke-AssertedCTest $CTest $CTestArgs $Source $Config.testTimeoutSeconds $Test
+            }
             $Report.status = 'peers_passed'
         }
         else {

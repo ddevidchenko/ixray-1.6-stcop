@@ -7,6 +7,9 @@ if(TARGET xrNetServerMultiplayer)
     add_subdirectory("multiplayer/portable")
     set_target_properties(TestMultiplayerUnit PROPERTIES ${IXRAY_FOLDER_TESTS})
 
+    add_subdirectory("multiplayer/legacy-compression")
+    set_target_properties(TestMultiplayerLegacyCompression PROPERTIES ${IXRAY_FOLDER_TESTS})
+
     if(TARGET Steam::Sockets)
         add_subdirectory("multiplayer/gns")
         set_target_properties(TestMultiplayerGns PROPERTIES ${IXRAY_FOLDER_TESTS})

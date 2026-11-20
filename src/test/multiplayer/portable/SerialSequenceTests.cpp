@@ -158,6 +158,11 @@ bool Run();
 bool RunQueue();
 }
 
+namespace CombatantBaselineImportTests
+{
+bool Run();
+}
+
 namespace SerialSequenceTests
 {
 struct SequenceCase
@@ -335,6 +340,10 @@ int main(int ArgumentCount, char** Arguments)
 	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--combatant-baseline") == 0)
 	{
 		return CombatantSnapshotTests::RunBaseline() ? EXIT_SUCCESS : EXIT_FAILURE;
+	}
+	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--combatant-baseline-import") == 0)
+	{
+		return CombatantBaselineImportTests::Run() ? EXIT_SUCCESS : EXIT_FAILURE;
 	}
 	if (ArgumentCount != 1)
 	{

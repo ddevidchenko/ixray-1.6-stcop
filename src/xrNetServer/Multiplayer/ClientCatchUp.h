@@ -4,6 +4,7 @@
 #include "ClientJoin.h"
 
 #include <optional>
+#include <type_traits>
 
 namespace Multiplayer
 {
@@ -40,6 +41,33 @@ public:
 	[[nodiscard]] JoinIdentity GetIdentity() const noexcept { return Identity; }
 	[[nodiscard]] std::optional<u32> GetAppliedWatermark() const noexcept { return AppliedWatermark; }
 	[[nodiscard]] std::optional<JoinBarrier> GetAppliedBarrier() const noexcept { return BarrierApplied ? DeclaredBarrier : std::nullopt; }
+	// Apply the selected capture once. Failure leaves it unconfirmed and retryable.
+	template <class Applier>
+		requires std::is_nothrow_invocable_r_v<bool, Applier&>
+	[[nodiscard]] std::expected<void, ClientCatchUpError> ApplyBaseline(JoinIdentity Peer, BaselineBoundary Capture, Applier&& ApplyCapture) noexcept
+	{
+		if (const auto Error = CheckScope(Peer, Capture.BaselineId))
+		{
+			return std::unexpected(*Error);
+		}
+		if (Capture != Baseline)
+		{
+			return std::unexpected(ClientCatchUpError::BaselineMismatch);
+		}
+		if (AppliedWatermark)
+		{
+			return {};
+		}
+
+		const bool Succeeded = ApplyCapture();
+		if (!Succeeded)
+		{
+			return std::unexpected(ClientCatchUpError::ApplicationFailed);
+		}
+		AppliedWatermark = Baseline.EventWatermark;
+		return {};
+	}
+
 	// Called after the selected capture has been imported successfully.
 	[[nodiscard]] std::expected<void, ClientCatchUpError> ConfirmBaselineApplied(JoinIdentity Peer, BaselineBoundary Applied) noexcept;
 	[[nodiscard]] std::expected<void, ClientCatchUpError> ApplyEvent(const CatchUpEvent& Event, IClientCatchUpApplier& Applier) noexcept;

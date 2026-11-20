@@ -21,6 +21,22 @@ enum class ReplicaBodyState
 	Current,
 };
 
+struct ReplicaBodyIdentity
+{
+	ParticipantId Participant;
+	EntityRef Body;
+};
+
+enum class ReplicaBaselineError
+{
+	WorldMismatch,
+	InvalidBody,
+	StaleBody,
+	ConflictingBody,
+	StaleCapture,
+	ApplicationFailed,
+};
+
 struct ReplicaSnapshot
 {
 	JoinIdentity Identity;
@@ -58,6 +74,83 @@ public:
 	CombatantReplicas& operator=(const CombatantReplicas&) = delete;
 
 	[[nodiscard]] WorldIdentity GetWorldIdentity() const noexcept { return Identity; }
+
+	// Validate a complete replacement before invoking the atomic world callback. The callback must not reenter.
+	template <class Applier>
+		requires std::is_nothrow_invocable_r_v<bool, Applier&>
+	[[nodiscard]] std::expected<void, ReplicaBaselineError> ReplaceFromBaseline(WorldIdentity World, u32 CaptureTick,
+		xr_span<const ReplicaBodyIdentity> Bodies, Applier&& ApplyState) noexcept
+	{
+		if (Identity.ServerSession == 0 || World != Identity)
+		{
+			return std::unexpected(ReplicaBaselineError::WorldMismatch);
+		}
+		if (Bodies.size() > Active.size())
+		{
+			return std::unexpected(ReplicaBaselineError::InvalidBody);
+		}
+		if ((AppliedBaselineTick && !IsSequenceCurrentOrNewer(CaptureTick, *AppliedBaselineTick)) ||
+			std::ranges::any_of(Active, [CaptureTick](const Entry& Current)
+			{
+				return Current.AppliedSnapshotTick && !IsSequenceCurrentOrNewer(CaptureTick, *Current.AppliedSnapshotTick);
+			}))
+		{
+			return std::unexpected(ReplicaBaselineError::StaleCapture);
+		}
+
+		xr_array<Entry, MaxCombatants> Next{};
+		for (std::size_t Index = 0; Index < Bodies.size(); ++Index)
+		{
+			const auto& [Participant, Body] = Bodies[Index];
+			switch (Classify(World, Participant, Body))
+			{
+			case ReplicaBodyState::Invalid:
+				return std::unexpected(ReplicaBaselineError::InvalidBody);
+			case ReplicaBodyState::Stale:
+				return std::unexpected(ReplicaBaselineError::StaleBody);
+			case ReplicaBodyState::Conflict:
+				return std::unexpected(ReplicaBaselineError::ConflictingBody);
+			case ReplicaBodyState::Unknown:
+			case ReplicaBodyState::Current:
+				break;
+			}
+			if (std::ranges::any_of(xr_span(Next).first(Index), [Participant, Slot = Body.ObjectId](const Entry& Other)
+			{
+				return Other.Participant == Participant || Other.Body.ObjectId == Slot;
+			}))
+			{
+				return std::unexpected(ReplicaBaselineError::ConflictingBody);
+			}
+
+			const auto Previous = std::ranges::find(Active, Participant, &Entry::Participant);
+			if (Previous != Active.end() && !Previous->Matches(Participant, Body) &&
+				(Body.Generation <= Previous->Body.Generation || Body.LifeId <= Previous->Body.LifeId))
+			{
+				return std::unexpected(ReplicaBaselineError::StaleBody);
+			}
+			Next[Index] = {Participant, Body, CaptureTick};
+		}
+
+		const bool Applied = ApplyState();
+		if (!Applied)
+		{
+			return std::unexpected(ReplicaBaselineError::ApplicationFailed);
+		}
+		const auto Replacement = xr_span(Next).first(Bodies.size());
+		for (const auto& Previous : Active)
+		{
+			if (Previous.Participant.IsAssigned() && std::ranges::none_of(Replacement, [&Previous](const Entry& Candidate)
+			{
+				return Candidate.Matches(Previous.Participant, Previous.Body);
+			}))
+			{
+				RetiredGenerations[Previous.Body.ObjectId] = Previous.Body.Generation;
+			}
+		}
+		Active = Next;
+		AppliedBaselineTick = CaptureTick;
+		return {};
+	}
 
 	// The owner calls this for trusted baseline or lifecycle data and supplies the tick of any imported state.
 	[[nodiscard]] bool RegisterBody(WorldIdentity World, ParticipantId Participant, EntityRef Body,
@@ -193,6 +286,7 @@ public:
 
 		Identity.WorldEpoch = Epoch;
 		Active = {};
+		AppliedBaselineTick.reset();
 		std::ranges::fill(RetiredGenerations, 0u);
 		return true;
 	}
@@ -228,5 +322,6 @@ private:
 	WorldIdentity Identity;
 	const xr_span<u32, InvalidObjectId> RetiredGenerations;
 	xr_array<Entry, MaxCombatants> Active{};
+	std::optional<u32> AppliedBaselineTick;
 };
 }

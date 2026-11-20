@@ -425,6 +425,12 @@ A barrier may arrive before import. It must cover the selected capture tick and 
 
 For a same-round rebase, the replacement must cover the applied event watermark and any applied barrier tick. A successful rebase resets import confirmation and the previous barrier. The owner replaces the tracker on an accepted world change. Concrete world application and transport integration remain with the engine owners. [Client tracker](../../src/xrNetServer/Multiplayer/ClientCatchUp.h), [application tests](../../src/test/multiplayer/portable/ClientCatchUpTests.cpp).
 
+### Public combatant baseline import
+
+The client owner imports the complete active public combatant roster for the selected capture. An empty capture represents an empty roster. The import requires the selected connection and boundary and the matching replica world. The replica registry preflights all bodies before world application. It rejects a retired generation or conflicting identity and requires a changed body for an active participant to advance in generation and life. A capture must cover the last successful baseline tick and each current body's applied tick in serial order. The baseline tick stays available across a same-world reconnect even when the roster is empty.
+
+The world callback resolves content and replaces the public roster atomically on the serialized owner turn. Failure preserves the old world, active registry, and retirement history and leaves the selected capture unconfirmed. On success the registry retires omitted and replaced lives and seeds every retained or new life at the capture tick. The catch-up tracker then confirms the applied event watermark exactly once. Duplicate capture delivery preserves later events and body updates. An accepted world advance clears the registry history and baseline tick. [Importer](../../src/xrGame/Multiplayer/CombatantBaselineImport.h), [transaction tests](../../src/test/multiplayer/portable/CombatantBaselineImportTests.cpp).
+
 ### Client combatant replica identity
 
 The client owner registers current bodies from trusted baseline or lifecycle data. Each active body occupies one of 32 places. A participant and an engine object slot can each have at most one active body. Repeating an exact active registration is idempotent.

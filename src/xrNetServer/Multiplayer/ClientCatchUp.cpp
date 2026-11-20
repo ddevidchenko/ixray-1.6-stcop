@@ -27,19 +27,7 @@ std::optional<ClientCatchUpError> ClientCatchUp::CheckScope(JoinIdentity Peer, u
 
 std::expected<void, ClientCatchUpError> ClientCatchUp::ConfirmBaselineApplied(JoinIdentity Peer, BaselineBoundary Applied) noexcept
 {
-	if (!MatchesIdentity(Peer))
-	{
-		return std::unexpected(ClientCatchUpError::IdentityMismatch);
-	}
-	if (Applied != Baseline)
-	{
-		return std::unexpected(ClientCatchUpError::BaselineMismatch);
-	}
-	if (!AppliedWatermark)
-	{
-		AppliedWatermark = Baseline.EventWatermark;
-	}
-	return {};
+	return ApplyBaseline(Peer, Applied, []() noexcept { return true; });
 }
 
 std::expected<void, ClientCatchUpError> ClientCatchUp::ApplyEvent(const CatchUpEvent& Event, IClientCatchUpApplier& Applier) noexcept

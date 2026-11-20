@@ -1,10 +1,14 @@
 #pragma once
 
 #include "../../xrNetServer/Multiplayer/CombatantIdentity.h"
+#include "../../xrNetServer/Multiplayer/JoinTypes.h"
+#include "../../xrNetServer/Multiplayer/SerialSequence.h"
 #include "../../xrCore/_stl_extensions_nonalloc.h"
 
 #include <algorithm>
+#include <expected>
 #include <optional>
+#include <type_traits>
 
 namespace Multiplayer
 {
@@ -15,6 +19,28 @@ enum class ReplicaBodyState
 	Stale,
 	Conflict,
 	Current,
+};
+
+struct ReplicaSnapshot
+{
+	JoinIdentity Identity;
+	ParticipantId Participant;
+	EntityRef Body;
+	u32 ServerTick;
+	u32 RequiredEventWatermark;
+};
+
+enum class ReplicaSnapshotError
+{
+	IdentityMismatch,
+	InvalidReference,
+	UnknownReference,
+	StaleReference,
+	ConflictingReference,
+	StaleTick,
+	EventsPending,
+	AmbiguousWatermark,
+	ApplicationFailed,
 };
 
 using RetiredCombatantGenerations = xr_array<u32, InvalidObjectId>;
@@ -31,8 +57,9 @@ public:
 	CombatantReplicas(const CombatantReplicas&) = delete;
 	CombatantReplicas& operator=(const CombatantReplicas&) = delete;
 
-	// The owner calls this for trusted baseline or lifecycle data.
-	[[nodiscard]] bool RegisterBody(WorldIdentity World, ParticipantId Participant, EntityRef Body) noexcept
+	// The owner calls this for trusted baseline or lifecycle data and supplies the tick of any imported state.
+	[[nodiscard]] bool RegisterBody(WorldIdentity World, ParticipantId Participant, EntityRef Body,
+		std::optional<u32> AppliedStateTick = std::nullopt) noexcept
 	{
 		const auto State = Classify(World, Participant, Body);
 		if (State == ReplicaBodyState::Current)
@@ -52,7 +79,7 @@ public:
 		{
 			return false;
 		}
-		*Available = {Participant, Body};
+		*Available = {Participant, Body, AppliedStateTick};
 		return true;
 	}
 
@@ -104,6 +131,56 @@ public:
 		return ReplicaBodyState::Unknown;
 	}
 
+	// After synchronization, the owner supplies the current receiver and locally applied event frontier.
+	// ApplyState applies the complete update atomically and does not reenter this registry.
+	template <class Applier>
+		requires std::is_nothrow_invocable_r_v<bool, Applier&>
+	[[nodiscard]] std::expected<void, ReplicaSnapshotError> ApplyLiveSnapshot(JoinIdentity Receiver, std::optional<u32> AppliedWatermark,
+		const ReplicaSnapshot& Snapshot, Applier&& ApplyState) noexcept
+	{
+		const WorldIdentity World{Receiver.ServerSession, Receiver.WorldEpoch};
+		if (!Receiver.IsBound() || Snapshot.Identity != Receiver || World != Identity)
+		{
+			return std::unexpected(ReplicaSnapshotError::IdentityMismatch);
+		}
+
+		switch (Classify(World, Snapshot.Participant, Snapshot.Body))
+		{
+		case ReplicaBodyState::Invalid:
+			return std::unexpected(ReplicaSnapshotError::InvalidReference);
+		case ReplicaBodyState::Unknown:
+			return std::unexpected(ReplicaSnapshotError::UnknownReference);
+		case ReplicaBodyState::Stale:
+			return std::unexpected(ReplicaSnapshotError::StaleReference);
+		case ReplicaBodyState::Conflict:
+			return std::unexpected(ReplicaSnapshotError::ConflictingReference);
+		case ReplicaBodyState::Current:
+			break;
+		}
+
+		const auto ServerTick = Snapshot.ServerTick;
+		auto& AppliedTick = Active[*FindSlot(Snapshot.Body.ObjectId)].AppliedSnapshotTick;
+		if (AppliedTick && !IsSequenceNewer(ServerTick, *AppliedTick))
+		{
+			return std::unexpected(ReplicaSnapshotError::StaleTick);
+		}
+		if (!AppliedWatermark || IsSequenceNewer(Snapshot.RequiredEventWatermark, *AppliedWatermark))
+		{
+			return std::unexpected(ReplicaSnapshotError::EventsPending);
+		}
+		if (!IsSequenceCurrentOrNewer(*AppliedWatermark, Snapshot.RequiredEventWatermark))
+		{
+			return std::unexpected(ReplicaSnapshotError::AmbiguousWatermark);
+		}
+		const bool Applied = ApplyState();
+		if (!Applied)
+		{
+			return std::unexpected(ReplicaSnapshotError::ApplicationFailed);
+		}
+		AppliedTick = ServerTick;
+		return {};
+	}
+
 	// Only an owner-accepted world transition resets the retirement history.
 	[[nodiscard]] bool AdvanceWorld(u32 Epoch) noexcept
 	{
@@ -123,6 +200,7 @@ private:
 	{
 		ParticipantId Participant;
 		EntityRef Body;
+		std::optional<u32> AppliedSnapshotTick;
 
 		[[nodiscard]] bool Matches(ParticipantId Owner, EntityRef Reference) const noexcept
 		{

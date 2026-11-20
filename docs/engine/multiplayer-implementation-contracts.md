@@ -377,9 +377,17 @@ For a same-round rebase, the replacement must cover the applied event watermark 
 
 The client owner registers current bodies from trusted baseline or lifecycle data. Each active body occupies one of 32 places. A participant and an engine object slot can each have at most one active body. Repeating an exact active registration is idempotent.
 
-The registry classifies snapshot references in the current session and world before the owner applies state. An exact active participant and body is current. A lower generation than a known active body in the same slot is stale. A different participant or life for the active slot and generation is a conflict. An unseen generation is unknown and can await lifecycle data. Invalid identities and references to another world fail classification. Snapshot tick and watermark checks belong to the snapshot owner.
+The registry classifies snapshot references in the current session and world before the owner applies state. An exact active participant and body is current. A lower generation than a known active body in the same slot is stale. A different participant or life for the active slot and generation is a conflict. An unseen generation is unknown and can await lifecycle data. Invalid identities and references to another world fail classification.
 
 An exact despawn removes the active body and records its generation for that slot. Any reference at or below that generation stays stale for the rest of the world, including a replayed registration. A despawn for a stale, unknown or conflicting reference leaves the state intact. The owner supplies 65,535 generation entries, about 256 KiB, so history covers the entire valid engine slot range. A verified world advance clears the history and active bodies. [Replica registry](../../src/xrGame/Multiplayer/CombatantReplicas.h), [tests](../../src/test/multiplayer/portable/CombatantReplicasTests.cpp).
+
+### Live replica snapshot application
+
+After applying the finite synchronization barrier, the client owner supplies the current admitted receiver identity and the locally applied event watermark. A live snapshot must match the receiver, the registry world, and an exact active body. Trusted registration can seed the body's last applied tick from imported state. Duplicate registration preserves the existing tick.
+
+Each complete update must be strictly newer than the body's last applied tick. Independent updates for different bodies can share a tick. Tick and watermark comparisons use 32-bit serial arithmetic. A duplicate or half-range tick is rejected. An absent or behind event frontier leaves the update pending, and a half-range watermark is rejected as ambiguous.
+
+The owner serializes application with lifecycle changes. The callback applies the body's complete update atomically, reports failure without changing it, and does not reenter the registry. Only a successful application records the tick. Despawn and accepted world advance clear the affected tick history. Payload decoding, buffering, and application of the synchronization barrier stay with their owners. [Replica registry](../../src/xrGame/Multiplayer/CombatantReplicas.h), [snapshot tests](../../src/test/multiplayer/portable/ReplicaSnapshotTests.cpp).
 
 ## 5. Round and spawn behavior
 

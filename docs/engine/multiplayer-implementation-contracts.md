@@ -228,6 +228,14 @@ The client must not wait for the continually moving server to become perfectly c
 
 Existing `M_SV_CONFIG_NEW_CLIENT`, `M_SV_CONFIG_GAME`, `M_SV_CONFIG_FINISHED` and `M_CLIENTREADY` show integration points. Existing map-change receive handling can reconnect; seamless map rotation is outside this initial contract. [Server config/spawn flow](../../src/xrGame/xrServer.cpp), [client receive](../../src/xrGame/Level_network_messages.cpp), [client startup](../../src/xrGame/Level_start.cpp).
 
+### Server-side join readiness
+
+The connection owner starts `Loading` after queuing the accepted welcome. Loading expires after 120 seconds, and a current-session/world/connection confirmation starts the 30-second synchronization window. Use monotonic wall time. An event at the exact deadline expires the peer before applying that event. The owner can poll idle peers and receives the stage-specific failure once for connection and roster cleanup.
+
+During `Synchronizing`, the owner declares one staged barrier for the current identity. The peer acknowledgement matches session, world, connection, baseline ID, barrier ID, snapshot tick, and event watermark exactly. A successful match moves the peer to `ReadySpectator` once. The world owner handles activation and spawning after that transition.
+
+A same-map round advance must increase the world epoch without wrapping. It invalidates the old barrier and preserves the outstanding loading or synchronization deadline. A loading confirmation must match the new epoch. A peer already waiting as a ready spectator returns to synchronization with a fresh synchronization deadline. Peer messages cannot advance the epoch. The portable tracker operates on checked values. Message layouts, baseline staging, and same-round rebasing follow their protocol and snapshot work items. [Tracker](../../src/xrNetServer/Multiplayer/PeerJoin.h), [join tests](../../src/test/multiplayer/portable/PeerJoinTests.cpp).
+
 ## 5. Round and spawn behavior
 
 Proposed phase defaults: load -> wait for the first active human/bot -> running -> results/intermission -> reset -> next round, waiting again if no combatants remain. Bots can start/run a match without humans. Results/intermission starts at ten seconds, configurable; this duration is an engineering default rather than a user-selected value.

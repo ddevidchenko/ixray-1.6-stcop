@@ -19,6 +19,7 @@ add_executable(TestMultiplayerUnit
     PendingAdmissionTests.cpp
     AdmissionCompletionTests.cpp
     PendingAdmissionLimitTests.cpp
+    PeerJoinTests.cpp
     ../transport/ScriptedTransport.cpp
 )
 target_link_libraries(TestMultiplayerUnit PRIVATE xrNetServerMultiplayer)
@@ -36,8 +37,9 @@ add_test(NAME Multiplayer.AdmissionReject COMMAND TestMultiplayerUnit --admissio
 add_test(NAME Multiplayer.PendingAdmission COMMAND TestMultiplayerUnit --pending-admission)
 add_test(NAME Multiplayer.AdmissionCompletion COMMAND TestMultiplayerUnit --admission-completion)
 add_test(NAME Multiplayer.PendingAdmissionLimit COMMAND TestMultiplayerUnit --pending-admission-limit)
+add_test(NAME Multiplayer.PeerJoin COMMAND TestMultiplayerUnit --peer-join)
 set_tests_properties(
-    Multiplayer.Sequence Multiplayer.MapSyncDeadline Multiplayer.WeaponSpread Multiplayer.ScriptedTransport Multiplayer.WireEnvelope Multiplayer.WirePayload Multiplayer.ClientHello Multiplayer.ServerWelcome Multiplayer.AdmissionReject Multiplayer.PendingAdmission Multiplayer.AdmissionCompletion Multiplayer.PendingAdmissionLimit
+    Multiplayer.Sequence Multiplayer.MapSyncDeadline Multiplayer.WeaponSpread Multiplayer.ScriptedTransport Multiplayer.WireEnvelope Multiplayer.WirePayload Multiplayer.ClientHello Multiplayer.ServerWelcome Multiplayer.AdmissionReject Multiplayer.PendingAdmission Multiplayer.AdmissionCompletion Multiplayer.PendingAdmissionLimit Multiplayer.PeerJoin
     PROPERTIES LABELS multiplayer
 )
 

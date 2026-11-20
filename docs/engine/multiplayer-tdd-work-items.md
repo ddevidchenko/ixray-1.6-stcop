@@ -1,6 +1,6 @@
 # Multiplayer TDD work items
 
-The operator reports that W0 passed on Windows. The exact revision and result bundle are pending attachment. MP-010, MP-011a, MP-011b, MP-012, MP-020a, MP-020b, MP-020c, MP-020d, MP-020e, MP-022a, MP-022b and MP-022c have macOS evidence.
+The operator reports that W0 passed on Windows. The exact revision and result bundle are pending attachment. MP-010, MP-011a, MP-011b, MP-012, MP-020a, MP-020b, MP-020c, MP-020d, MP-020e, MP-022a, MP-022b, MP-022c and MP-022d have macOS evidence.
 
 Implements the [modern multiplayer plan](multiplayer-modernization-plan.md): 32 total human/bot combatants, simple DM, direct IP over GameNetworkingSockets first, human-like bots, authoritative simulation, prediction, lag compensation, and immediate local effects. Windows x64 is the initial runtime target; macOS remains usable for source work and portable tests. Hitscan, ballistics, and hybrid gunplay remain alternatives until the comparison gate.
 
@@ -227,6 +227,12 @@ The [peer runbook](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch
 - Start each tracker through a per-owner pending limit. `AwaitingHello` and `AwaitingSlot` both consume capacity. Overflow yields `ServerBusy`, while admission, terminal rejection, timeout, and disconnect return capacity. The move transfers ownership of the charged place. [Pending capacity contract](multiplayer-implementation-contracts.md#pending-admission-capacity).
 - **Mac checks passed / Windows pending.** The reviewed tests failed with an unbounded start. They exercise zero and finite capacity, repeated overflow, isolation between owners, capacity reuse, all terminal outcomes, and cleanup after a move. Transport deduplication and the live connection owner are part of the engine integration. [Tests](../../src/test/multiplayer/portable/PendingAdmissionLimitTests.cpp).
 - [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) collects a passing `pending-admission-limit.xml` on Windows.
+
+#### MP-022d — Gate spectator readiness on the current join barrier
+
+- Start the portable tracker after welcome queueing. Use separate loading and synchronization deadlines. Accept only an exact acknowledgement of the server-declared current-world barrier, and invalidate readiness and stale work on a same-map world advance. [Join readiness contract](multiplayer-implementation-contracts.md#server-side-join-readiness).
+- **Mac checks passed / Windows pending.** The initial readiness trace failed before implementation. Reviewed tests cover the two exact deadlines, complete identity and barrier matching, duplicate or stale events, round reset before and after map loading, and an epoch that cannot wrap. Baseline staging, gameplay activation, and the engine adapter remain later work. [Tests](../../src/test/multiplayer/portable/PeerJoinTests.cpp).
+- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) collects a passing `peer-join.xml` on Windows.
 
 ### MP-023 — Separate connection, participant, entity, and life identity
 

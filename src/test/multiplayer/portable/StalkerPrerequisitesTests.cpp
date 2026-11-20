@@ -4,6 +4,7 @@
 
 #include <cstdio>
 #include <map>
+#include <limits>
 
 namespace StalkerPrerequisitesTests
 {
@@ -66,6 +67,36 @@ static bool Expect(const char* Case, bool Passed)
 	return Passed;
 }
 
+static bool CheckLevelLocalNavigation()
+{
+	using StalkerNavigation::ArenaGridFits;
+	using StalkerNavigation::CheckArena;
+	using StalkerNavigation::Status;
+	LevelGraph Level;
+	Level.Id = 0xff;
+	bool Passed = Expect("one arena can spawn from a usable local grid without an ALife level id", CheckArena(&Level) == Status::Ready);
+	Passed &= Expect("a missing arena grid prevents authority spawn", CheckArena<LevelGraph>(nullptr) == Status::MissingLevelGraph);
+	Level.Header.VertexCount = 0;
+	Passed &= Expect("an empty arena grid prevents authority spawn", CheckArena(&Level) == Status::EmptyLevelGraph);
+
+	constexpr std::size_t HeaderBytes = 56;
+	constexpr std::size_t NodeBytes = 24;
+	constexpr std::size_t FileBytes = HeaderBytes + 2 * NodeBytes;
+	Passed &= Expect("two complete native nodes are accepted", ArenaGridFits(FileBytes, HeaderBytes, 2, NodeBytes, 0.7f, 1.f));
+	Passed &= Expect("a short header or truncated node stream is rejected",
+		!ArenaGridFits(HeaderBytes - 1, HeaderBytes, 2, NodeBytes, 0.7f, 1.f) &&
+		!ArenaGridFits(FileBytes - 1, HeaderBytes, 2, NodeBytes, 0.7f, 1.f));
+	Passed &= Expect("extra bytes and implausible record counts do not match the decoded storage",
+		!ArenaGridFits(FileBytes + 1, HeaderBytes, 2, NodeBytes, 0.7f, 1.f) &&
+		!ArenaGridFits(FileBytes, HeaderBytes, std::numeric_limits<u32>::max(), NodeBytes, 0.7f, 1.f));
+	Passed &= Expect("zero vertices, unknown record layouts and invalid dimensions are rejected",
+		!ArenaGridFits(HeaderBytes, HeaderBytes, 0, NodeBytes, 0.7f, 1.f) &&
+		!ArenaGridFits(FileBytes, HeaderBytes, 2, 0, 0.7f, 1.f) &&
+		!ArenaGridFits(FileBytes, HeaderBytes, 2, NodeBytes, 0.f, 1.f) &&
+		!ArenaGridFits(FileBytes, HeaderBytes, 2, NodeBytes, 0.7f, std::numeric_limits<f32>::quiet_NaN()));
+	return Passed;
+}
+
 bool RunNavigation()
 {
 	using StalkerNavigation::Check;
@@ -75,7 +106,8 @@ bool RunNavigation()
 	Game.Table = &Table;
 	LevelGraph Level;
 
-	bool Passed = Expect("loaded level zero with matching navigation can spawn a stalker", Check(&Game, &Level) == Status::Ready);
+	bool Passed = CheckLevelLocalNavigation();
+	Passed &= Expect("loaded level zero with matching navigation can spawn a stalker", Check(&Game, &Level) == Status::Ready);
 	Passed &= Expect("stalker spawn requires a game graph", Check<GameGraph, LevelGraph>(nullptr, &Level) == Status::MissingGameGraph);
 	Passed &= Expect("stalker spawn requires a level graph", Check<GameGraph, LevelGraph>(&Game, nullptr) == Status::MissingLevelGraph);
 	Game.Table = nullptr;

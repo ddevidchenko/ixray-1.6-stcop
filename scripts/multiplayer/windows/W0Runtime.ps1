@@ -29,6 +29,9 @@ function Initialize-W0Runtime {
     if ($RuntimeCase -eq 'StalkerNavigation') {
         $Report.workItems = $Config.stalkerNavigation.workItems
         $Report.runtime.navigationStatus = 'pending'
+        if (Test-Path -LiteralPath (Join-Path $MapDirectory 'alife.spawn')) {
+            throw 'Use the W1 staging script to prepare a map with level.ai and no alife.spawn.'
+        }
         foreach ($Name in $Config.stalkerNavigation.files) {
             $Path = Join-Path $MapDirectory $Name
             $Asset = Get-Item -LiteralPath $Path -ErrorAction SilentlyContinue

@@ -2,6 +2,9 @@
 
 #include "../../xrCore/ScalarTypes.h"
 
+#include <cmath>
+#include <cstddef>
+
 class CSE_Abstract;
 
 namespace StalkerNavigation
@@ -20,6 +23,28 @@ enum class Status
 	EmptyLevelGraph,
 	CrossTableMismatch,
 };
+
+template <class LevelGraph>
+[[nodiscard]] Status CheckArena(const LevelGraph* Level) noexcept
+{
+	if (!Level)
+	{
+		return Status::MissingLevelGraph;
+	}
+	return Level->header().vertex_count() ? Status::Ready : Status::EmptyLevelGraph;
+}
+
+[[nodiscard]] inline bool ArenaGridFits(std::size_t FileSize, std::size_t HeaderSize, u32 NodeCount, std::size_t NodeSize,
+	f32 CellSize, f32 HeightScale) noexcept
+{
+	if (FileSize < HeaderSize || !NodeSize || !NodeCount || CellSize <= 0.f || HeightScale <= 0.f ||
+		!std::isfinite(CellSize) || !std::isfinite(HeightScale))
+	{
+		return false;
+	}
+	const auto DataSize = FileSize - HeaderSize;
+	return DataSize / NodeSize == NodeCount && DataSize % NodeSize == 0;
+}
 
 template <class GameGraph, class LevelGraph>
 [[nodiscard]] Status Check(const GameGraph* Game, const LevelGraph* Level) noexcept

@@ -45,17 +45,11 @@ try {
         [IO.File]::WriteAllBytes((Join-Path $Source $Name), [byte[]] (1, 2, 3))
     }
     $SpawnPath = Join-Path $Source 'alife.spawn'
-    $ValidSpawn = (ConvertTo-Chunk 0 ([byte[]] (1))) + (ConvertTo-Chunk 3 ([byte[]] (0, 0, 0, 0))) + (ConvertTo-Chunk 4 ([byte[]] (11, 3)))
     Set-RespawnPoints 0 2 12
-
-    Assert-Rejected 'alife.spawn'
-    [IO.File]::WriteAllBytes($SpawnPath, (ConvertTo-Chunk 3 ([byte[]] (0))))
-    Assert-Rejected 'chunk 4'
-    [IO.File]::WriteAllBytes($SpawnPath, [byte[]] $ValidSpawn[0..($ValidSpawn.Length - 2)])
-    Assert-Rejected 'truncated'
-    [IO.File]::WriteAllBytes($SpawnPath, ((ConvertTo-Chunk 3 ([byte[]] (0))) + (ConvertTo-Chunk 0x80000004u ([byte[]] (11, 3)))))
-    Assert-Rejected 'uncompressed chunk 4'
-    [IO.File]::WriteAllBytes($SpawnPath, $ValidSpawn)
+    $GridPath = Join-Path $Source 'level.ai'
+    Remove-Item -LiteralPath $GridPath
+    Assert-Rejected 'level.ai'
+    [IO.File]::WriteAllBytes($GridPath, [byte[]] (1, 2, 3))
 
     Set-RespawnPoints 1 2 12
     Assert-Rejected 'two distinct team-0'
@@ -68,7 +62,9 @@ try {
     Assert-Rejected 'numbered consecutively'
 
     Set-RespawnPoints 0 2 12
+    [IO.File]::WriteAllBytes($SpawnPath, [byte[]] (5))
     $null = & $Prepare -EditorRoot $Editor -GameDataRoot $Game
+    Assert-Result (!(Test-Path -LiteralPath (Join-Path $Target 'alife.spawn'))) 'An old ALife package stays in the editor folder.'
     Assert-Result (Test-Path -LiteralPath (Join-Path $Target 'level.cform1')) 'Split collision data belongs in the staged map.'
     Assert-Result (Test-Path -LiteralPath (Join-Path $Target 'lmap#1_1.dds')) 'The compiler lightmaps belong in the staged map.'
     Assert-Result (!(Test-Path -LiteralPath (Join-Path $Target 'level.spawn'))) 'Compiler actor and graph anchors must stay in the SDK.'
@@ -78,9 +74,9 @@ try {
     Assert-Result (Test-Path -LiteralPath $ReportPath) 'The fixture contains a hash report.'
     if (Test-Path -LiteralPath $ReportPath) {
         $Report = Get-Content -Raw -LiteralPath $ReportPath | ConvertFrom-Json
-        $File = @($Report.files | Where-Object name -CEQ 'alife.spawn')
+        $File = @($Report.files | Where-Object name -CEQ 'level.ai')
         Assert-Result ($Report.map -ceq 'w1_arena' -and $Report.deathmatchSpawnCount -eq 2 -and $File.Count -eq 1 -and
-            $File[0].sha256 -ceq (Get-FileHash -LiteralPath $SpawnPath -Algorithm SHA256).Hash) 'Report identifies the map, spawns and staged file bytes.'
+            $File[0].sha256 -ceq (Get-FileHash -LiteralPath $GridPath -Algorithm SHA256).Hash) 'Report identifies the map, spawns and staged file bytes.'
     }
 
     $ErrorText = ''

@@ -38,18 +38,6 @@ function Find-W1Chunk {
     return $MatchingChunks[0]
 }
 
-function Test-W1SpawnFile {
-    param([string] $Path)
-
-    $Reader = [IO.BinaryReader]::new([IO.File]::OpenRead($Path))
-    try {
-        $Chunks = @(Read-W1Chunks $Reader $Reader.BaseStream.Length 'alife.spawn')
-        $null = Find-W1Chunk $Chunks 3 'alife.spawn (patrol paths)'
-        $null = Find-W1Chunk $Chunks 4 'alife.spawn (game graph)'
-    }
-    finally { $Reader.Dispose() }
-}
-
 function Get-W1RespawnCount {
     param([string] $Path)
 
@@ -89,11 +77,10 @@ $Parent = Join-Path (Resolve-Path -LiteralPath $GameDataRoot).Path 'gamedata/lev
 $Target = Join-Path $Parent $Map
 if (Test-Path -LiteralPath $Target) { throw "The staged map already exists at $Target. Use a fresh runtime copy for a new bake." }
 
-foreach ($Name in 'level', 'level.ltx', 'level.geom', 'level.cform', 'level.game', 'level.ai', 'alife.spawn') {
+foreach ($Name in 'level', 'level.ltx', 'level.geom', 'level.cform', 'level.game', 'level.ai') {
     $File = Get-Item -LiteralPath (Join-Path $Source $Name) -ErrorAction SilentlyContinue
     if ($File -isnot [IO.FileInfo] -or $File.Length -eq 0) { throw "Missing or empty $Name in $Source. Finish the editor/compiler steps first." }
 }
-Test-W1SpawnFile (Join-Path $Source 'alife.spawn')
 $SpawnCount = Get-W1RespawnCount (Join-Path $Source 'level.game')
 
 $null = New-Item -ItemType Directory -Path $Parent -Force
@@ -101,7 +88,7 @@ $Pending = Join-Path $Parent ('.w1-' + [guid]::NewGuid().ToString('N'))
 $null = New-Item -ItemType Directory -Path $Pending
 try {
     $Files = @(Get-ChildItem -LiteralPath $Source -File | Where-Object {
-        $_.Name -eq 'level' -or $_.Name -eq 'alife.spawn' -or $_.Name -like 'lmap#*.dds' -or
+        $_.Name -eq 'level' -or $_.Name -like 'lmap#*.dds' -or
         ($_.Name -like 'level.*' -and $_.Name -ne 'level.spawn')
     } | Sort-Object Name | ForEach-Object {
         Copy-Item -LiteralPath $_.FullName -Destination $Pending

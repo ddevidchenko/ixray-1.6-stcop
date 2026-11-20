@@ -145,7 +145,7 @@ protected:
 	// The multiplayer game graph borrows its chunk and the chunk can borrow the file.
 	xr_unique_ptr<IReader> MultiplayerSpawnFile;
 	xr_unique_ptr<IReader> MultiplayerGraphChunk;
-	[[nodiscard]] const char* LoadMultiplayerGraph(const char* RequiredNavigationLevel);
+	[[nodiscard]] const char* LoadMultiplayerGraph();
 
 	xr_deque<NET_Packet>		script_client_events;
 

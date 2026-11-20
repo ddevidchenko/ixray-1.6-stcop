@@ -154,9 +154,11 @@ void aistalker_state_net::FillState(CAI_Stalker* stalker)
 	canOpenDialog			  = stalker->cast_inventory_owner()->IsTalkEnabled();
 
 	graph_vertex_id = stalker->movement().game_dest_vertex_id();
-	if (ai().game_graph().valid_vertex_id(graph_vertex_id))
+	distance_lvgraph = 0.f;
+	const auto* GameGraph = ai().get_game_graph();
+	if (GameGraph && GameGraph->valid_vertex_id(graph_vertex_id))
 	{
-		distance_lvgraph = stalker->Position().distance_to(ai().game_graph().vertex(graph_vertex_id)->level_point());
+		distance_lvgraph = stalker->Position().distance_to(GameGraph->vertex(graph_vertex_id)->level_point());
 	}
 
 	id_TeamCSE  = (u8) stalker->g_Team();

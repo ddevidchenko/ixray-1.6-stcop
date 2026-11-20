@@ -18,7 +18,7 @@
 #include "ElectronicsProblemsManager.h"
 #include "ParticlesObject.h"
 
-const char* CLevel::LoadMultiplayerGraph(const char* RequiredNavigationLevel)
+const char* CLevel::LoadMultiplayerGraph()
 {
 	if (ai().get_game_graph())
 	{
@@ -39,24 +39,7 @@ const char* CLevel::LoadMultiplayerGraph(const char* RequiredNavigationLevel)
 	}
 
 	xr_unique_ptr<CGameGraph> GameGraph(new CGameGraph(*GraphChunk));
-	if (RequiredNavigationLevel)
-	{
-		if (!GameGraph->header().level_exist(RequiredNavigationLevel))
-		{
-			return "arena is absent from the game graph";
-		}
-		if (GameGraph->header().version() <= XRAI_SOC_VERSION)
-		{
-			return "the fixture needs an embedded cross table";
-		}
-	}
-
 	ai().game_graph(GameGraph.release());
-	if (RequiredNavigationLevel && !ai().load(RequiredNavigationLevel, true))
-	{
-		ai().destroy_game_graph();
-		return "game graph, level graph, or cross table mismatch";
-	}
 
 	MultiplayerSpawnFile = std::move(SpawnFile);
 	MultiplayerGraphChunk = std::move(GraphChunk);
@@ -74,47 +57,41 @@ bool CLevel::Load_GameSpecific_Before()
 	const auto* ServerGame = Server && Server->game ? Server->game->cast_game_sv_mp() : nullptr;
 	const bool W1Navigation = ServerGame && ServerGame->UsesW1StalkerNavigation();
 
-	if (W1Navigation)
+	const auto GameType = GamePersistent().GameType();
+	// Remote clients can reach map load before the game mode arrives.
+	const bool ArenaClient = (GameType == eGameIDDeathmatch || GameType == eGameIDNoGame) && OnClient() &&
+		!FS.exist(fn_game, "$level$", "alife.spawn") && FS.exist(fn_game, "$level$", "level.ai");
+	if (W1Navigation || ArenaClient)
 	{
-		const char* Failure = nullptr;
-		if (!map_data.m_name.size())
+		const bool Loaded = ai().LoadArenaNavigation();
+		if (W1Navigation)
 		{
-			Failure = "no active map name";
+			if (Loaded)
+			{
+				Msg("W1 navigation: status=ready map=%s", map_data.m_name.c_str());
+			}
+			else
+			{
+				Msg("W1 navigation: status=failed map=%s reason=level.ai unavailable or invalid", map_data.m_name.c_str());
+			}
 		}
-		else if (ai().get_alife())
+		else if (!Loaded)
 		{
-			Failure = "ALife already owns navigation";
-		}
-		else if (!FS.exist(fn_game, "$level$", "level.ai"))
-		{
-			Failure = "missing level.ai";
-		}
-		else
-		{
-			Failure = LoadMultiplayerGraph(map_data.m_name.c_str());
-		}
-
-		if (Failure)
-		{
-			Msg("W1 navigation: status=failed map=%s reason=%s", map_data.m_name.c_str(), Failure);
-		}
-		else
-		{
-			Msg("W1 navigation: status=ready map=%s", map_data.m_name.c_str());
+			Msg("! Unable to load arena navigation from level.ai");
 		}
 	}
-	else if (GamePersistent().GameType() != eGameIDSingle && OnClient() && FS.exist(fn_game, "$level$", "alife.spawn"))
+	else if (GameType != eGameIDSingle && OnClient() && FS.exist(fn_game, "$level$", "alife.spawn"))
 	{
-		if (const char* Failure = LoadMultiplayerGraph(nullptr))
+		if (const char* Failure = LoadMultiplayerGraph())
 		{
 			Msg("! Unable to load multiplayer navigation: %s", Failure);
 		}
 	}
 
-	if (!ai().get_alife())
+	if (!W1Navigation && !ai().get_alife())
 	{
 		const auto* GameGraph = ai().get_game_graph();
-		if (!W1Navigation && GameGraph && FS.exist(fn_game, "$level$", "level.ai") && HasSessionName() &&
+		if (GameGraph && FS.exist(fn_game, "$level$", "level.ai") && HasSessionName() &&
 			GameGraph->header().level_exist(net_SessionName()))
 		{
 			ai().load(net_SessionName());

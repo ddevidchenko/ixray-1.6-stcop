@@ -297,7 +297,7 @@
         "clientTimeoutSeconds": 180,
         "logTimeoutSeconds": 15,
         "stalkerNavigation": {
-            "workItems": ["MP-005b", "MP-005c"],
+            "workItems": ["MP-005c", "MP-005d"],
             "files": ["level.ai"],
             "serverOption": "w1_stalker_navigation=1"
         },

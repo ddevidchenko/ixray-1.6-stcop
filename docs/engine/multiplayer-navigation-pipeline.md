@@ -80,8 +80,8 @@ This route uses existing generation/compiler code. Verify exact UI behavior on W
 4. Export the level's compiler project data and use **Compile → Make AI Map** for `build.aimap`. The current exporter supports SDK v2 links, with a legacy mode when required. Add graph-point anchors and export appropriate spawn/game data if following the legacy graph/spawn pipeline; MP respawn points are not automatically graph-point anchors.
 5. Launch the current combined tool from a correctly configured project working directory: `xrLevelBuilder.exe -fsltx fsgame.ltx`. The argument parser has path limitations described in the [compiler documentation](../docs/main/en/utilities/compilers.md); use a filename without spaces for this argument.
 6. In its AI settings, select the level and **AI Compiler ai.level** (tooltip: builds `level.ai`); enable verification. Use non-draft output for final tactical cover data. Keep `build.prj` and `build.aimap` for rebuilds; do not pass `-clear_temp_files` when preserving inputs.
-7. Build the matching graph/cross-table package after the final `level.ai` is produced. For a legacy validation experiment, the existing spawn compiler/FreeMP path requires valid graph points, registered levels and an actor spawn. Do not enable a full ALife actor population merely to ship DM. The proposed DM package route below avoids that dependency.
-8. Validate and install the navigation outputs together beside the exact matching map. Never copy a newly compiled `level.ai` over an old graph/cross-table set: compilation changes GUIDs/node numbering.
+7. Build traversal attachments against the final `level.ai`. A rebake changes node numbering and the grid GUID. Regenerate the attachments as part of the same build.
+8. Validate and install the walk grid and its traversal attachments beside the exact matching map.
 
 Derived Windows tool build commands, not executed in this analysis:
 
@@ -108,8 +108,8 @@ flowchart LR
     L --> V
     V --> CV[Compute static cover samples]
     CV --> AI[Write sorted level.ai]
-    AI --> BG[Build matching minimal graph and cross table]
-    BG --> PK[Write and verify level.botnav package]
+    AI --> BG[Bind traversal links to final node IDs]
+    BG --> PK[Write and verify level.navlinks package]
     PK --> SV[Attach on dedicated server after collision load]
 ```
 
@@ -120,49 +120,34 @@ flowchart LR
 5. **Build special traversal separately.** Extract climbable spawn volumes as ladder-link candidates, then validate landings/NPC traversal; author corrections and jump/drop/door actions where needed. All become typed links with endpoints, direction, ability/stance requirements and real execution validation. A walk-grid edge cannot stand in for a jump or teleport through a wall. Bots execute these through extended stalker movement/physics and explicit traversal actions; unsupported optional player shortcuts remain excluded until implemented.
 6. **Compute static tactical cover.** Use material-aware collision queries at the required low/high heights and directions, feeding the native cover fields or an explicitly versioned tactical layer. Reuse the existing cover compiler where its inputs can be supplied correctly; otherwise implement/test a collision-based cover bake adapter. `CAI_Space::load` builds a cover cache from graph data; it does not replace offline cover sampling. Dynamic doors/props need runtime rechecks.
 7. **Write native `level.ai` with validated bounds, planes, links and cover.** Reuse the native save/renumber concepts; remap every dependent reference after sorting, respect version/link limits, and generate a new GUID. The writer must be validated by loading its output with the actual engine graph loader.
-8. **Build per-map graph compatibility data and the package below.** This is a new DM tool mode/entry point, not the legacy actor-dependent FreeMP spawn step. Inputs from either Route A or Route B should converge on the same package validator and runtime contract.
+8. **Write the MP traversal attachments.** Resolve authored and discovered ladder landings to the final native node IDs, then emit the map-local link table and freshness metadata. Both authoring routes use the same validator.
 
 A CLI entry point and build integration for this new route must be added as part of the navigation work items. No invented executable/command is presented as available today. A nav-only mode in `xrLevelBuilder` can reuse its infrastructure; keep geometry/graph algorithms testable independently of the compiler UI. Whole-map baking is offline, not an expensive job during a live 32-player match.
 
 ## How navigation attaches to a level
 
-Proposed map-local layout; `level.ai` is existing format, while the two `level.botnav*` names and their contents are **new design contracts**:
+MP uses one arena graph. Native `level.ai` supplies nodes, walk links, and cover. Ladder links attach to those same node IDs as directed traversal edges. The route planner returns ordered walking segments and typed traversal steps. The movement controller walks to the entry, reserves the ladder, mounts, climbs, and dismounts onto the exit node. A blocked entry, occupied ladder, or invalidated exit triggers a bounded retry or replan.
+
+The initial graph-free W1 load uses the existing `level.ai` format. The production bake adds a versioned `level.navlinks` companion for traversal links and map or agent freshness. A map with only walking may declare an empty link table. Both assets form one logical graph. Traversal encoding should preserve the native walk records and single-player reader compatibility.
 
 ```text
 gamedata/levels/<map>/
-    level.cform                  existing collision header/data
-    level_*.cform                only if referenced by the chunked header
-    level.spawn                  existing semantic objects, including ladders where present
-    level.game                   existing MP respawn/patrol data where present
-    level.ai                     baked native walk grid
-    level.botnav                 versioned DM graph/metadata/annotation package
-    level.botnav.authoring.json   source bounds, seeds, agent rules and annotations
+    level.cform                 existing collision data and referenced chunks
+    level.spawn                 existing semantic objects, including ladders
+    level.game                  existing player respawns
+    level.ai                    native walk grid and cover
+    level.navlinks              versioned traversal edges and freshness metadata
 ```
 
-Actual resolution is through `$game_levels$` / the selected `$level$`, including archives/addons. Loose-file placement above is an illustration; preflight must report the actual resolved assets. Authoring JSON can remain a development asset; the server runtime consumes the validated binary data.
-
-`level.botnav` should contain:
-
-- Package version, exact logical map identity, native AI GUID, effective collision/material/agent hashes, consumed spawn/game semantics hashes and baker configuration identity.
-- A **single-level game graph** compatible with existing graph consumers, and its matching embedded cross table: every native AI node maps to a valid graph anchor/region at the correct node/path distance. No offline ALife entity population is needed to represent those data structures.
-- Anchor/region definitions, typed traversal links, allowed/forbidden areas and any additional tactical data not represented in native cover fields.
-- Counts/offsets/sizes and integrity checks sufficient to validate before publishing the data to the world.
-
-The native legacy formats also support graph/cross-table arrangements such as embedded data in the graph stream and `level.gct` for older graphs. Do not assume a bare standalone `game.graph` or `level.gct` will be discovered by the current DM loader. Select and implement one package/bootstrap contract; adapt valid legacy artifacts into it as a bake/import step.
-
-For an arena, graph regions/anchors express navigation compatibility and tactical grouping. Do not create fictitious walk edges between disconnected islands to make a graph compiler happy, or use straight-line distance across blocked geometry as if it were path distance. Validate reachable components explicitly and either cover intended isolated regions correctly or reject/exclude them from bot play. Existing graph builders can inform this exporter, but current legacy actor/spawn constraints may require a narrower builder.
+Resolve runtime assets through the selected `$level$` alias. Bind links to the exact native grid GUID, map and effective collision/material inputs, ladder semantics, and NPC capability profile. Each link carries a stable ladder identity, entry and exit nodes, direction, and expected execution cost. Validate counts, node bounds, adjacency to the corresponding landings, and the actual reachable floor layers. Authoring bounds, seeds, and annotations stay in the editor or bake inputs. A Windows route test must execute the physical climb before marking a traversal link usable.
 
 ### Server load and unload contract
 
-1. Resolve the selected map and load collision normally. If bots are requested, resolve/validate `level.ai` plus `level.botnav` **on the authoritative dedicated/listen-server simulation side**, not only under `OnClient()`.
-2. Check geometry/material identity, AI/package GUIDs, graph/cross-table versions, node/link bounds, anchor references, traversal capabilities and required route coverage before spawning bots. Use explicit errors that survive Shipping; do not rely on an assertion after dereferencing a missing game graph.
-3. Retain ownership of the package reader/buffer. `CGameGraph` keeps pointers into its input stream; a temporary parser/reader cannot be destroyed while the live graph uses it.
-4. Initialize the matching game graph/cross table and native level graph before consumers call `ai().level_graph()`, route search or cover evaluation. Either reuse `CAI_Space::load` through an explicit supported bootstrap, or implement a narrow DM navigation owner with compatible adapters. Select that boundary during the navigation integration item; do not duplicate incompatible global graphs.
-5. Build cover/door/obstacle caches, publish a navigation-ready generation, then enable bot perception/planning/spawning. Server tick work only queries the immutable baked graph plus controlled dynamic overlays.
-6. If bots are required but navigation is missing/invalid, reject bot-enabled startup with a diagnostic naming the map/files/mismatch. An explicitly human-only ruleset can continue without navigation; never silently start promised bots with broken pathfinding.
-7. On map unload: stop/wait planning jobs, invalidate bot route requests, remove entities/consumers that hold graph references, release AI caches/graphs, then close their backing readers. Late asynchronous results carry the old map generation and are discarded. Apply a whole-map nav update only at a controlled reload/boundary, not midway through a match.
-
-This is why “attach nav to the level” includes both packaging and engine bootstrap changes. Renaming/copying a file is not enough for the current dedicated DM path.
+1. Load the selected arena's collision and validate its native walk grid. Use the graph-free arena initialization path for bot-enabled DM. Create cover, moving-object services and door caches from the level graph before enabling bot spawn.
+2. Validate traversal edges against the grid and the resolved ladder volumes before publishing the graph. Retain the native grid reader as long as runtime nodes reference it.
+3. Pass level-vertex IDs through spawn, patrol or tactical selection, and route execution. Keep game-graph selectors and cross-level commands in the legacy ALife and FreeMP paths. Remote player-facing bot state uses replication.
+4. When required navigation is missing or invalid, the bot-enabled scenario fails with a map and file diagnostic. An explicitly human-only setup can run separately.
+5. On unload, stop path jobs and consumers before releasing the level graph, traversal links, caches, and readers. Late results carry their arena generation and cannot apply to a replacement.
 
 ### How bots consume it
 
@@ -189,8 +174,8 @@ Expand MP-071 into MP-100–109 in the [TDD backlog](multiplayer-tdd-work-items.
 | Closed door and temporary crowd | Dynamic recheck/replan or legal interaction; no expensive static rebake |
 | Chunked and ordinary CForm for equivalent geometry | Equivalent collision surface/query behavior and native graph semantics |
 | Collision/material override after bake | Package rejected as stale with a readable diagnostic |
-| Sorted/remapped AI nodes and new GUID | Graph anchors, cross table and traversal references all match the output, with no stale IDs |
-| Dedicated DM with no `alife.spawn` | New package bootstrap initializes navigation before bot spawn, without an ALife actor/population |
+| Sorted/remapped AI nodes and new GUID | Traversal endpoints and annotations reference the final native nodes |
+| Dedicated DM with no `alife.spawn` | The level-only bootstrap initializes navigation before bot spawn |
 | Missing/corrupt nav, map reload, late path result | Clean bot-start rejection/controlled human-only mode; no stale references or crash |
 
 The first end-to-end acceptance is one stalker-based bot on one arena: spawn, route around real cover, traverse stairs/selected doorway and required links, reach a known pickup, fight, die/respawn, then unload/reload the map. Show the route/node/link overlay and actual NPC motion together on Windows. A line drawn by A* alone does not prove traversability.

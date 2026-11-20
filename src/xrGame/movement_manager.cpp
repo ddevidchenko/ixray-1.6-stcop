@@ -92,9 +92,9 @@ void CMovementManager::reinit		()
 	m_build_at_once					= false;
 
 	enable_movement					(true);
-	game_selector().reinit			(&ai().game_graph());
+	game_selector().reinit			(ai().get_game_graph());
 	detail().reinit					();
-	game_path().reinit				(&ai().game_graph());
+	game_path().reinit				(ai().get_game_graph());
 	level_path().reinit				(ai().get_level_graph());
 	patrol().reinit					();
 
@@ -124,8 +124,22 @@ CMovementManager::EPathType CMovementManager::path_type() const
 	return					(m_path_type);
 }
 
+void CMovementManager::set_path_type(EPathType path_type)
+{
+	if ((path_type == ePathTypeGamePath || path_type == ePathTypePatrolPath) && ai().UsesArenaNavigation())
+	{
+		path_type = ePathTypeNoPath;
+	}
+	m_path_actuality = m_path_actuality && m_path_type == path_type;
+	m_path_type = path_type;
+}
+
 void CMovementManager::set_game_dest_vertex		(const GameGraph::_GRAPH_ID &game_vertex_id)
 {
+	if (!ai().get_game_graph())
+	{
+		return;
+	}
 	game_path().set_dest_vertex(game_vertex_id);
 	m_path_actuality		= m_path_actuality && game_path().actual();
 }
@@ -298,6 +312,10 @@ bool CMovementManager::actual_all				() const
 
 void CMovementManager::teleport					(u32 game_vertex_id)
 {
+	if (!ai().get_game_graph())
+	{
+		return;
+	}
 	NET_Packet				net_packet;
 	GameGraph::_GRAPH_ID	_game_vertex_id = (GameGraph::_GRAPH_ID)game_vertex_id;
 	u32						_level_vertex_id = ai().game_graph().vertex(_game_vertex_id)->level_vertex_id();

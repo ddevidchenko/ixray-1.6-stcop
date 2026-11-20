@@ -8,6 +8,7 @@
 
 #include "StdAfx.h"
 #include "level_graph.h"
+#include "Multiplayer/StalkerNavigation.h"
 #include "../xrEngine/Editor/XrEditorSceneInterface.h"
 
 #pragma pack(push,1)
@@ -81,9 +82,8 @@ public:
 #pragma pack(pop)
 
 const char* LEVEL_GRAPH_NAME = "level.ai";
-CLevelGraph::CLevelGraph()
+static xr_unique_ptr<IReader> OpenLevelGrid()
 {
-	VERIFY(Device.IsEditorMode() == false);
 	string_path file_name;
 
 #ifndef AI_COMPILER
@@ -92,8 +92,62 @@ CLevelGraph::CLevelGraph()
 	strconcat(sizeof(file_name), file_name, filename, LEVEL_GRAPH_NAME);
 #endif
 
-	m_reader = FS.r_open(file_name);
+	return xr_unique_ptr<IReader>(FS.r_open(file_name));
+}
 
+xr_unique_ptr<CLevelGraph> CLevelGraph::OpenArena()
+{
+	auto Reader = OpenLevelGrid();
+	if (!Reader || Reader->length() < static_cast<intptr_t>(sizeof(CHeader)))
+	{
+		return {};
+	}
+
+	const auto& Header = *reinterpret_cast<const CHeader*>(Reader->pointer());
+	std::size_t NodeSize = 0;
+	switch (Header.version())
+	{
+		case XRAI_SOC_VERSION:
+			NodeSize = sizeof(SOCNodeCompressed);
+			break;
+		case XRAI_MINIMAL_VERSION:
+			NodeSize = sizeof(NodeCompressed10);
+			break;
+		case XRAI_CURRENT_VERSION:
+			NodeSize = sizeof(NodeCompressed);
+			break;
+		case XRAI_LARGE_VERSION:
+			NodeSize = sizeof(CVertex);
+			break;
+	}
+	if (!StalkerNavigation::ArenaGridFits(static_cast<std::size_t>(Reader->length()), sizeof(CHeader), Header.vertex_count(),
+		NodeSize, Header.cell_size(), Header.factor_y()))
+	{
+		return {};
+	}
+
+	const auto& Bounds = Header.box();
+	if (!_valid(Bounds.min) || !_valid(Bounds.max) ||
+		Bounds.max.x < Bounds.min.x || Bounds.max.y < Bounds.min.y || Bounds.max.z < Bounds.min.z)
+	{
+		return {};
+	}
+	const auto Rows = (f64{Bounds.max.z} - Bounds.min.z) / Header.cell_size() + 2.0;
+	const auto Columns = (f64{Bounds.max.x} - Bounds.min.x) / Header.cell_size() + 2.0;
+	if (Rows * Columns >= (1u << 24))
+	{
+		return {};
+	}
+	return xr_unique_ptr<CLevelGraph>(new CLevelGraph(std::move(Reader)));
+}
+
+CLevelGraph::CLevelGraph() : CLevelGraph(OpenLevelGrid())
+{
+}
+
+CLevelGraph::CLevelGraph(xr_unique_ptr<IReader> Reader) : m_reader(Reader.get())
+{
+	VERIFY(Device.IsEditorMode() == false);
 	// m_header & data
 	m_header = (CHeader*)m_reader->pointer();
 	const u32 AIVersion = header().version();
@@ -196,13 +250,14 @@ CLevelGraph::CLevelGraph()
 	m_current_radius = Fvector().set(flt_max,flt_max,flt_max);
 #	endif
 #endif
+	Reader.release();
 }
 
 CLevelGraph::~CLevelGraph()
 {
-	if (m_header->version() < XRAI_CURRENT_VERSION)
+	if (m_header->version() != XRAI_LARGE_VERSION)
 	{
-		xr_delete(m_nodes);
+		delete[] m_nodes;
 	}
 
 	VERIFY(Device.IsEditorMode() == false);

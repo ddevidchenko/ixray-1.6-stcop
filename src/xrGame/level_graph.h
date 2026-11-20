@@ -20,7 +20,9 @@ private:
 	friend class CRenumbererConverter;
 
 	IReader* m_reader;
+	explicit CLevelGraph(xr_unique_ptr<IReader> Reader);
 public:
+	[[nodiscard]] static xr_unique_ptr<CLevelGraph> OpenArena();
 					CLevelGraph					();
 	virtual			~CLevelGraph				();
 

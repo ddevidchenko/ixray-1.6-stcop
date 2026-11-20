@@ -12,7 +12,6 @@
 #include "graph_engine.h"
 #include "ef_storage.h"
 #include "ai_space.h"
-#include "Multiplayer/StalkerNavigation.h"
 #include "console_registrator.h"
 #include "cover_manager.h"
 #include "cover_point.h"
@@ -89,7 +88,7 @@ CAI_Space::~CAI_Space				()
 	VERIFY					(!m_game_graph);
 }
 
-bool CAI_Space::load				(const char* level_name, bool RequireStalkerNavigation)
+bool CAI_Space::load				(const char* level_name)
 {
 	VERIFY					(m_game_graph);
 
@@ -114,12 +113,6 @@ bool CAI_Space::load				(const char* level_name, bool RequireStalkerNavigation)
 	game_graph().set_current_level(current_level.id());
 	level_graph().level_id(current_level.id());
 
-	if (RequireStalkerNavigation && StalkerNavigation::Check(m_game_graph, m_level_graph) != StalkerNavigation::Status::Ready)
-	{
-		unload(true);
-		return false;
-	}
-
 	R_ASSERT2				(cross_table().header().level_guid() == level_graph().header().guid(), "cross_table doesn't correspond to the AI-map");
 	R_ASSERT2				(cross_table().header().game_guid() == game_graph().header().guid(), "graph doesn't correspond to the cross table");
 	
@@ -130,11 +123,7 @@ bool CAI_Space::load				(const char* level_name, bool RequireStalkerNavigation)
 		validate			(current_level.id());
 #endif
 
-	m_cover_manager->compute_static_cover	();
-	m_moving_objects->on_level_load			();
-
-	VERIFY					(!m_doors_manager);
-	m_doors_manager			= new ::doors::manager( ai().level_graph().header().box() );
+	StartLevelNavigation();
 
 #ifdef DEBUG
 	//Msg						("* Loading ai space is successfully completed (%.3fs, %7.3f Mb)",timer.GetElapsed_sec(),float(Memory.mem_usage() - mem_usage)/1048576.0);
@@ -142,8 +131,36 @@ bool CAI_Space::load				(const char* level_name, bool RequireStalkerNavigation)
 	return true;
 }
 
+bool CAI_Space::LoadArenaNavigation()
+{
+	if (Device.IsEditorMode() || m_game_graph || m_alife_simulator)
+	{
+		return false;
+	}
+	auto Grid = CLevelGraph::OpenArena();
+	if (!Grid)
+	{
+		return false;
+	}
+	unload();
+	m_level_graph = Grid.release();
+	ArenaNavigation = true;
+	StartLevelNavigation();
+	return true;
+}
+
+void CAI_Space::StartLevelNavigation()
+{
+	m_cover_manager->compute_static_cover();
+	m_moving_objects->on_level_load();
+
+	VERIFY(!m_doors_manager);
+	m_doors_manager = new ::doors::manager(level_graph().header().box());
+}
+
 void CAI_Space::unload				(bool reload)
 {
+	ArenaNavigation = false;
 	script_engine().unload	();
 
 	xr_delete				(m_doors_manager);

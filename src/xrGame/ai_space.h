@@ -42,7 +42,10 @@ private:
 	doors::manager						*m_doors_manager;
 
 private:
-			bool						load					(const char* level_name, bool RequireStalkerNavigation = false);
+			bool						load					(const char* level_name);
+	[[nodiscard]] bool LoadArenaNavigation();
+	void StartLevelNavigation();
+	bool ArenaNavigation = false;
 			void						unload					(bool reload = false);
 			void						patrol_path_storage_raw	(IReader &stream);
 			void						patrol_path_storage		(IReader &stream);
@@ -59,6 +62,7 @@ public:
 	IC		IGameGraph					*get_game_graph			() const;
 	IC		ILevelGraph					&level_graph			() const;
 	IC		const ILevelGraph			*get_level_graph		() const;
+	[[nodiscard]] bool UsesArenaNavigation() const noexcept { return ArenaNavigation; }
 			const IGameLevelCrossTable	&cross_table			() const;
 			const IGameLevelCrossTable	*get_cross_table		() const;
 	IC		const CPatrolPathStorage	&patrol_paths			() const;

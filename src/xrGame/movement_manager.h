@@ -182,7 +182,7 @@ public:
 	virtual	void	on_frame				(CPHMovementControl *movement_control, Fvector &dest_position);
 	IC		bool	actual					() const;
 			bool	actual_all				() const;
-	IC		void	set_path_type			(EPathType path_type);
+			void	set_path_type			(EPathType path_type);
 			void	set_game_dest_vertex	(const GameGraph::_GRAPH_ID &game_vertex_id);
 	virtual	void	set_level_dest_vertex	(u32 const& level_vertex_id);
 	IC		void	set_build_path_at_once	();

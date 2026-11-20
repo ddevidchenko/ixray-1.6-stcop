@@ -544,7 +544,7 @@ void game_sv_mp::Create (shared_str &options)
 #endif
 	if (W1StalkerNavigation)
 	{
-		Msg("* W1: using graph-only stalker navigation");
+		Msg("* W1: using level-only stalker navigation");
 	}
 	else if (FS.exist(file_name, "$level$", "alife", ".spawn"))
 	{

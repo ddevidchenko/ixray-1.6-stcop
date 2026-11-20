@@ -135,14 +135,23 @@ The [peer runbook](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch
 
 #### MP-005b — Load graph-only navigation on the dedicated DM server
 
+The level-only W1 path in MP-005d supersedes the graph-only experiment.
+
 - A development dedicated DM session accepts the explicit `w1_stalker_navigation=1` option. It bypasses the legacy full ALife bootstrap and loads the selected arena's game graph, patrol data, and level graph during level startup. It checks the selected level and cross-table metadata before starting cover and movement services. The level keeps the backing readers alive until graph teardown. [Server option](../../src/xrGame/game_sv_mp.cpp), [level loader](../../src/xrGame/Level_load.cpp).
 - **Implemented / Windows pending.** The Windows regression is prepared. The reviewed option and runner evidence tests failed first, then passed. All 25 portable tests passed in Debug, Release, and ASan/UBSan on macOS arm64. The option suite covers missing, malformed, duplicated, disabled, and valid requests. The runner checks that map-specific readiness is present when DM becomes ready and that failure evidence takes precedence. The test-only Windows revision is `cac3c66a9`. It can distinguish a server reaching DM readiness without W1 navigation from a process or fixture failure. [Portable option tests](../../src/test/multiplayer/portable/StalkerPrerequisitesTests.cpp), [runner evidence tests](../../src/test/multiplayer/checkpoints/TestW0Evidence.ps1).
 - [ ] **Complete when** the [W1 navigation checkpoint](multiplayer-checkpoints/w0.md#w1-dedicated-navigation-check) records staged fixture hashes, graph readiness and two remote joins on the fixed Windows commit. The workspace has no compiled arena fixture. NPC registration, gameplay and replication remain part of the parent proof.
 
 #### MP-005c — Prepare a dedicated navigation fixture from the Level Editor
 
-- The Windows runbook walks through making a small deathmatch map with a matching AI grid and spawn graph. The staging helper checks required files, graph and patrol chunks, and distinct team-0 player spawns. It preserves the compiler's source files and records the hashes of the staged game files. Synthetic PowerShell checks failed before validation and staging were added and passed after review. [Preparation runbook](multiplayer-checkpoints/w0.md#prepare-a-w1-test-arena-on-windows), [staging script](../../scripts/multiplayer/windows/PrepareW1Fixture.ps1), [tests](../../src/test/multiplayer/checkpoints/TestW1Fixture.ps1).
-- [ ] **Complete when** the Windows editor/compiler produces the arena and the [W1 navigation check](multiplayer-checkpoints/w0.md#w1-dedicated-navigation-check) validates its graph in the dedicated server with two remote clients. The full stalker gameplay proof remains under MP-005.
+- The Windows runbook makes a small deathmatch map with a native AI grid. The staging helper checks required files and distinct team-0 player spawns. MP-005d removed the spawn-graph requirement from this fixture. It preserves the compiler's source files and records the hashes of the staged game files. Synthetic PowerShell checks failed before validation and staging were added and passed after review. [Preparation runbook](multiplayer-checkpoints/w0.md#prepare-a-w1-test-arena-on-windows), [staging script](../../scripts/multiplayer/windows/PrepareW1Fixture.ps1), [tests](../../src/test/multiplayer/checkpoints/TestW1Fixture.ps1).
+- [ ] **Complete when** the Windows editor/compiler produces the arena and the [W1 navigation check](multiplayer-checkpoints/w0.md#w1-dedicated-navigation-check) validates its walk grid in the dedicated server with two remote clients. The full stalker gameplay proof remains under MP-005.
+
+#### MP-005d — Load level-only navigation for the MP stalker proof
+
+- **Design.** A W1 DM arena stages the native `level.ai`. Dedicated startup validates the grid and initializes level navigation and cover. Spawn and movement pass level-vertex IDs along this path. The old ALife and FreeMP graph formats remain available to their callers.
+- **Portable checks.** The initial tests failed on the legacy game-graph requirement and fixture staging's attempt to read `alife.spawn`. The revised checks cover an unassigned ALife level ID, missing or empty grids, truncated payloads, unsupported record layouts, invalid dimensions, and staging from an SDK directory containing a legacy spawn file.
+- **Windows regression prepared / unverified.** Candidate `4ba473b58` contains the same fixture and assertions with the old engine loader. Use the [W1 comparison](multiplayer-checkpoints/w0.md#w1-dedicated-navigation-check) to distinguish an obsolete graph requirement from a fixture or process failure.
+- [ ] **Complete when** the fixed candidate passes with the native grid and reports two remote joins on Windows. The full server-owned stalker gameplay proof remains MP-005. Ladder bake and execution remain MP-105–109.
 
 ### MP-010 — Add an independent portable test target
 
@@ -957,7 +966,7 @@ Use the [bot AI design](multiplayer-bot-ai-design.md) for architecture, source r
 
 ## Navigation generation and per-level attachment
 
-These items expand MP-071. Follow the [navigation pipeline](multiplayer-navigation-pipeline.md) for source evidence, existing-tool commands, asset layout and proposed new contracts. Existing SDK tools can compile authored sources; a compiled-CForm-to-native-grid route and `level.botnav` packaging/bootstrap are new work. New filenames and tool entry points below are proposals until implemented.
+These items expand MP-071. Follow the [navigation pipeline](multiplayer-navigation-pipeline.md) for source evidence, existing-tool commands, asset layout and proposed new contracts. Existing SDK tools can compile authored sources; a compiled-CForm-to-native-grid route and `level.navlinks` attachment validation are new work. New filenames and tool entry points below are proposals until implemented.
 
 ### MP-100 — Inventory map assets and choose the bake route
 
@@ -984,7 +993,7 @@ These items expand MP-071. Follow the [navigation pipeline](multiplayer-navigati
 
 - **Kind / runs / depends:** TDD; `P/W`; MP-100–102, MP-109.
 - **Red:** a jump/drop/ladder/door link is rejected when endpoints, direction, ability, landing clearance or map identity are invalid. A disconnected platform remains unreachable without a valid explicit link. Cover/avoid/arena annotations cannot refer to deleted nodes or regions outside the allowed bounds.
-- **Green / seam:** versioned `level.botnav.authoring.json` source schema and typed link/area validation. Keep walking adjacency separate from action links; validate selected actions through the actual NPC movement/physics path. Reuse existing scene annotations through an importer only where their semantics match.
+- **Green / seam:** versioned traversal authoring schema source schema and typed link/area validation. Keep walking adjacency separate from action links; validate selected actions through the actual NPC movement/physics path. Reuse existing scene annotations through an importer only where their semantics match.
 - [ ] **Complete when:** authored links and areas survive generation/remapping and every included traversal action has a reproducible controller test; no link teleports the bot or invents a route through a wall.
 
 ### MP-104 — Bake cover and serialize a valid native level.ai
@@ -994,25 +1003,25 @@ These items expand MP-071. Follow the [navigation pipeline](multiplayer-navigati
 - **Green / seam:** Route A uses non-draft `xrLevelBuilder` AI compilation with preserved `build.prj`/`build.aimap`; Route B supplies a tested collision-based cover adapter and native writer, reusing [compiler_save.cpp](../../src/utils/xrLevelBuilder/xrAI/Compiler/compiler_save.cpp) concepts. Preserve source-to-output remapping for dependent artifacts.
 - [ ] **Complete when:** a Windows-loaded `level.ai` matches the baked fixture and no stale node/GUID reference survives compilation. Draft/no-cover output is explicitly development-only for tactical bot acceptance.
 
-### MP-105 — Build minimal graph/cross-table compatibility without ALife spawns
+### MP-105 — Attach directed ladder links to the arena walk graph
 
-- **Kind / runs / depends:** TDD; `P/W`; MP-100, MP-103–104.
-- **Red:** create a single-map graph whose anchors reference the final native node IDs; every node maps to a valid reachable region with valid distance/GUID metadata. Missing component coverage, mismatched game/level GUIDs and arbitrary edges across disconnected regions are rejected. No actor spawn or ALife population is required to build this package.
-- **Green / seam:** a narrow graph/cross-table builder or adapter using [game_graph_builder.cpp](../../src/utils/xrLevelBuilder/xrAI/Graph/game_graph_builder.cpp) and existing serializers. Avoid invoking the actor-dependent FreeMP spawn constructor as the only DM route. Select supported disconnected-component policy explicitly.
-- [ ] **Complete when:** actual runtime graph/cross-table consumers accept the produced data and route/region lookups agree with native grid connectivity without a fabricated walk path.
+- **Kind / runs / depends:** TDD; `P/W`; MP-100, MP-103–104, MP-109 for real ladder geometry.
+- **Red:** a route crosses two walkable floors via an authored ladder in the permitted direction. Test reverse direction, duplicate links, stale node IDs after grid rebuild, unreachable landings, a disabled or occupied ladder, and replanning from a blocked exit.
+- **Green / seam:** bind typed ladder edges to the final native `level.ai` node IDs. Plan one route over walk and ladder edges. Keep the traversal step in the result and hand it to the stalker motor at the entry. An initial route executor can use the existing walk and detail-path builders for each walking segment.
+- [ ] **Complete when:** route tests cover mixed walk and ladder paths, the authoritative controller mounts and dismounts on the selected node, and legacy ALife selectors are absent from the MP route.
 
 ### MP-106 — Package nav beside the exact matching map and reject stale data
 
 - **Kind / runs / depends:** TDD; `P/W`; MP-020, MP-101, MP-103–105.
 - **Red:** missing `level.ai`/package, changed collision chunk/material/agent profile or consumed ladder/spawn/game record, wrong map name/version, changed AI GUID, invalid offsets/counts and bad traversal references fail before navigation is published. A partially written package cannot replace a valid one; VFS overrides resolve consistently.
-- **Green / seam:** versioned proposed `level.botnav` container with identity/hashes, minimal graph/embedded cross table and annotations, paired with native `level.ai`. Implement a checked validator, atomic install/staging procedure and run/deployment manifest. Keep authoring inputs rebuildable and source-controlled separately from generated output.
+- **Green / seam:** versioned `level.navlinks` attachment with identity, hashes, and typed edges referencing native `level.ai` nodes. Implement a checked validator, atomic install/staging procedure and run/deployment manifest. Keep authoring inputs rebuildable and source-controlled separately from generated output.
 - [ ] **Complete when:** the selected map's `$level$` resolves a valid matching pair, deliberate stale/corrupt artifacts are rejected with map/file/reason diagnostics, and the runbook lists real output paths and commands.
 
 ### MP-107 — Bootstrap nav on the authoritative dedicated server
 
-- **Kind / runs / depends:** TDD; `W`; MP-023, MP-026, MP-031, MP-104–106.
+- **Kind / runs / depends:** TDD; `W`; MP-023, MP-026, MP-031, MP-005d, MP-104–106.
 - **Red:** start dedicated DM with valid package but no `alife.spawn`; navigation becomes ready after collision load and before bot consumers. Missing/invalid nav cleanly rejects bot-enabled startup or permits only explicitly human-only mode. Unload/reload with a pending path job rejects the old map-generation result without reading freed graph memory.
-- **Green / seam:** explicit DM initialization in [Level_load.cpp](../../src/xrGame/Level_load.cpp), backed by a navigation owner/compatible [CAI_Space](../../src/xrGame/ai_space.cpp) adapter. Initialize the game graph/cross table before `CAI_Space::load`; retain backing readers as long as `CGameGraph` references them. Stop jobs/consumers before releasing caches, graphs and readers.
+- **Green / seam:** explicit DM initialization in [Level_load.cpp](../../src/xrGame/Level_load.cpp), backed by a navigation owner/compatible [CAI_Space](../../src/xrGame/ai_space.cpp) adapter. Use the MP-005d level-only bootstrap and attach validated traversal edges before publishing readiness. Keep the walk grid, link table, and readers under the arena owner. Stop jobs and consumers before releasing the navigation data.
 - [ ] **Complete when:** the actual DS path initializes/queries/unloads nav independently of `OnClient()` and ALife actor population, including assertions-disabled validation and repeated map changes.
 
 ### MP-108 — Prove generated paths work through native stalker movement
@@ -1024,7 +1033,7 @@ These items expand MP-071. Follow the [navigation pipeline](multiplayer-navigati
 
 ### MP-109 — Extract semantic ladders and validate climb-link candidates
 
-- **Kind / runs / depends:** TDD; `P/W`; MP-023, MP-031, MP-070, MP-100–102.
+- **Kind / runs / depends:** TDD; `P/W`; MP-100–102 for offline extraction. Windows execution also depends on MP-023, MP-031, and MP-070.
 - **Red:** decode supported `CSE_ALifeObjectClimable` spawn fixtures and compare oriented volume/axis/normal/endpoints with actual `CClimableObject` behavior. Test rotated/reversed/slanted boxes, missing/invalid shape, mode-disabled object, duplicate record, obstructed landing, wrong floor, decorative ladder without a climbable record and stale map/entity generation. No visual-only ladder creates a usable climb link automatically.
 - **Green / seam:** extract supported `level.spawn` semantics or enumerate authoritative active ladders, sharing orientation/endpoint logic with [ClimableObject.cpp](../../src/xrGame/ClimableObject.cpp). Project safe approach/exit candidates onto native walk layers; retain semantic identity/freshness for MP-103/106. Add an NPC climb action and compatible physics/animation integration, reusing [CElevatorState](../../src/xrPhysics/ElevatorState.cpp) where it fits. Validate real mount/climb/stop/dismount without teleportation; existing player support alone is insufficient. Human prediction restore stays in MP-041/047.
 - [ ] **Complete when:** selected real stock-map ladder candidates are enumerated with a diagnostic overlay and traversed by a native-stalker bot on Windows; invalid/missing landings are rejected or marked for correction. NPC climb pose/state replicates, changed ladder semantics invalidate the package, and map reload never retains a raw stale ladder pointer.

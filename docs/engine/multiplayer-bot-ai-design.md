@@ -211,7 +211,7 @@ Local physical avoidance can detect an obstacle on the next step. Tactical posit
 
 ## Navigation, ladders and movement
 
-Use the native layered walk grid initially, with typed traversal links. The [navigation pipeline](multiplayer-navigation-pipeline.md) owns how compiled MP collision/spawn semantics become validated `level.ai` plus the proposed `level.botnav` package, and how dedicated DM initializes it. Neither the package nor the new bootstrap is currently implemented.
+Use the native layered walk grid initially, with typed traversal links. The [navigation pipeline](multiplayer-navigation-pipeline.md) owns how compiled MP collision/spawn semantics become validated `level.ai` plus the proposed `level.navlinks` package, and how dedicated DM initializes it. Neither the package nor the new bootstrap is currently implemented.
 
 Pathfinding receives a destination justified by the bot's knowledge, selected NPC capability profile and map generation. Costs may include static travel, believed danger, recently failed routes and observable congestion. A tactical risk map must be per bot and derived from its memory; a globally updated hidden-enemy influence map would leak information.
 

@@ -153,7 +153,8 @@ private:
 			void	update_distance_to_target	();
 
 protected:
-			void	build_path					(const xr_vector<u32> &level_path, u32 intermediate_index, const Fvector* SegmentEnd = nullptr);
+	bool BuildArenaPath(const xr_vector<u32>& Nodes, const Fvector& Feet, const Fvector& Goal);
+			void	build_path					(const xr_vector<u32> &level_path, u32 intermediate_index);
 
 	friend class CScriptEntity;
 	friend class CMovementManager;

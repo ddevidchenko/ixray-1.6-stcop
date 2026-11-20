@@ -20,7 +20,7 @@ void CMovementManager::process_level_path()
 {
 	PROF_EVENT("Build Path/Process Level Path");
 
-	if (UsesArenaLadderRouting())
+	if (UsesArenaMovement())
 	{
 		ProcessArenaLevelPath();
 		return;

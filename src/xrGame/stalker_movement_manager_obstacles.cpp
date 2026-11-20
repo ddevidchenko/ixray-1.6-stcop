@@ -166,6 +166,11 @@ void stalker_movement_manager_obstacles::move_along_path_impl				(CPHMovementCon
 	inherited::move_along_path		(movement_control, dest_position, time_delta);
 }
 
+bool stalker_movement_manager_obstacles::ArenaDoorReady(float Speed)
+{
+	return !m_doors_actor || ai().doors().actualize_doors_state(*m_doors_actor, Speed);
+}
+
 void stalker_movement_manager_obstacles::move_along_path					(CPHMovementControl *movement_control, Fvector &dest_position, float time_delta)
 {
 	VERIFY							( m_doors_actor );
@@ -379,7 +384,8 @@ float stalker_movement_manager_obstacles::is_going_through			( Fmatrix const& ma
 	float min_distance					= flt_max;
 	typedef xr_vector<STravelPathPoint>	detail_path_type;
 	detail_path_type::const_iterator	i = detail().path().begin() + detail().curr_travel_point_index() + 1;
-	detail_path_type::const_iterator	e = detail().path().end();
+	// The arena door decision applies to the same edge that recovery can exclude.
+	const auto e = UsesArenaMovement() ? i + 1 : detail().path().end();
 	for ( ; i != e; ++i) {
 		float const distance			= get_distance((*(i - 1)).position,(*i).position,start_position,stop_position, .35f);
 		min_distance					= distance > -1.f ? std::min( min_distance, distance ) : min_distance;

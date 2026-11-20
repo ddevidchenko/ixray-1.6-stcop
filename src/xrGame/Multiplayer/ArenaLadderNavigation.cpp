@@ -196,8 +196,26 @@ bool ArenaLadderNavigation::AtLanding(u32 Node, const Fvector& Position) const
 		std::abs(Grid.vertex_plane_y(Node, Position.x, Position.z) - Position.y) <= 0.2f;
 }
 
+u32 ArenaLadderNavigation::ProjectWalkVertex(const Fvector& Feet) const
+{
+	if (!Grid.valid_vertex_position(Feet))
+	{
+		return ArenaMovement::Segment::Invalid;
+	}
+	const auto HeightError = [&](u32 Vertex)
+	{
+		return Grid.valid_vertex_id(Vertex) ? std::abs(Grid.vertex_plane_y(Vertex, Feet.x, Feet.z) - Feet.y) : flt_max;
+	};
+	const u32 Below = Grid.vertex_id(Feet);
+	Fvector Raised = Feet;
+	Raised.y += ArenaMovement::WalkVerticalTolerance;
+	const u32 Near = Grid.valid_vertex_position(Raised) ? Grid.vertex_id(Raised) : Below;
+	const u32 Closest = HeightError(Near) < HeightError(Below) ? Near : Below;
+	return HeightError(Closest) <= ArenaMovement::WalkVerticalTolerance ? Closest : ArenaMovement::Segment::Invalid;
+}
+
 bool ArenaLadderNavigation::Plan(const CRestrictedObject& Restrictions, u16 Owner, u32 Start, u32 Goal, u32 Budget,
-	u32 Avoid, xr_vector<Step>& Path) const
+	const ArenaMovement::Recovery& Recovery, u32 Now, xr_vector<Step>& Path) const
 {
 	Path.clear();
 	if (!Grid.valid_vertex_id(Start) || !Grid.valid_vertex_id(Goal) || !Restrictions.accessible(Goal))
@@ -217,7 +235,7 @@ bool ArenaLadderNavigation::Plan(const CRestrictedObject& Restrictions, u16 Owne
 		for (u8 Slot = 0; Slot < 4; ++Slot)
 		{
 			const u32 To = Grid.vertex(From)->link(Slot);
-			if (Eligible(To))
+			if (Eligible(To) && !Recovery.AvoidsWalk(Now, From, To))
 			{
 				Visit({To}, std::max(Grid.header().cell_size(), Position.distance_to(Grid.vertex_position(To))));
 			}
@@ -229,7 +247,8 @@ bool ArenaLadderNavigation::Plan(const CRestrictedObject& Restrictions, u16 Owne
 		}); It != Links.end() && It->Entry == From; ++It)
 		{
 			const u32 Index = u32(It - Links.begin());
-			if ((Avoid == NoLink || !SameLadder(Index, Avoid)) && Eligible(It->Exit) && Resolve(Index, Owner))
+			if (Eligible(It->Exit) && Resolve(Index, Owner) &&
+				!Recovery.AvoidsLadder(Now, Index, [&](u32 First, u32 Second) { return SameLadder(First, Second); }))
 			{
 				Visit({It->Exit, Index}, std::max(It->Cost, Position.distance_to(Grid.vertex_position(It->Exit))));
 			}

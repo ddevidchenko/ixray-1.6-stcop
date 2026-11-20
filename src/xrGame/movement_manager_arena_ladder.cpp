@@ -1,6 +1,7 @@
 #include "StdAfx.h"
 #include "movement_manager.h"
 #include "Multiplayer/ArenaLadderNavigation.h"
+#include "CharacterPhysicsSupport.h"
 #include "ClimableObject.h"
 #include "Creature.h"
 #include "Level.h"
@@ -15,8 +16,6 @@
 namespace
 {
 constexpr u32 ArenaPathNodes = 8192;
-constexpr u32 RetryDelay = 500;
-constexpr u32 FailedLadderDelay = 2500;
 constexpr float ClimbSpeed = 1.7f;
 constexpr float EndTolerance = 0.12f;
 
@@ -28,11 +27,12 @@ bool IsTraversing(Multiplayer::ArenaLadders::Phase Phase)
 }
 
 using namespace Multiplayer::ArenaLadders;
+using Multiplayer::ArenaMovement::Segment;
 
-bool CMovementManager::UsesArenaLadderRouting() const
+bool CMovementManager::UsesArenaMovement() const
 {
 	const auto* Links = ai().ArenaLadderLinks();
-	return Links && Links->HasLinks() && m_object->cast_stalker() && m_object->Local() && OnServer();
+	return g_dedicated_server && Links && ai().ArenaNavigationReady() && m_object->cast_stalker() && m_object->Local() && OnServer();
 }
 
 u32 CMovementManager::WalkDestinationVertex() const
@@ -55,64 +55,52 @@ void CMovementManager::ProcessArenaLevelPath()
 	auto& Links = *ai().ArenaLadderLinks();
 	if (ArenaLadder.MapGeneration != Links.Generation())
 	{
-		ArenaLadder = {};
+		CancelArenaLadder(nullptr);
 		ArenaLadder.MapGeneration = Links.Generation();
+		InvalidateArenaRoute();
 	}
-	const auto& Grid = ai().level_graph();
-	const u32 Start = object().ai_location().level_vertex_id();
 	const u32 Goal = level_dest_vertex_id();
 	const u32 Now = Device.dwTimeGlobal;
+	ArenaRecovery.SetRoute(Links.Generation(), Goal);
 
-	if (level_path().actual() && m_path_state == ePathStatePathVerification)
+	if (level_path().actual() && detail().actual())
 	{
-		if (ArenaLadder.NextLink != NoLink)
+		if (m_path_state == ePathStatePathCompleted)
 		{
-			if (!Links.Resolve(ArenaLadder.NextLink, object().ID()))
-			{
-				ReplanArenaLadder(NoLink);
-			}
-			else if (detail().actual() || Links.AtLanding(WalkDestinationVertex(), object().Position()))
+			return;
+		}
+		if (m_path_state == ePathStatePathVerification)
+		{
+			if (ArenaLadder.NextLink == NoLink || Links.Resolve(ArenaLadder.NextLink, object().ID()))
 			{
 				return;
 			}
-		}
-		else if (detail().actual())
-		{
-			if (detail().completed(object().Position(), !detail().state_patrol_path()))
-			{
-				m_path_state = ePathStatePathCompleted;
-			}
-			return;
+			ReplanArenaRoute(Segment::Ladder(ArenaLadder.NextLink));
 		}
 	}
-	if (level_path().actual() && detail().actual() && m_path_state == ePathStatePathCompleted)
+	if (!ArenaRecovery.CanPlan(Now))
 	{
 		return;
 	}
+	InvalidateArenaRoute();
 
-	m_path_state = ePathStateBuildLevelPath;
-	if (ArenaLadder.PlanDelayed && Now - ArenaLadder.LastPlan < RetryDelay)
+	auto* Support = object().character_physics_support();
+	auto* Physics = Support ? Support->movement() : nullptr;
+	if (!Physics || !Physics->CanDriveArenaCharacter() || object().animation_movement_controlled() ||
+		!Physics->PHCharacter()->HasGroundSupport())
 	{
 		return;
 	}
-	if (Now - ArenaLadder.BlockedAt >= FailedLadderDelay)
-	{
-		ArenaLadder.BlockedLink = NoLink;
-	}
-	ArenaLadder.NextLink = NoLink;
-	level_path().make_inactual();
-	detail().make_inactual();
-
+	Fvector Feet;
+	Physics->PHCharacter()->GetPosition(Feet);
+	const u32 Start = Links.ProjectWalkVertex(Feet);
 	xr_vector<Step> Route;
-	if (!Links.Plan(restrictions(), object().ID(), Start, Goal, ArenaPathNodes, ArenaLadder.BlockedLink, Route))
+	if (!Links.Plan(restrictions(), object().ID(), Start, Goal, ArenaPathNodes, ArenaRecovery, Now, Route))
 	{
-		ArenaLadder.PlanDelayed = true;
-		ArenaLadder.LastPlan = Now;
+		ArenaRecovery.Reject(Now, {});
 		return;
 	}
 
-	// Give the detail path builder only the walking prefix. The next search
-	// starts at the actual grounded exit and sees the current tactical goal.
 	auto& Walk = level_path_path();
 	Walk.clear();
 	for (const auto& Step : Route)
@@ -124,43 +112,31 @@ void CMovementManager::ProcessArenaLevelPath()
 		}
 		Walk.push_back(Step.Vertex);
 	}
+	const Fvector End = ArenaLadder.NextLink != NoLink ? ai().level_graph().vertex_position(Walk.back()) : detail().dest_position();
+	detail().set_start_direction(Fvector().setHP(-m_body.current.yaw, 0.f));
+	if (!detail().BuildArenaPath(Walk, Feet, End))
+	{
+		ReplanArenaRoute();
+		return;
+	}
 	level_path().m_failed = false;
 	level_path().m_actuality = true;
 	level_path().m_current_index = u32(-1);
 	level_path().select_intermediate_vertex();
-	const bool HasLadder = ArenaLadder.NextLink != NoLink;
-	if (HasLadder && Links.AtLanding(Walk.back(), object().Position()))
-	{
-		clear_path();
-	}
-	else
-	{
-		detail().set_state_patrol_path(!HasLadder && extrapolate_path());
-		detail().set_start_position(object().Position());
-		detail().set_start_direction(Fvector().setHP(-m_body.current.yaw, 0.f));
-		const auto End = Grid.vertex_position(Walk.back());
-		detail().build_path(Walk, level_path().intermediate_index(), HasLadder ? &End : nullptr);
-		if (detail().failed() || !detail().actual())
-		{
-			ReplanArenaLadder(ArenaLadder.NextLink);
-			return;
-		}
-		on_build_path();
-	}
-	ArenaLadder.PlanDelayed = false;
+
+	const u64 PhysicsStep = physics_world()->StepsNum();
+	ArenaNextWaypoint = detail().path().size() > 1 ? 1 : 0;
+	ArenaWalker.BeginWaypoint(PhysicsStep);
+	LastArenaWalkSample = PhysicsStep;
+	LastArenaWalkFeet = Feet;
+	on_build_path();
 	m_path_state = ePathStatePathVerification;
 }
 
-void CMovementManager::ReplanArenaLadder(u32 BlockedLink)
+void CMovementManager::InvalidateArenaRoute()
 {
-	if (BlockedLink != NoLink)
-	{
-		ArenaLadder.BlockedLink = BlockedLink;
-		ArenaLadder.BlockedAt = Device.dwTimeGlobal;
-	}
 	ArenaLadder.NextLink = NoLink;
-	ArenaLadder.PlanDelayed = true;
-	ArenaLadder.LastPlan = Device.dwTimeGlobal;
+	ArenaWalkFinished = false;
 	level_path().make_inactual();
 	detail().make_inactual();
 	clear_path();
@@ -168,6 +144,12 @@ void CMovementManager::ReplanArenaLadder(u32 BlockedLink)
 	{
 		m_path_state = ePathStateBuildLevelPath;
 	}
+}
+
+void CMovementManager::ReplanArenaRoute(Segment Blocked)
+{
+	ArenaRecovery.Reject(Device.dwTimeGlobal, Blocked);
+	InvalidateArenaRoute();
 }
 
 void CMovementManager::CancelArenaLadder(CPHMovementControl* Physics)
@@ -184,23 +166,25 @@ void CMovementManager::CancelArenaLadder(CPHMovementControl* Physics)
 		}
 	}
 	ArenaLadder = {};
+	ArenaRecovery = {};
+	ArenaWalkFinished = false;
 }
 
 bool CMovementManager::MoveArenaLadder(CPHMovementControl& Physics, Fvector& Position)
 {
 	const bool Traversing = IsTraversing(ArenaLadder.Motor.State());
 	if (!Traversing && !ArenaLadder.Recovering &&
-		(ArenaLadder.NextLink == NoLink || !UsesArenaLadderRouting() || m_path_type != ePathTypeLevelPath ||
+		(ArenaLadder.NextLink == NoLink || !ArenaWalkFinished || m_path_type != ePathTypeLevelPath ||
 		m_path_state != ePathStatePathVerification || !level_path().actual() || !enabled()))
 	{
 		return false;
 	}
 	auto* Links = ai().ArenaLadderLinks();
-	if (!Links || Links->Generation() != ArenaLadder.MapGeneration || !Physics.CharacterExist() ||
+	if (!Links || Links->Generation() != ArenaLadder.MapGeneration || !Physics.CanDriveArenaCharacter() ||
 		object().animation_movement_controlled() || !enabled())
 	{
 		CancelArenaLadder(&Physics);
-		ReplanArenaLadder(NoLink);
+		ReplanArenaRoute();
 		return false;
 	}
 
@@ -235,24 +219,21 @@ bool CMovementManager::MoveArenaLadder(CPHMovementControl& Physics, Fvector& Pos
 	auto* Ladder = Links->Resolve(Link, Owner);
 	if (!Traversing)
 	{
-		if (!Links->AtLanding(Edge.Entry, Position))
+		if (!Character->HasGroundSupport() || !Links->AtLanding(Edge.Entry, Position))
 		{
-			if (detail().completed(Position))
-			{
-				ReplanArenaLadder(Link);
-			}
+			ReplanArenaRoute();
 			return false;
 		}
 		const bool Up = Edge.Travel == Direction::Up;
 		if (!Ladder || !Links->Acquire(Link, Owner))
 		{
-			ReplanArenaLadder(NoLink);
+			ReplanArenaRoute(Segment::Ladder(Link));
 			return false;
 		}
 		if (!Elevator->BeginDirectedClimb(*Ladder, Up))
 		{
 			Links->Release(Link, Owner);
-			ReplanArenaLadder(Link);
+			ReplanArenaRoute(Segment::Ladder(Link));
 			return false;
 		}
 
@@ -318,10 +299,13 @@ bool CMovementManager::MoveArenaLadder(CPHMovementControl& Physics, Fvector& Pos
 		}
 		Msg("Arena ladder: generation=%llu stalker=%u link=%u %s", Generation, u32(Owner), Link,
 			Current == Phase::Complete ? "grounded exit" : "failed");
-		ReplanArenaLadder(Current == Phase::Failed ? Link : NoLink);
-		if (Current == Phase::Complete)
+		if (Current == Phase::Failed)
 		{
-			ArenaLadder.PlanDelayed = false;
+			ReplanArenaRoute(Segment::Ladder(Link));
+		}
+		else
+		{
+			InvalidateArenaRoute();
 		}
 		Drive(Stop);
 		return true;

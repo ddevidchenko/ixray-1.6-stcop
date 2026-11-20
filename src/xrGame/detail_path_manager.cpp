@@ -94,14 +94,49 @@ bool CDetailPathManager::try_get_direction(Fvector& direction) const
 	return					true;
 }
 
-void CDetailPathManager::build_path(const xr_vector<u32> &level_path, u32 intermediate_index, const Fvector* SegmentEnd)
+bool CDetailPathManager::BuildArenaPath(const xr_vector<u32>& Nodes, const Fvector& Feet, const Fvector& Goal)
 {
-	const Fvector Goal = m_dest_position;
-	const xr_scope_exit RestoreGoal([&] { m_dest_position = Goal; });
-	if (SegmentEnd)
+	const auto& Grid = ai().level_graph();
+	const Fvector Requested = m_dest_position;
+	const xr_scope_exit RestoreGoal([&] { m_dest_position = Requested; });
+	m_dest_position = Goal;
+	m_start_position = Feet;
+	m_state_patrol_path = false;
+	make_inactual();
+
+	STrajectoryPoint Start, End;
+	u32 Forward, Backward;
+	if (!init_build(Nodes, u32(Nodes.size() - 1), Start, End, Forward, Backward) || Forward == u32(-1))
 	{
-		m_dest_position = *SegmentEnd;
+		m_failed = true;
+		return false;
 	}
+
+	// Preserve native adjacency so a detour cannot smooth back across its excluded edge.
+	m_path.reserve(Nodes.size() + 1);
+	m_path.push_back({Feet, Nodes.front(), Forward});
+	for (u32 Index = 1; Index < Nodes.size(); ++Index)
+	{
+		const u32 Node = Nodes[Index];
+		const Fvector Position = Index + 1 == Nodes.size() ? m_corrected_dest_position : Grid.vertex_position(Node);
+		m_path.push_back({Position, Node, Forward});
+	}
+	if (Nodes.size() == 1 && !Feet.similar(m_corrected_dest_position, EPS_L))
+	{
+		m_path.push_back({m_corrected_dest_position, Nodes.front(), Forward});
+	}
+
+	m_dest_vertex_id = Nodes.back();
+	m_last_patrol_point = u32(m_path.size() - 1);
+	m_distance_to_target_actual = false;
+	m_time_path_built = Device.dwTimeGlobal;
+	m_failed = false;
+	m_actuality = true;
+	return true;
+}
+
+void CDetailPathManager::build_path(const xr_vector<u32> &level_path, u32 intermediate_index)
+{
 	if (valid(m_start_position) && valid(m_dest_position)) {
 		switch (m_path_type) {
 			case eDetailPathTypeSmooth : {

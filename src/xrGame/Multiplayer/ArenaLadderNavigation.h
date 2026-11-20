@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ArenaLadderTraversal.h"
+#include "ArenaMovement.h"
 
 class CClimableObject;
 class CRestrictedObject;
@@ -33,7 +34,6 @@ public:
 	bool Load(xr_string_view Map, xr_string_view Version, xr_span<const u8> GridBytes);
 	u64 Generation() const { return MapGeneration; }
 	u32 BindingRevision(u32 Index) const { return Bindings[Links[Index].BindingId].Revision; }
-	bool HasLinks() const { return !Links.empty(); }
 	void Register(const CClimableObject& Ladder);
 	void Unregister(const CClimableObject& Ladder);
 	const Edge& Link(u32 Index) const { return Links[Index]; }
@@ -43,7 +43,8 @@ public:
 	void Release(u32 Index, u16 Owner);
 	bool SameLadder(u32 First, u32 Second) const;
 	bool Plan(const CRestrictedObject& Restrictions, u16 Owner, u32 Start, u32 Goal, u32 Budget,
-		u32 Avoid, xr_vector<ArenaLadders::Step>& Path) const;
+		const ArenaMovement::Recovery& Recovery, u32 Now, xr_vector<ArenaLadders::Step>& Path) const;
+	u32 ProjectWalkVertex(const Fvector& Feet) const;
 	bool AtLanding(u32 Node, const Fvector& Position) const;
 
 private:

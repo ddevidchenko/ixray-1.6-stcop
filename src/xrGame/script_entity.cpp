@@ -7,6 +7,7 @@
 ////////////////////////////////////////////////////////////////////////////
 
 #include "StdAfx.h"
+#include "Multiplayer/ArenaLadderNavigation.h"
 #include "pch_script.h"
 #include "script_entity.h"
 #include "Creature.h"
@@ -473,6 +474,22 @@ bool CScriptEntity::bfAssignMovement(CScriptEntityAction *tpEntityAction)
 		}
 		case CScriptMovementAction::eGoalTypeFollowLeader :
 		case CScriptMovementAction::eGoalTypePathPosition : {
+			if (const auto* Arena = ai().ArenaLadderLinks(); Arena && ai().ArenaNavigationReady())
+			{
+				auto& Movement = m_monster->movement();
+				const auto& Goal = l_tMovementAction.m_tDestinationPosition;
+				const u32 Vertex = Arena->ProjectWalkVertex(Goal);
+				if (!ai().level_graph().valid_vertex_id(Vertex) || !Movement.restrictions().accessible(Vertex) ||
+					!Movement.restrictions().accessible(Goal))
+				{
+					Movement.set_path_type(MovementManager::ePathTypeNoPath);
+					break;
+				}
+				Movement.set_path_type(MovementManager::ePathTypeLevelPath);
+				Movement.detail().set_dest_position(Goal);
+				Movement.set_level_dest_vertex(Vertex);
+				break;
+			}
 			m_monster->movement().set_path_type(MovementManager::ePathTypeLevelPath);
 			m_monster->movement().detail().set_dest_position(l_tMovementAction.m_tDestinationPosition);
 			

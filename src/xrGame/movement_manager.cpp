@@ -214,6 +214,10 @@ void CMovementManager::update_path				()
 			case ePathTypeLevelPath :
 			{
 				m_path_state	= ePathStateBuildLevelPath;
+				if (UsesArenaMovement())
+				{
+					break;
+				}
 				ILevelGraph& LevelGraph = ai().level_graph();
 
 				if (!LevelGraph.valid_vertex_id(level_path().dest_vertex_id()))
@@ -408,9 +412,28 @@ void CMovementManager::on_frame					(CPHMovementControl *movement_control, Fvect
 {
 	if (ai().ArenaNavigationStopping())
 	{
+		const bool OwnedArenaMotion = ArenaLadder.MapGeneration != 0;
 		CancelArenaLadder(movement_control);
+		if (OwnedArenaMotion && movement_control->CanDriveArenaCharacter() && !movement_control->PhysicsOnlyMode() &&
+			!object().animation_movement_controlled())
+		{
+			movement_control->DriveArenaCharacter(Fvector().set(0.f, 0.f, 0.f));
+		}
 		dest_position = object().Position();
 		m_speed = 0.f;
+		return;
+	}
+
+	if (UsesArenaMovement())
+	{
+		if (enabled() && m_path_type == ePathTypeLevelPath)
+		{
+			update_path();
+		}
+		if (!MoveArenaLadder(*movement_control, dest_position))
+		{
+			MoveArenaWalk(*movement_control, dest_position);
+		}
 		return;
 	}
 
@@ -421,10 +444,7 @@ void CMovementManager::on_frame					(CPHMovementControl *movement_control, Fvect
 		)
 		update_path					();
 			
-	if (!MoveArenaLadder(*movement_control, dest_position))
-	{
-		move_along_path(movement_control, dest_position, object().client_update_fdelta());
-	}
+	move_along_path(movement_control, dest_position, object().client_update_fdelta());
 }
 
 void CMovementManager::on_travel_point_change	(const u32 &previous_travel_point_index)

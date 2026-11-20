@@ -9,6 +9,7 @@
 #pragma once
 
 #include "Multiplayer/ArenaLadderTraversal.h"
+#include "Multiplayer/ArenaMovement.h"
 
 #include "ai_monster_space.h"
 #include "graph_engine_space.h"
@@ -165,13 +166,9 @@ private:
 	{
 		Multiplayer::ArenaLadders::Traversal Motor;
 		u32 NextLink = Multiplayer::ArenaLadders::NoLink;
-		u32 BlockedLink = Multiplayer::ArenaLadders::NoLink;
-		u32 BlockedAt = 0;
-		u32 LastPlan = 0;
 		u64 ReleasedOnStep = 0;
 		u64 MapGeneration = 0;
 		u32 LadderRevision = 0;
-		bool PlanDelayed = false;
 		bool Recovering = false;
 		Fvector Mount{};
 		Fvector End{};
@@ -180,14 +177,21 @@ private:
 	};
 	ArenaLadderState ArenaLadder;
 
+	Multiplayer::ArenaMovement::WalkController ArenaWalker;
+	Multiplayer::ArenaMovement::Recovery ArenaRecovery;
+	u32 ArenaNextWaypoint = 0;
+	bool ArenaWalkFinished = false;
+	u64 LastArenaWalkSample = 0;
+	Fvector LastArenaWalkFeet{};
 	u32 LastArenaWalkTrace = 0;
 	u64 LastArenaDirectPlacementGeneration = 0;
 
 	void TraceArenaWalk(bool DirectPlacement);
-	bool UsesArenaLadderRouting() const;
 	void ProcessArenaLevelPath();
 	bool MoveArenaLadder(CPHMovementControl& Physics, Fvector& Position);
-	void ReplanArenaLadder(u32 BlockedLink);
+	void MoveArenaWalk(CPHMovementControl& Physics, Fvector& Position);
+	void ReplanArenaRoute(Multiplayer::ArenaMovement::Segment Blocked = {});
+	void InvalidateArenaRoute();
 
 			void	process_game_path		();
 			void	process_level_path		();
@@ -198,6 +202,8 @@ private:
 			void	apply_collision_hit		(CPHMovementControl *movement_control);
 
 protected:
+	bool UsesArenaMovement() const;
+	virtual bool ArenaDoorReady(float) { return true; }
 	virtual void	teleport				(u32 game_vertex_id);
 
 public:

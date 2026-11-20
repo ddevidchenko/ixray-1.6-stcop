@@ -33,6 +33,7 @@ public:
 			void				on_death					( );
 
 private:
+	bool ArenaDoorReady(float Speed) override;
 	using CMovementManager::move_along_path;
 
 private:

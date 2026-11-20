@@ -39,6 +39,7 @@ add_executable(TestMultiplayerUnit
     ClientCatchUpTests.cpp
     StalkerPrerequisitesTests.cpp
     ArenaLadderTests.cpp
+    ArenaMovementTests.cpp
     ArenaNavigationPackageTests.cpp
     DedicatedArenaNavigationTests.cpp
     CombatantRegistryTests.cpp
@@ -136,3 +137,6 @@ target_link_libraries(ArenaNavPack PRIVATE ArenaNavigationFormat)
 
 add_test(NAME Multiplayer.DedicatedArenaNavigation COMMAND TestMultiplayerUnit --dedicated-arena-nav)
 set_tests_properties(Multiplayer.DedicatedArenaNavigation PROPERTIES LABELS multiplayer)
+
+add_test(NAME Multiplayer.ArenaMovement COMMAND TestMultiplayerUnit --arena-movement)
+set_tests_properties(Multiplayer.ArenaMovement PROPERTIES LABELS multiplayer)

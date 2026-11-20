@@ -461,6 +461,11 @@ void CPHMovementControl::Calculate(const xr_vector<DetailPathManager::STravelPat
 
 void CPHMovementControl::DriveLadder(const Fvector& Velocity)
 {
+	DriveArenaCharacter(Velocity);
+}
+
+void CPHMovementControl::DriveArenaCharacter(const Fvector& Velocity)
+{
 	m_character->IPosition(vPosition);
 	Fvector Control = Velocity;
 	if (bExernalImpulse)

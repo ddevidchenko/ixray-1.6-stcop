@@ -226,6 +226,8 @@ public:
 												float& precesition					 //in- tolerance, out - precesition
 												);
 	void DriveLadder(const Fvector& Velocity);
+	bool CanDriveArenaCharacter() const { return CharacterExist() && !bNonInteractiveMode; }
+	void DriveArenaCharacter(const Fvector& Velocity);
 	void				AddControlVel			(const Fvector& vel);
 	void				SetVelocityLimit		(float val);
 	float				VelocityLimit			();

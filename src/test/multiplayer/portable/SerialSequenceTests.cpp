@@ -134,6 +134,7 @@ namespace ArenaNavigationPackageTests
 bool Run();
 }
 
+namespace ArenaMovementTests { bool Run(); }
 namespace ArenaLadderTests
 {
 bool Run();
@@ -397,6 +398,10 @@ int main(int ArgumentCount, char** Arguments)
 		return ArenaNavigationPackageTests::Run() ? EXIT_SUCCESS : EXIT_FAILURE;
 	}
 
+	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--arena-movement") == 0)
+	{
+		return ArenaMovementTests::Run() ? EXIT_SUCCESS : EXIT_FAILURE;
+	}
 	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--arena-ladders") == 0)
 	{
 		return ArenaLadderTests::Run() ? EXIT_SUCCESS : EXIT_FAILURE;

@@ -98,7 +98,7 @@ bool CMovementManager::move_along_path		() const
 //	if (path_completed())
 //		return			(true);
 
-	if (UsesArenaLadderRouting() && m_path_type == ePathTypeLevelPath && !detail().actual())
+	if (UsesArenaMovement() && m_path_type == ePathTypeLevelPath && !detail().actual())
 	{
 		return false;
 	}

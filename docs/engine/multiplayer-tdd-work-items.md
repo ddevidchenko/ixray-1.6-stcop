@@ -274,6 +274,12 @@ The [peer runbook](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch
 - **Green / seam:** distinct server-session, world/round epoch, connection/admission, participant and entity/life identities. A round reset invalidates old input/shot/snapshot/history state independently of static navigation generation; a new map initially requires server restart. Do not treat `ClientID`, map name or `HSteamNetConnection` as every identity.
 - [ ] **Complete when:** identity-reuse traces remain harmless after wrap/reordering cases, with bounded mapping cleanup on disconnect.
 
+#### MP-023a — Track combatant body identity across slot reuse and round changes
+
+- Use a bounded, game-side registry for current participants and bodies. Bind each body to a distinct generation and life within the current world. Keep the participant ID through respawn and a same-map round change. Disconnect releases the participant and its body mapping with a session check. [Registry contract](multiplayer-implementation-contracts.md#combatant-identity-registry).
+- **Mac checks passed / Windows pending.** The first test on base `95f2cb0f2` reproduced a stale reference resolving to a replacement with the same slot. The implementation review also exposed stale session removal when the new session reused the same numeric participant ID. Tests cover bot registration without a socket, respawn, distinct live bodies, rejected mutations, slot bounds, full capacity and reuse, round and process changes, and counter exhaustion. All 26 portable tests passed in Debug, Release, and ASan/UBSan on macOS arm64. Fixtures use literal inputs and require no seed or arena. [Tests](../../src/test/multiplayer/portable/CombatantRegistryTests.cpp).
+- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) records a passing `combatant-registry.xml` on Windows. Connection-to-participant binding, engine object lookup, and live reconnect are still part of MP-023.
+
 ### MP-024 — Own process-level GNS lifetime
 
 - **Kind / runs / depends:** TDD; `P/N/W`; MP-012.

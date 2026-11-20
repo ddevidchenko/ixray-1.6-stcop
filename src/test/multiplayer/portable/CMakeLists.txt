@@ -30,6 +30,7 @@ add_executable(TestMultiplayerUnit
     CatchUpEventQueueTests.cpp
     ClientCatchUpTests.cpp
     StalkerPrerequisitesTests.cpp
+    CombatantRegistryTests.cpp
     ../transport/ScriptedTransport.cpp
 )
 target_link_libraries(TestMultiplayerUnit PRIVATE xrNetServerMultiplayer)
@@ -60,8 +61,9 @@ add_test(NAME Multiplayer.ClientCatchUp COMMAND TestMultiplayerUnit --client-cat
 add_test(NAME Multiplayer.StalkerNavigation COMMAND TestMultiplayerUnit --stalker-navigation)
 add_test(NAME Multiplayer.StalkerAuthority COMMAND TestMultiplayerUnit --stalker-authority)
 add_test(NAME Multiplayer.W1NavigationOption COMMAND TestMultiplayerUnit --w1-navigation-option)
+add_test(NAME Multiplayer.CombatantRegistry COMMAND TestMultiplayerUnit --combatant-registry)
 set_tests_properties(
-    Multiplayer.Sequence Multiplayer.MapSyncDeadline Multiplayer.WeaponSpread Multiplayer.ScriptedTransport Multiplayer.WireEnvelope Multiplayer.WirePayload Multiplayer.ClientHello Multiplayer.ServerWelcome Multiplayer.AdmissionReject Multiplayer.PendingAdmission Multiplayer.AdmissionCompletion Multiplayer.PendingAdmissionLimit Multiplayer.PeerJoin Multiplayer.ClientJoin Multiplayer.BaselineTransfer Multiplayer.BaselineStaging Multiplayer.BaselineRecords Multiplayer.BaselineStagingBudget Multiplayer.BaselineRebase Multiplayer.PeerRebase Multiplayer.CatchUpEventQueue Multiplayer.ClientCatchUp Multiplayer.StalkerNavigation Multiplayer.StalkerAuthority Multiplayer.W1NavigationOption
+    Multiplayer.Sequence Multiplayer.MapSyncDeadline Multiplayer.WeaponSpread Multiplayer.ScriptedTransport Multiplayer.WireEnvelope Multiplayer.WirePayload Multiplayer.ClientHello Multiplayer.ServerWelcome Multiplayer.AdmissionReject Multiplayer.PendingAdmission Multiplayer.AdmissionCompletion Multiplayer.PendingAdmissionLimit Multiplayer.PeerJoin Multiplayer.ClientJoin Multiplayer.BaselineTransfer Multiplayer.BaselineStaging Multiplayer.BaselineRecords Multiplayer.BaselineStagingBudget Multiplayer.BaselineRebase Multiplayer.PeerRebase Multiplayer.CatchUpEventQueue Multiplayer.ClientCatchUp Multiplayer.StalkerNavigation Multiplayer.StalkerAuthority Multiplayer.W1NavigationOption Multiplayer.CombatantRegistry
     PROPERTIES LABELS multiplayer
 )
 

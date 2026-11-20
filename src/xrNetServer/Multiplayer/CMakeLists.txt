@@ -9,6 +9,7 @@ add_library(xrNetServerMultiplayer OBJECT
     AdmissionReject.cpp AdmissionReject.h
     PendingAdmission.cpp PendingAdmission.h
     JoinTypes.cpp JoinTypes.h
+    CombatantIdentity.h
     PeerJoin.cpp PeerJoin.h
     BoundMessage.cpp BoundMessage.h
     ClientJoin.cpp ClientJoin.h

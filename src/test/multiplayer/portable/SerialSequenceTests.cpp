@@ -116,6 +116,11 @@ bool RunAuthority();
 bool RunW1Option();
 }
 
+namespace CombatantRegistryTests
+{
+bool Run();
+}
+
 namespace SerialSequenceTests
 {
 struct SequenceCase
@@ -253,6 +258,10 @@ int main(int ArgumentCount, char** Arguments)
 	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--w1-navigation-option") == 0)
 	{
 		return StalkerPrerequisitesTests::RunW1Option() ? EXIT_SUCCESS : EXIT_FAILURE;
+	}
+	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--combatant-registry") == 0)
+	{
+		return CombatantRegistryTests::Run() ? EXIT_SUCCESS : EXIT_FAILURE;
 	}
 	if (ArgumentCount != 1)
 	{

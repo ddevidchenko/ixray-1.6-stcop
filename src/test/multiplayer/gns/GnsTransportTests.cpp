@@ -5,6 +5,7 @@
 #include "../../../xrNetServer/Multiplayer/GnsRuntime.h"
 #include "../../../xrNetServer/Multiplayer/GnsReceive.h"
 #include "../../../xrNetServer/Multiplayer/GnsReliableSend.h"
+#include "../../../xrNetServer/Multiplayer/GnsSnapshotSend.h"
 #include "../../../xrNetServer/Multiplayer/TransportEventRouter.h"
 
 #include <steam/isteamnetworkingutils.h>
@@ -522,6 +523,13 @@ static bool CheckPolledNativeEndpoints()
 	}
 	const auto Outbound = Client.Get();
 	auto& Sockets = *Listen.Sockets;
+	constexpr u8 BeforeAccept[]{0x3d, 0x0a};
+	if (SubmitGnsSnapshot(Sockets, Outbound.Connection, BeforeAccept) != SnapshotSendAttempt::Dropped)
+	{
+		std::fputs("a no-delay snapshot must be dropped while the connection is still opening\n", stderr);
+		return false;
+	}
+
 	struct Arrival
 	{
 		HSteamListenSocket Listener;
@@ -858,7 +866,7 @@ public:
 		return TransportStatus::Success;
 	}
 
-	ReceivedMessage Receive(Peer Receiver)
+	ReceivedMessage Receive(Peer Receiver, bool Reliable = true)
 	{
 		const auto Handle = Handles[static_cast<std::size_t>(Receiver)];
 		if (Handle == k_HSteamNetConnection_Invalid)
@@ -872,9 +880,10 @@ public:
 		{
 			const auto Release = [](SteamNetworkingMessage_t* Incoming) { Incoming->Release(); };
 			const std::unique_ptr<SteamNetworkingMessage_t, decltype(Release)> Incoming(Raw, Release);
-			if (!(Incoming->m_nFlags & k_nSteamNetworkingSend_Reliable))
+			const bool IsReliable = (Incoming->m_nFlags & k_nSteamNetworkingSend_Reliable) != 0;
+			if (IsReliable != Reliable)
 			{
-				std::fputs("GNS loopback expected a reliable frame\n", stderr);
+				std::fputs("GNS loopback received an unexpected reliability flag\n", stderr);
 				return {TransportStatus::Failed, {}};
 			}
 			std::vector<u8> Bytes(static_cast<std::size_t>(Incoming->m_cbSize));
@@ -924,12 +933,12 @@ private:
 	ProcessRuntime::Lease Lease;
 };
 
-static ReceivedMessage AwaitReceive(GnsTransport& Link, Peer Receiver)
+static ReceivedMessage AwaitReceive(GnsTransport& Link, Peer Receiver, bool Reliable = true)
 {
 	const auto Deadline = std::chrono::steady_clock::now() + 2s;
 	do
 	{
-		auto Message = Link.Receive(Receiver);
+		auto Message = Link.Receive(Receiver, Reliable);
 		if (Message.Status != TransportStatus::Empty)
 		{
 			return Message;
@@ -1008,6 +1017,73 @@ static bool CheckReliableSendPressure()
 	std::puts("GNS reliable send pressure checks passed");
 	return true;
 }
+
+static bool CheckSnapshotSendPressure()
+{
+	using namespace Multiplayer;
+	ProcessRuntime Runtime;
+	GnsTransport Link(Runtime);
+	if (!ExpectStatus("open a UDP loopback pair for snapshot send pressure", Link.Connect(), TransportStatus::Success))
+	{
+		return false;
+	}
+	const auto Handle = Link.GetHandle(Peer::First);
+	auto& Sockets = *SteamNetworkingSockets();
+	auto& Utils = *SteamNetworkingUtils();
+	const auto Send = [&](xr_span<const u8> Bytes) noexcept { return SubmitGnsSnapshot(Sockets, Handle, Bytes); };
+	constexpr JoinIdentity Identity{21, 4, 1};
+	xr_array<Wire::CombatantSnapshot, 16> First;
+	for (std::size_t Index = 0; Index < First.size(); ++Index)
+	{
+		Wire::HumanCombatantSnapshot Human{};
+		Human.State.Participant = {static_cast<u32>(Index + 1)};
+		Human.State.Body = {static_cast<u16>(Index), static_cast<u32>(Index + 1), 1};
+		Human.State.BodyProfileId = 6;
+		First[Index] = Human;
+	}
+
+	SnapshotSendQueue Queue(Identity, 50);
+	constexpr Wire::SnapshotBatchHeader Initial{Identity, 1, 17, 23, 1000, 5};
+	if (!Utils.SetConnectionConfigValueInt32(Handle, k_ESteamNetworkingConfig_SendBufferSize, 2) ||
+		Queue.Stage(Initial, First, 10) != 2 || Queue.SubmitNext(11, Send) != SnapshotSendResult::Dropped ||
+		Queue.Inspect(11) != SnapshotSendQueue::Status{1, 118, 1})
+	{
+		std::fputs("GNS capacity refusal must drop the attempted packet and preserve the unattempted tail\n", stderr);
+		return false;
+	}
+
+	auto Survivor = std::get<Wire::HumanCombatantSnapshot>(First.back());
+	Survivor.State.Position[0] = 3.0f;
+	const Wire::CombatantSnapshot Latest = Survivor;
+	constexpr Wire::SnapshotBatchHeader Replacement{Identity, 3, 18, 24, 1020, 6};
+	if (Queue.Stage(Replacement, xr_span(&Latest, 1), 12) != 1 ||
+		!Utils.SetConnectionConfigValueInt32(Handle, k_ESteamNetworkingConfig_SendBufferSize, 512) ||
+		Queue.SubmitNext(13, Send) != SnapshotSendResult::Submitted || Queue.SubmitNext(13, Send) != SnapshotSendResult::Empty)
+	{
+		std::fputs("a new capture must replace the old tail and submit after capacity returns\n", stderr);
+		return false;
+	}
+	const auto Message = AwaitReceive(Link, Peer::Second, false);
+	const auto Received = Wire::CombatantSnapshotBatch::Decode(Message.Bytes);
+	if (Message.Status != TransportStatus::Success || !Received || Received->GetHeader() != Replacement ||
+		!std::ranges::equal(Received->GetRecords(), xr_span(&Latest, 1)))
+	{
+		std::fputs("the latest accepted capture must arrive as an unreliable datagram\n", stderr);
+		return false;
+	}
+
+	auto Final = Replacement;
+	++Final.ServerTick;
+	++Final.MessageSequence;
+	if (Queue.Stage(Final, xr_span(&Latest, 1), 14) != 1 || Link.Close(Peer::First) != TransportStatus::Success ||
+		Queue.SubmitNext(15, Send) != SnapshotSendResult::CloseRequired)
+	{
+		std::fputs("a closed native connection must require retiring the queue\n", stderr);
+		return false;
+	}
+	std::puts("GNS snapshot send pressure checks passed");
+	return true;
+}
 }
 
 int main(int ArgumentCount, char** Arguments)
@@ -1016,6 +1092,10 @@ int main(int ArgumentCount, char** Arguments)
 	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--reliable-send-pressure") == 0)
 	{
 		return CheckReliableSendPressure() ? EXIT_SUCCESS : EXIT_FAILURE;
+	}
+	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--snapshot-send-pressure") == 0)
+	{
+		return CheckSnapshotSendPressure() ? EXIT_SUCCESS : EXIT_FAILURE;
 	}
 	if (ArgumentCount != 1)
 	{

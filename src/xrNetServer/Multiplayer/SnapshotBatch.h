@@ -8,6 +8,8 @@
 namespace Multiplayer::Wire
 {
 inline constexpr u16 MaxSnapshotRecords = 32;
+inline constexpr std::size_t SnapshotBatchPayloadHeaderSize = 22;
+inline constexpr std::size_t SnapshotBatchRecordBudget = MaxPayloadSize - SnapshotBatchPayloadHeaderSize;
 
 struct SnapshotBatchHeader
 {

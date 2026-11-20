@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.26)
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     project(MultiplayerGnsTests LANGUAGES C CXX)
     enable_testing()
+    add_subdirectory("../../../xrNetServer/Multiplayer" xrNetServerMultiplayer)
     if(WIN32)
         message(FATAL_ERROR "On Windows, build TestMultiplayerGns from the engine configuration to use its pinned NuGet runtime.")
     endif()
@@ -14,7 +15,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 endif()
 
 add_executable(TestMultiplayerGns GnsTransportTests.cpp GnsCallbackPumpTests.cpp)
-target_link_libraries(TestMultiplayerGns PRIVATE Steam::Sockets)
+target_link_libraries(TestMultiplayerGns PRIVATE Steam::Sockets xrNetServerMultiplayer)
 set_target_properties(TestMultiplayerGns PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
 
 add_test(NAME Multiplayer.GnsLoopback COMMAND TestMultiplayerGns)
@@ -22,3 +23,6 @@ set_tests_properties(Multiplayer.GnsLoopback PROPERTIES LABELS multiplayer TIMEO
 
 add_test(NAME Multiplayer.GnsReliableSendPressure COMMAND TestMultiplayerGns --reliable-send-pressure)
 set_tests_properties(Multiplayer.GnsReliableSendPressure PROPERTIES LABELS multiplayer TIMEOUT 10)
+
+add_test(NAME Multiplayer.GnsSnapshotSendPressure COMMAND TestMultiplayerGns --snapshot-send-pressure)
+set_tests_properties(Multiplayer.GnsSnapshotSendPressure PROPERTIES LABELS multiplayer TIMEOUT 10)

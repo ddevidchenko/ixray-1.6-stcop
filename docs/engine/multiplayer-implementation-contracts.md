@@ -305,6 +305,14 @@ The current framing assigns `0x01` to public human combatants and `0x02` to publ
 
 The header is copied. Record views borrow the unchanged datagram. The typed decoder validates the [public combatant record bodies](#public-combatant-record-bodies) in the whole batch before the receiver applies any record. Current connection and world checks, body lifetime, tick ordering and applied-event gating belong to the receiver. [Batch codec](../../src/xrNetServer/Multiplayer/SnapshotBatch.h), [framing tests](../../src/test/multiplayer/portable/SnapshotBatchTests.cpp).
 
+#### Outbound public combatant captures
+
+The version-one owner gives the queue all relevant public combatants for one receiver and server tick. The queue checks the complete capture and packs up to 32 unique combatants into at most three 1,100-byte datagrams. Packets share the capture ID, tick, clock anchor and required event watermark. Each uses its own envelope message sequence. On success the caller advances its sequence base by the number of encoded datagrams. Individual packets can arrive and apply independently.
+
+The newest valid capture replaces any unsent remainder. An empty capture discards the remainder and advances the latest tick without sending a packet. Durable lifecycle messages carry despawns. Equal, stale and ambiguous ticks cannot refresh the pending age. The session owner retires the queue when its peer/world identity or live readiness is invalidated.
+
+Each submission attempts one packet. A transient GNS refusal consumes that packet and lets the owner consider the remaining packets on later turns. The unsent remainder expires at the configured monotonic age measured from staging. The queue exposes pending packet count, wire bytes and age. It requests an unreliable no-delay send and distinguishes refusal from native acceptance and connection failure. Native buffering after acceptance requires a pacing budget in the integrated transport. [Queue](../../src/xrNetServer/Multiplayer/SnapshotSendQueue.h), [GNS adapter](../../src/xrNetServer/Multiplayer/GnsSnapshotSend.h).
+
 ### Initial-state baseline transfer
 
 The server sends `BaselineBegin`, `BaselineChunk`, and `BaselineEnd` on the reliable control/state stream. The envelope carries the message sequence and the receiving peer's bound session, world epoch, and connection epoch. World epoch zero is valid.

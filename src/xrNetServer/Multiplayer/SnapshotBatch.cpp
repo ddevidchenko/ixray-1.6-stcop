@@ -2,8 +2,8 @@
 
 namespace Multiplayer::Wire
 {
-constexpr std::size_t SnapshotHeaderSize = sizeof(u32) + sizeof(u32) + sizeof(u64) + sizeof(u32) + sizeof(u16);
-static_assert(SnapshotHeaderSize == 22 && SnapshotHeaderSize < MaxPayloadSize);
+static_assert(SnapshotBatchPayloadHeaderSize == sizeof(u32) + sizeof(u32) + sizeof(u64) + sizeof(u32) + sizeof(u16));
+static_assert(SnapshotBatchPayloadHeaderSize < MaxPayloadSize);
 
 static bool IsSupportedKind(SnapshotRecordKind Kind) noexcept
 {
@@ -23,7 +23,7 @@ SnapshotBatch::SnapshotBatch(SnapshotBatchHeader Header, u16 RecordCount, Payloa
 
 std::expected<SnapshotBatch, BoundMessageError> SnapshotBatch::Decode(xr_span<const u8> Bytes) noexcept
 {
-	const auto Frame = Detail::DecodeBoundMessage(Bytes, MessageType::SnapshotBatch, SnapshotHeaderSize, MaxPayloadSize);
+	const auto Frame = Detail::DecodeBoundMessage(Bytes, MessageType::SnapshotBatch, SnapshotBatchPayloadHeaderSize, MaxPayloadSize);
 	if (!Frame)
 	{
 		return std::unexpected(Frame.error());

@@ -1,7 +1,7 @@
 {
     "id": "W0",
     "Portable": {
-        "workItems": ["MP-005a", "MP-005b", "MP-010", "MP-011a", "MP-011b", "MP-012", "MP-020a", "MP-020b", "MP-020c", "MP-020d", "MP-020e", "MP-020f", "MP-020g", "MP-020h", "MP-020i", "MP-020j", "MP-020k", "MP-021a", "MP-022a", "MP-022b", "MP-022c", "MP-022d", "MP-023a", "MP-023b", "MP-025b", "MP-025d", "MP-026a", "MP-026b", "MP-027a", "MP-037a", "MP-037b", "MP-037c", "MP-037d", "MP-037e", "MP-037f", "MP-037g", "MP-037h", "MP-037i", "MP-037j", "MP-037k", "MP-037l", "MP-037m", "MP-037n", "MP-037o"],
+        "workItems": ["MP-005a", "MP-005b", "MP-010", "MP-011a", "MP-011b", "MP-012", "MP-020a", "MP-020b", "MP-020c", "MP-020d", "MP-020e", "MP-020f", "MP-020g", "MP-020h", "MP-020i", "MP-020j", "MP-020k", "MP-021a", "MP-022a", "MP-022b", "MP-022c", "MP-022d", "MP-023a", "MP-023b", "MP-025b", "MP-025d", "MP-026a", "MP-026b", "MP-027a", "MP-027b", "MP-037a", "MP-037b", "MP-037c", "MP-037d", "MP-037e", "MP-037f", "MP-037g", "MP-037h", "MP-037i", "MP-037j", "MP-037k", "MP-037l", "MP-037m", "MP-037n", "MP-037o"],
         "configuration": "RelWithDebInfo",
         "sourceDirectory": "src/test/multiplayer/portable",
         "architecture": "x64",
@@ -170,6 +170,11 @@
                 "step": "reliable-send-queue"
             },
             {
+                "name": "Multiplayer.SnapshotSendQueue",
+                "successMessage": "Snapshot send queue checks passed",
+                "step": "snapshot-send-queue"
+            },
+            {
                 "name": "Multiplayer.CatchUpDespawn",
                 "successMessage": "Catch-up despawn codec checks passed",
                 "step": "catch-up-despawn"
@@ -232,7 +237,7 @@
         "testTimeoutSeconds": 30
     },
     "Peers": {
-        "workItems": ["MP-005a", "MP-005b", "MP-010", "MP-011a", "MP-011b", "MP-012", "MP-020a", "MP-020b", "MP-020c", "MP-020d", "MP-020e", "MP-020f", "MP-020g", "MP-020h", "MP-020i", "MP-020j", "MP-020k", "MP-021a", "MP-021b", "MP-022a", "MP-022b", "MP-022c", "MP-022d", "MP-023a", "MP-023b", "MP-024a", "MP-025a", "MP-025b", "MP-025c", "MP-025d", "MP-025e", "MP-026a", "MP-026b", "MP-027a", "MP-037a", "MP-037b", "MP-037c", "MP-037d", "MP-037e", "MP-037f", "MP-037g", "MP-037h", "MP-037i", "MP-037j", "MP-037k", "MP-037l", "MP-037m", "MP-037n", "MP-037o"],
+        "workItems": ["MP-005a", "MP-005b", "MP-010", "MP-011a", "MP-011b", "MP-012", "MP-020a", "MP-020b", "MP-020c", "MP-020d", "MP-020e", "MP-020f", "MP-020g", "MP-020h", "MP-020i", "MP-020j", "MP-020k", "MP-021a", "MP-021b", "MP-022a", "MP-022b", "MP-022c", "MP-022d", "MP-023a", "MP-023b", "MP-024a", "MP-025a", "MP-025b", "MP-025c", "MP-025d", "MP-025e", "MP-026a", "MP-026b", "MP-027a", "MP-027b", "MP-037a", "MP-037b", "MP-037c", "MP-037d", "MP-037e", "MP-037f", "MP-037g", "MP-037h", "MP-037i", "MP-037j", "MP-037k", "MP-037l", "MP-037m", "MP-037n", "MP-037o"],
         "configuration": "RelWithDebInfo",
         "targets": ["TestMultiplayerUnit", "TestMultiplayerGns", "TestMultiplayerLegacyCompression"],
         "test": {
@@ -245,6 +250,11 @@
                 "name": "Multiplayer.GnsReliableSendPressure",
                 "successMessage": "GNS reliable send pressure checks passed",
                 "step": "gns-reliable-send-pressure"
+            },
+            {
+                "name": "Multiplayer.GnsSnapshotSendPressure",
+                "successMessage": "GNS snapshot send pressure checks passed",
+                "step": "gns-snapshot-send-pressure"
             },
             {
                 "name": "Multiplayer.LegacyCompression",

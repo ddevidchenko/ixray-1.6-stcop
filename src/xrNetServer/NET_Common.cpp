@@ -1,6 +1,7 @@
 
 #include "stdafx.h"
 #include "NET_Common.h"
+#include "Multiplayer/LegacyMultipacket.h"
 
 //------------------------------------------------------------------------------
 
@@ -16,7 +17,11 @@ struct MultipacketHeader
 //------------------------------------------------------------------------------
 
 static NET_Compressor   Compressor;
-static const unsigned   MaxMultipacketSize          = 32768;
+static constexpr unsigned MaxMultipacketSize = Multiplayer::Legacy::MaxDatagramSize;
+static_assert(sizeof(MultipacketHeader) == Multiplayer::Legacy::HeaderSize);
+static_assert(NET_PacketSizeLimit == Multiplayer::Legacy::RecordSizeLimit);
+static_assert(NET_TAG_NONMERGED == Multiplayer::Legacy::SingleTag && NET_TAG_MERGED == Multiplayer::Legacy::MergedTag);
+static_assert(NET_TAG_NONCOMPRESSED == Multiplayer::Legacy::RawTag && NET_TAG_COMPRESSED == Multiplayer::Legacy::CompressedTag);
 
 XRNETSERVER_API int     psNET_GuaranteedPacketMode  = NET_GUARANTEEDPACKET_DEFAULT;
 
@@ -136,63 +141,80 @@ void MultipacketSender::_FlushSendBuffer( u32 timeout, Buffer* buf )
 
 //------------------------------------------------------------------------------
 
-void MultipacketReciever::RecievePacket( const void* packet_data, u32 packet_sz, u32 param )
+void MultipacketReciever::RecievePacket(const void* packet_data, u32 packet_sz, u32 param)
 {
-    MultipacketHeader*  header = (MultipacketHeader*)packet_data;
-    u8 data[MaxMultipacketSize];
+	using namespace Multiplayer::Legacy;
+	if (!packet_data)
+	{
+		return;
+	}
 
-    if ( header->tag != NET_TAG_MERGED  &&  header->tag != NET_TAG_NONMERGED )
-       return;
+#if !NET_USE_COMPRESSION
+	constexpr auto Framing = BodyFraming::Untagged;
+#elif NET_USE_COMPRESSION_CRC
+	constexpr auto Framing = BodyFraming::Checksummed;
+#else
+	constexpr auto Framing = BodyFraming::Tagged;
+#endif
+	const auto Datagram = xr_span(static_cast<const u8*>(packet_data), packet_sz);
+	const auto Envelope = ReadEnvelope(Datagram, Framing);
+	if (!Envelope)
+	{
+		return;
+	}
 
-    Compressor.Decompress( data, sizeof(data), 
-                           (u8*)packet_data+sizeof(MultipacketHeader), packet_sz-sizeof(MultipacketHeader) 
-                         );
+	const auto Dispatch = [&](xr_span<const u8> Body)
+	{
+		auto Records = MultipacketRecords::Validate(*Envelope, Body);
+		if (!Records)
+		{
+			return;
+		}
 
-    #if NET_LOG_PACKETS
-    Msg( "#receive multi-packet %u", packet_sz );
-    #endif
+#if NET_LOG_PACKETS
+		Msg("#receive multi-packet %u", packet_sz);
+#endif
+		if (strstr(Core.Params, "-dump_traffic"))
+		{
+			static bool First = true;
+			if (FILE* Dump = fopen("raw-in-traffic.bins", First ? "wb" : "ab"))
+			{
+				const xr_scope_exit Close([Dump] { fclose(Dump); });
+				if (First)
+				{
+					fwrite("BINS", 4, 1, Dump);
+					First = false;
+				}
+				const u16 Size = Envelope->DecodedSize;
+				fwrite(&Size, sizeof(Size), 1, Dump);
+				fwrite(Body.data(), Body.size(), 1, Dump);
+			}
+		}
 
-    if( strstr( Core.Params,"-dump_traffic") ) 
-    {
-        static bool first_time  = true;
-		FILE*       dump        = fopen( "raw-in-traffic.bins", (first_time)?"wb":"ab" );
+		while (const auto Record = Records->Next())
+		{
+			const auto Size = static_cast<u32>(Record->size());
+#if NET_LOG_PACKETS
+			Msg("  packet %u", Size);
+#endif
+			_Recieve(Record->data(), Size, param);
+		}
+	};
 
-        if( first_time )
-        {
-            fwrite( "BINS", 4, 1, dump );
-            first_time = false;
-        }
+	if (Envelope->Encoding == BodyEncoding::Raw)
+	{
+		Dispatch(Envelope->Payload);
+		return;
+	}
 
-        u16 sz = header->unpacked_size;
-        
-        fwrite( &sz, sizeof(u16), 1, dump );
-        fwrite( data, header->unpacked_size, 1, dump );
-		fclose( dump );
-    }
-
-
-    bool    is_multi_packet = header->tag == NET_TAG_MERGED;
-    u32     processed_sz    = 0;
-    u8*     dat             = data;
-
-    while( processed_sz < header->unpacked_size )
-    {
-        u32     size = (is_multi_packet)
-                       ? u32(*((u16*)dat))
-                       : header->unpacked_size;
-
-        if( is_multi_packet )
-            dat += sizeof(u16);
-
-        #if NET_LOG_PACKETS
-        Msg( "  packet %u", size );
-        #endif
-		        
-		_Recieve( dat, size, param );
-
-        dat          += size;
-        processed_sz += size + ((is_multi_packet) ? sizeof(u16) : 0);
-    }
+	xr_array<u8, MaxDecodedSize> Storage;
+	const auto Packed = Datagram.subspan(HeaderSize);
+	const u16 Produced = Compressor.Decompress(Storage.data(), static_cast<u32>(Storage.size()),
+		const_cast<u8*>(Packed.data()), static_cast<u32>(Packed.size()));
+	if (Produced == Envelope->DecodedSize)
+	{
+		Dispatch(xr_span(Storage).first(Produced));
+	}
 }
 
 void XRNETSERVER_API DumpNetCompressorStats(bool brief)

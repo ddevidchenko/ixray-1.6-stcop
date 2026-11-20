@@ -9,6 +9,11 @@ namespace MapSyncWaitTests
 bool Run();
 }
 
+namespace LegacyMultipacketTests
+{
+bool Run();
+}
+
 namespace LegacyStartupTests
 {
 bool Run();
@@ -230,6 +235,15 @@ int main(int ArgumentCount, char** Arguments)
 	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--verify-failure") == 0)
 	{
 		return SerialSequenceTests::CheckIsNewer({"deliberate failure", 42u, 41u, false}) ? EXIT_SUCCESS : EXIT_FAILURE;
+	}
+	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--legacy-multipacket") == 0)
+	{
+		if (!LegacyMultipacketTests::Run())
+		{
+			return EXIT_FAILURE;
+		}
+		std::puts("Legacy multipacket checks passed");
+		return EXIT_SUCCESS;
 	}
 	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--legacy-startup") == 0)
 	{

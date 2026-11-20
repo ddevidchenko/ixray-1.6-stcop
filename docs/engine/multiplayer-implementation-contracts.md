@@ -70,6 +70,12 @@ The SteamNet client and server lease one process runtime. The first live lease f
 
 During loading and play, the owner pumps at most 64 native datagrams per endpoint before dispatching the shared GNS status queue. The callback records up to 64 distinct incoming requests. If that batch fills, GNS rejects additional arrivals as session full. After the callback returns, the owner retires closed connections, revalidates pending handles against the live listener, and then applies the legacy policy in order. Duplicate and capacity checks precede the ban list, address filter, and password. The hosted candidate remains subject to capacity and bans. The existing IP and password exceptions stay in the legacy policy. [Loading driver](../../src/xrGame/Level_network.cpp), [transport poll](../../src/xrNetServer/LegacyGnsTransport.cpp), [portable tests](../../src/test/multiplayer/portable/LegacyStartupTests.cpp).
 
+### Legacy multipacket receive framing
+
+A legacy datagram fits in 32 KiB and begins with the one-byte single or merged tag followed by the little-endian 16-bit decoded byte count. The active format carries an encoding marker. Raw bodies must have exactly the declared length. A checksummed packed body needs the complete checksum and encoded data before it can reach the decompressor. Decoder output must report the declared length before the record pass.
+
+Each legacy game record contains at least a 16-bit message type and occupies fewer than 16 KiB. Merged bodies prefix each record with a little-endian 16-bit length. Validate the entire decoded body before handing any record to the receiver or writing the receive trace. The validated cursor borrows the bytes until dispatch completes. [Legacy framing](../../src/xrNetServer/Multiplayer/LegacyMultipacket.h), [live receiver](../../src/xrNetServer/NET_Common.cpp).
+
 ### Legacy clock synchronization during endpoint migration
 
 The loading owner polls synchronization once per loading turn after a remote connection is accepted. During play the frame owner polls the same attempt for console resync. The owner cancels before releasing the client connection. Direct single-player completes without sending a probe.

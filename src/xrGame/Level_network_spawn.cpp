@@ -5,6 +5,7 @@
 #include "game_cl_base.h"
 #include "NET_Queue.h"
 #include "ai_space.h"
+#include "Multiplayer/StalkerNavigation.h"
 #include "game_level_cross_table.h"
 #include "level_graph.h"
 #include "client_spawn_manager.h"
@@ -85,6 +86,11 @@ void CLevel::g_cl_Spawn		(const char* name, u8 rp, u16 flags, Fvector pos)
 
 void CLevel::g_sv_Spawn		(CSE_Abstract* E)
 {
+	if (!StalkerNavigation::CanSpawn(*E))
+	{
+		return;
+	}
+
 	//-----------------------------------------------------------------
 //	CTimer		T(false);
 

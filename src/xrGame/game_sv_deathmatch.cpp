@@ -1781,20 +1781,31 @@ void	game_sv_Deathmatch::RespawnPlayer			(ClientID id_who, bool NoSpectator)
 {
 	inherited::RespawnPlayer(id_who, NoSpectator);
 
-	xrClientData*	xrCData	= (xrClientData*)m_server->ID_to_client	(id_who);
-	game_PlayerState*	ps	=	xrCData->ps;
-	CSE_Abstract*	pOwner = xrCData->owner;
-	CSE_ALifeCreatureActor	*pA	=	smart_cast<CSE_ALifeCreatureActor*>(pOwner);
-	if(!pA) return;
+	auto* Client = m_server->ID_to_client(id_who);
+	if (!Client || !Client->ps)
+	{
+		return;
+	}
+	const auto* Actor = smart_cast<CSE_ALifeCreatureActor*>(Client->owner);
+	if (!Actor)
+	{
+		return;
+	}
 
-	TeamStruct*	pTeamData = GetTeamData(u8(ps->team));
-	if (pTeamData)
-		Player_AddMoney(ps, pTeamData->m_iM_OnRespawn);
+	ApplyParticipantRespawnRules(*Client->ps);
+	SpawnWeapon4Actor(Actor->ID, "mp_players_rukzak", 0, Client->ps->pItemList);
+}
 
-	if (GetDMBLimit()*1000 > 0)
-		ps->setFlag(GAME_PLAYER_FLAG_INVINCIBLE);
-
-	SpawnWeapon4Actor(pA->ID, "mp_players_rukzak", 0, ps->pItemList);
+void game_sv_Deathmatch::ApplyParticipantRespawnRules(game_PlayerState& Participant)
+{
+	if (const auto* TeamData = GetTeamData(u8(Participant.team)))
+	{
+		Player_AddMoney(&Participant, TeamData->m_iM_OnRespawn);
+	}
+	if (GetDMBLimit() * 1000 > 0)
+	{
+		Participant.setFlag(GAME_PLAYER_FLAG_INVINCIBLE);
+	}
 }
 
 int		G_DELAYED_ROUND_TIME	= 7;

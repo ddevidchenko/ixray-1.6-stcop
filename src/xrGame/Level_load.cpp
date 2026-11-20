@@ -1,6 +1,7 @@
 #include "StdAfx.h"
 #include "LevelGameDef.h"
 #include "ai_space.h"
+#include "game_graph.h"
 #include "../xrScripts/script_process.h"
 #include "../xrScripts/script_engine.h"
 #include "../xrScripts/script_engine_space.h"
@@ -41,12 +42,14 @@ bool CLevel::Load_GameSpecific_Before()
 
 	if (!ai().get_alife())
 	{
-		if (FS.exist(fn_game, "$level$", "level.ai") && HasSessionName())
+		const auto* GameGraph = ai().get_game_graph();
+		if (GameGraph && FS.exist(fn_game, "$level$", "level.ai") && HasSessionName() && GameGraph->header().level_exist(net_SessionName()))
 		{
 			ai().load(net_SessionName());
 		}
 
-		if (!g_dedicated_server && ai().get_game_graph() && FS.exist(fn_game, "$level$", "level.game"))
+		if (!g_dedicated_server && GameGraph && (!ai().get_level_graph() || ai().get_cross_table()) &&
+			FS.exist(fn_game, "$level$", "level.game"))
 		{
 			IReader* stream = FS.r_open(fn_game);
 			ai().patrol_path_storage_raw(*stream);

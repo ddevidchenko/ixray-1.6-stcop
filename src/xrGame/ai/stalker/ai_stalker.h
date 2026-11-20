@@ -231,6 +231,7 @@ public:
 	virtual void						net_Export							(NET_Packet& P);
 	virtual void						net_Import							(NET_Packet& P);
 
+	bool net_Relevant() override;
 	virtual void SyncRead(NET_Packet& Packet);
 	virtual void SyncWrite(NET_Packet& Packet);
 

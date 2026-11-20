@@ -109,6 +109,12 @@ namespace ClientCatchUpTests
 bool Run();
 }
 
+namespace StalkerPrerequisitesTests
+{
+bool RunNavigation();
+bool RunAuthority();
+}
+
 namespace SerialSequenceTests
 {
 struct SequenceCase
@@ -234,6 +240,14 @@ int main(int ArgumentCount, char** Arguments)
 	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--client-catch-up") == 0)
 	{
 		return ClientCatchUpTests::Run() ? EXIT_SUCCESS : EXIT_FAILURE;
+	}
+	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--stalker-navigation") == 0)
+	{
+		return StalkerPrerequisitesTests::RunNavigation() ? EXIT_SUCCESS : EXIT_FAILURE;
+	}
+	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--stalker-authority") == 0)
+	{
+		return StalkerPrerequisitesTests::RunAuthority() ? EXIT_SUCCESS : EXIT_FAILURE;
 	}
 	if (ArgumentCount != 1)
 	{

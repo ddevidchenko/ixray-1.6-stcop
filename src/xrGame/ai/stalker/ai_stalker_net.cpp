@@ -1,6 +1,7 @@
 #include "StdAfx.h"
 #include "StdAfx.h"
 #include "ai_stalker.h"
+#include "../../Multiplayer/StalkerAuthority.h"
 
 #include "ai_object_location.h"
 #include "CharacterPhysicsSupport.h"
@@ -16,6 +17,12 @@ void CAI_Stalker::net_Save(NET_Packet& P)
 bool CAI_Stalker::net_SaveRelevant()
 {
 	return (inherited::net_SaveRelevant() || bool(PPhysicsShell() != NULL));
+}
+
+bool CAI_Stalker::net_Relevant()
+{
+	return inherited::net_Relevant() && (IsGameTypeSingle() ||
+		Multiplayer::ResolveStalkerRole(OnServer(), Local()) == Multiplayer::StalkerRole::Authority);
 }
 
 void CAI_Stalker::net_Export(NET_Packet& P)
@@ -111,6 +118,13 @@ void CAI_Stalker::net_Import(NET_Packet& P)
 
 void CAI_Stalker::SyncRead(NET_Packet& Packet)
 {
+	if (Multiplayer::ResolveStalkerRole(OnServer(), Local()) != Multiplayer::StalkerRole::Replica)
+	{
+		// The legacy object stream checks the bytes consumed for each object.
+		aistalker_state_net Discarded{};
+		Discarded.CSE_StateRead(Packet);
+		return;
+	}
 	state_manager.CSE_StateRead(Packet);
 	state_manager.GetState(this);
 }
@@ -118,8 +132,10 @@ void CAI_Stalker::SyncRead(NET_Packet& Packet)
 void CAI_Stalker::SyncWrite(NET_Packet& Packet)
 {
 	state_manager.FillState(this);
-	state_manager.UpdateAIInternal(this);
-
+	if (Multiplayer::ResolveStalkerRole(OnServer(), Local()) == Multiplayer::StalkerRole::Authority)
+	{
+		state_manager.PublishAuthorityState(*this);
+	}
 	state_manager.CSE_StateWrite(Packet);
 }
 

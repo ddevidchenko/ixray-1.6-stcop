@@ -648,10 +648,13 @@ void CGameObject::update_ai_locations			(bool decrement_reference)
 
 	ai_location().level_vertex		(l_dwNewLevelVertexID);
 
-	if (!ai().get_game_graph() && ai().get_cross_table())
+	const auto* CrossTable = ai().get_cross_table();
+	if (!CrossTable)
+	{
 		return;
+	}
 
-	ai_location().game_vertex		(ai().cross_table().vertex(ai_location().level_vertex_id()).game_vertex_id());
+	ai_location().game_vertex(CrossTable->vertex(ai_location().level_vertex_id()).game_vertex_id());
 	VERIFY							(ai().game_graph().valid_vertex_id(ai_location().game_vertex_id()));
 }
 

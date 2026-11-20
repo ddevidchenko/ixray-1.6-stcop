@@ -12,24 +12,30 @@
 #include "physics_shell_animated.h"
 #include "stalker_animation_manager.h"
  
-void aistalker_state_net::UpdateAIInternal(CAI_Stalker* stalker)
+void aistalker_state_net::PublishAuthorityState(CAI_Stalker& Stalker)
 {
-	if (OnServer())
+	if (NextSyncronizeDialogs < Device.dwTimeGlobal)
 	{
-		CSE_ALifeHumanStalker* cse_stalker =  smart_cast<CSE_ALifeHumanStalker*> ( Level().Server->ID_to_entity(stalker->ID()) );
+		NextSyncronizeDialogs = 1000 + Device.dwTimeGlobal;
 
-		if (cse_stalker)
-		{
-			cse_stalker->s_team = id_TeamCSE;
-			cse_stalker->s_group = id_GroupCSE;
-			cse_stalker->s_squad = id_SquadCSE;
+		NET_Packet Packet;
+		Stalker.u_EventGen(Packet, GE_STALKER_DIALOG, Stalker.ID());
+		Packet.w_stringZ(Stalker.GetStartDialog());
+		Stalker.u_EventSend(Packet);
+	}
 
-			cse_stalker->m_tNextGraphID = graph_vertex_id;
-			cse_stalker->m_tPrevGraphID = graph_vertex_id;
+	auto* ServerEntity = smart_cast<CSE_ALifeHumanStalker*>(Level().Server->ID_to_entity(Stalker.ID()));
+	if (ServerEntity)
+	{
+		ServerEntity->s_team = id_TeamCSE;
+		ServerEntity->s_group = id_GroupCSE;
+		ServerEntity->s_squad = id_SquadCSE;
 
-			cse_stalker->m_fDistanceFromPoint = distance_lvgraph;
-			cse_stalker->m_fDistanceToPoint = distance_lvgraph;
-		}	
+		ServerEntity->m_tNextGraphID = graph_vertex_id;
+		ServerEntity->m_tPrevGraphID = graph_vertex_id;
+
+		ServerEntity->m_fDistanceFromPoint = distance_lvgraph;
+		ServerEntity->m_fDistanceToPoint = distance_lvgraph;
 	}
 }
 
@@ -146,18 +152,6 @@ void aistalker_state_net::FillState(CAI_Stalker* stalker)
 	motions_data.LastIsScript = stalker->animation().IsGlobalOrScriptPlaying;
 	m_wounded				  = stalker->wounded();
 	canOpenDialog			  = stalker->cast_inventory_owner()->IsTalkEnabled();
-
-//	UpdateLogicScript(stalker);
-	if (NextSyncronizeDialogs < Device.dwTimeGlobal)
-	{
-		NextSyncronizeDialogs = 1000 + Device.dwTimeGlobal;
-
-		NET_Packet packet;
-		stalker->u_EventGen(packet, GE_STALKER_DIALOG, stalker->ID());
-		packet.w_stringZ(stalker->GetStartDialog());
-		stalker->u_EventSend(packet);
-	}
-
 
 	graph_vertex_id = stalker->movement().game_dest_vertex_id();
 	if (ai().game_graph().valid_vertex_id(graph_vertex_id))

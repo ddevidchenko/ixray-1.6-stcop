@@ -9,6 +9,7 @@
 #include "StdAfx.h"
 #include "pch_script.h"
 #include "ai_stalker.h"
+#include "../../Multiplayer/StalkerAuthority.h"
 #include "../ai_monsters_misc.h"
 #include "../../Weapon.h"
 #include "../../Hit.h"
@@ -659,14 +660,6 @@ bool CAI_Stalker::net_Spawn(CSE_Abstract* DC)
 	if (ai().game_graph().valid_vertex_id(tpHuman->m_tNextGraphID) && movement().restrictions().accessible(ai().game_graph().vertex(tpHuman->m_tNextGraphID)->level_point()))
 		movement().set_game_dest_vertex	(tpHuman->m_tNextGraphID);
 
-	R_ASSERT2					(
-		ai().get_game_graph() && 
-		ai().get_level_graph() && 
-		ai().get_cross_table() && 
-		(ai().level_graph().level_id() != u8(-1)),
-		"There is no AI-Map, level graph, cross table, or graph is not compiled into the game graph!"
-	);
-
 	setEnabled						(true);
 
 
@@ -827,15 +820,19 @@ void CAI_Stalker::UpdateCL()
 	PROF_EVENT("stalker/client_update")
 	VERIFY2(PPhysicsShell() || getEnabled(), *cName());
 
+	const bool SinglePlayer = IsGameTypeSingle();
+	const bool Server = OnServer();
+	const auto Role = Multiplayer::ResolveStalkerRole(Server, Local());
+	const bool UpdateAuthoritativeState = SinglePlayer ? Server : Role == Multiplayer::StalkerRole::Authority;
 
 	if (g_Alive())
 	{
-		if (Remote() && !IsGameTypeSingle())
+		if (!SinglePlayer && Role == Multiplayer::StalkerRole::Replica)
 		{
 			make_Interpolation();
 		}
 
-		if (OnServer())
+		if (UpdateAuthoritativeState)
 		{
 #if USE_OLD_OBJECT_PLANNER
 			if (CObjectHandler::planner().initialized())
@@ -871,7 +868,7 @@ void CAI_Stalker::UpdateCL()
 	{
 		VERIFY(!m_pPhysicsShell);
 
-		if (OnServer())
+		if (UpdateAuthoritativeState)
 		{
 			PROF_EVENT("sight_manager")
 			try
@@ -922,10 +919,13 @@ void CAI_Stalker::shedule_Update(u32 DT)
 	PROF_EVENT("CAI_Stalker::shedule_Update")
 		VERIFY2(getEnabled() || PPhysicsShell(), *cName());
 
+	const bool SinglePlayer = IsGameTypeSingle();
+	const bool Server = OnServer();
+	const bool HasAuthority = SinglePlayer ? Local() : Multiplayer::ResolveStalkerRole(Server, Local()) == Multiplayer::StalkerRole::Authority;
 #if USE_OLD_OBJECT_PLANNER
-	if (!CObjectHandler::planner().initialized())
+	if ((SinglePlayer || HasAuthority) && !CObjectHandler::planner().initialized())
 #else
-	if (!m_planner->GoapPlanner.GetCurrentAction() && OnServer())
+	if ((SinglePlayer ? Server : HasAuthority) && !m_planner->GoapPlanner.GetCurrentAction())
 #endif
 	{
 		update_object_handler();
@@ -945,11 +945,22 @@ void CAI_Stalker::shedule_Update(u32 DT)
 	VERIFY(_valid(Position()));
 	// *** general stuff
 	float dt = float(DT) / 1000.f;
-	CScriptEntity::process_sound_callbacks();
+	const bool UpdatePerception = SinglePlayer || HasAuthority;
+	if (UpdatePerception)
+	{
+		CScriptEntity::process_sound_callbacks();
+	}
+	else
+	{
+		m_saved_sounds.clear();
+	}
 
 	if (g_Alive())
 	{
 		animation().play_delayed_callbacks();
+	}
+	if (g_Alive() && UpdatePerception)
+	{
 		agent_manager().update();
 
 		Exec_Visibility();
@@ -962,7 +973,7 @@ void CAI_Stalker::shedule_Update(u32 DT)
 
 	inherited::inherited::shedule_Update(DT);
 
-	if (!Remote())
+	if (HasAuthority)
 	{
 		// here is monster AI call
 		VERIFY(_valid(Position()));

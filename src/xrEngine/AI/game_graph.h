@@ -37,11 +37,11 @@ protected:
 	CVertex							*m_nodes;
 	BYTE							*m_edges;
 	mutable ENABLED					m_enabled;
-	_GRAPH_ID						m_current_level_some_vertex_id;
+	_GRAPH_ID						m_current_level_some_vertex_id = _GRAPH_ID(-1);
 
 protected:
 	u32								*m_cross_tables;
-	IGameLevelCrossTable			*m_current_level_cross_table;
+	IGameLevelCrossTable			*m_current_level_cross_table = nullptr;
 
 public:
 						IGameGraph();
@@ -67,6 +67,8 @@ public:
 	IC		const CVertex			*vertex					(u32 vertex_id) const;
 	IC		void					set_invalid_vertex		(_GRAPH_ID &vertex_id) const;
 	IC		_GRAPH_ID				vertex_id				(const CVertex *vertex) const;
+	[[nodiscard]] const IGameLevelCrossTable* GetCrossTable() const noexcept { return m_current_level_cross_table; }
+	[[nodiscard]] bool HasCurrentLevelVertex() const noexcept { return valid_vertex_id(m_current_level_some_vertex_id); }
 	virtual		void					set_current_level		(u32 level_id)=0;
 	IC		const _GRAPH_ID			&current_level_vertex	() const;
 };

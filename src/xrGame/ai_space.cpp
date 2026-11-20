@@ -239,5 +239,5 @@ const IGameLevelCrossTable &CAI_Space::cross_table		() const
 
 const IGameLevelCrossTable *CAI_Space::get_cross_table	() const
 {
-	return					(&game_graph().cross_table());
+	return					m_game_graph ? m_game_graph->GetCrossTable() : nullptr;
 }

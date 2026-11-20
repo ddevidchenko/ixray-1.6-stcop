@@ -599,8 +599,10 @@ void	game_sv_mp::RespawnPlayer			(ClientID id_who, bool NoSpectator)
 	//------------------------------------------------------------
 
 	xrClientData* xrCData	=	m_server->ID_to_client(id_who);
-	if (!xrCData || !xrCData->owner) return;
-//	game_PlayerState*	ps	=	&(xrCData->ps);
+	if (!xrCData || !xrCData->owner || !xrCData->ps)
+	{
+		return;
+	}
 	CSE_Abstract* pOwner = xrCData->owner;
 	CSE_ALifeCreatureActor	*pA	=	smart_cast<CSE_ALifeCreatureActor*>(pOwner);
 	CSE_Spectator			*pS =	smart_cast<CSE_Spectator*>(pOwner);
@@ -1537,16 +1539,19 @@ void game_sv_mp::OnPlayerKilled(NET_Packet P)
 #endif
 	
 
-	CSE_Abstract* pWeaponA = get_entity_from_eid(WeaponID);
+	RecordParticipantKill(ps_killer, *ps_killed, KillerID, WeaponID, KillType, SpecialKill);
+}
 
-	OnPlayerKillPlayer(ps_killer, ps_killed, KillType, SpecialKill, pWeaponA);
+void game_sv_mp::RecordParticipantKill(game_PlayerState* Killer, game_PlayerState& Victim, u16 KillerBodyId,
+	u16 WeaponId, KILL_TYPE KillType, SPECIAL_KILL_TYPE SpecialKill)
+{
+	OnPlayerKillPlayer(Killer, &Victim, KillType, SpecialKill, get_entity_from_eid(WeaponId));
 	if (KillType == KT_BLEEDING)
 	{
-		Game().m_WeaponUsageStatistic->OnBleedKill(ps_killer, ps_killed, WeaponID);
+		Game().m_WeaponUsageStatistic->OnBleedKill(Killer, &Victim, WeaponId);
 	}
-	//---------------------------------------------------
-	SendPlayerKilledMessage((ps_killed)?ps_killed->GameID:KilledID, KillType, (ps_killer)?ps_killer->GameID:KillerID, WeaponID, SpecialKill);
-};
+	SendPlayerKilledMessage(Victim.GameID, KillType, Killer ? Killer->GameID : KillerBodyId, WeaponId, SpecialKill);
+}
 
 void game_sv_mp::OnPlayerHitted(NET_Packet P)
 {

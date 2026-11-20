@@ -12,6 +12,7 @@
 #include "game_sv_mp.h"
 #include "game_cl_base_weapon_usage_statistic.h"
 #include "ai_space.h"
+#include "Multiplayer/StalkerNavigation.h"
 #include "object_broker.h"
 #include "file_transfer.h"
 #include "screenshot_server.h"
@@ -3345,6 +3346,7 @@ CSE_Abstract* xrServer::Process_spawn(NET_Packet& P, ClientID sender, bool bSpaw
 		if (
 			!E->m_gameType.MatchType((u16)game->Type()) ||
 			!E->match_configuration() ||
+			(game->Type() != eGameIDSingle && !StalkerNavigation::CanSpawn(*E)) ||
 			!game->OnPreCreate(E)
 		)
 		{

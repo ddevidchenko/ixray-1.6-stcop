@@ -1,7 +1,7 @@
 {
     "id": "W0",
     "Portable": {
-        "workItems": ["MP-010", "MP-011a", "MP-011b", "MP-012", "MP-020a", "MP-020b", "MP-020c", "MP-020d", "MP-020e", "MP-020f", "MP-020g", "MP-022a", "MP-022b", "MP-022c", "MP-022d", "MP-037a", "MP-037b", "MP-037c", "MP-037d", "MP-037e", "MP-037f", "MP-037g"],
+        "workItems": ["MP-005a", "MP-010", "MP-011a", "MP-011b", "MP-012", "MP-020a", "MP-020b", "MP-020c", "MP-020d", "MP-020e", "MP-020f", "MP-020g", "MP-022a", "MP-022b", "MP-022c", "MP-022d", "MP-037a", "MP-037b", "MP-037c", "MP-037d", "MP-037e", "MP-037f", "MP-037g"],
         "configuration": "RelWithDebInfo",
         "sourceDirectory": "src/test/multiplayer/portable",
         "architecture": "x64",
@@ -113,6 +113,16 @@
                 "name": "Multiplayer.ClientCatchUp",
                 "successMessage": "Client catch-up checks passed",
                 "step": "client-catch-up"
+            },
+            {
+                "name": "Multiplayer.StalkerNavigation",
+                "successMessage": "Stalker navigation checks passed",
+                "step": "stalker-navigation"
+            },
+            {
+                "name": "Multiplayer.StalkerAuthority",
+                "successMessage": "Stalker authority checks passed",
+                "step": "stalker-authority"
             }
         ],
         "deliberateFailureTest": "Multiplayer.Sequence.DeliberateFailure",
@@ -122,7 +132,7 @@
         "testTimeoutSeconds": 30
     },
     "Peers": {
-        "workItems": ["MP-010", "MP-011a", "MP-011b", "MP-012", "MP-020a", "MP-020b", "MP-020c", "MP-020d", "MP-020e", "MP-020f", "MP-020g", "MP-022a", "MP-022b", "MP-022c", "MP-022d", "MP-037a", "MP-037b", "MP-037c", "MP-037d", "MP-037e", "MP-037f", "MP-037g"],
+        "workItems": ["MP-005a", "MP-010", "MP-011a", "MP-011b", "MP-012", "MP-020a", "MP-020b", "MP-020c", "MP-020d", "MP-020e", "MP-020f", "MP-020g", "MP-022a", "MP-022b", "MP-022c", "MP-022d", "MP-037a", "MP-037b", "MP-037c", "MP-037d", "MP-037e", "MP-037f", "MP-037g"],
         "configuration": "RelWithDebInfo",
         "targets": ["TestMultiplayerUnit", "TestMultiplayerGns"],
         "test": {
@@ -142,7 +152,7 @@
         "buildTimeoutSeconds": 3600
     },
     "BaselineRuntime": {
-        "workItems": ["MP-001", "MP-002"],
+        "workItems": ["MP-001", "MP-002", "MP-005a"],
         "configuration": "RelWithDebInfo",
         "assetDirectories": ["gamedata", "levels", "resources", "localization", "patches", "mp"],
         "assetCopyTimeoutSeconds": 1800,

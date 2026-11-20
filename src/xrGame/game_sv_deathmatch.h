@@ -100,6 +100,7 @@ protected:
 
 	virtual		void				Check_ForClearRun		(game_PlayerState* ps);
 	virtual		void				FillDeathActorRejectItems(CSE_ActorMP *actor, xr_vector<CSE_Abstract*> & to_reject);
+	void ApplyParticipantRespawnRules(game_PlayerState& Participant);
 
 	u32								m_dwWarmUp_CurTime;
 	bool							m_bInWarmUp;

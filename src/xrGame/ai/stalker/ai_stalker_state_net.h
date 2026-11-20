@@ -45,7 +45,7 @@ public:
 	u32								script_dwUpdate = 0;
   
 
-	void UpdateAIInternal(CAI_Stalker* stalker);
+	void PublishAuthorityState(CAI_Stalker& Stalker);
 
 	void CSE_StateWrite(NET_Packet& p);
 	void CSE_StateRead(NET_Packet& p);

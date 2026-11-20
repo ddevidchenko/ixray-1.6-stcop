@@ -35,6 +35,10 @@ class game_sv_mp : public game_sv_GameState
 	using inherited = game_sv_GameState;
 
 protected:
+	// Called after resolving the participants on the server.
+	void RecordParticipantKill(game_PlayerState* Killer, game_PlayerState& Victim, u16 KillerBodyId,
+		u16 WeaponId, KILL_TYPE KillType, SPECIAL_KILL_TYPE SpecialKill);
+
 	//список трупов для удаления
 	using CORPSE_LIST = xr_deque<u16>;
 	using CORPSE_LIST_it = CORPSE_LIST::iterator;

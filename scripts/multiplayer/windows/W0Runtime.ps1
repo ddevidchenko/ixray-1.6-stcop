@@ -26,6 +26,19 @@ function Initialize-W0Runtime {
         if (!$MapFiles.Count) { throw "Missing fixture for $Map. Supply a loose level or a map-named archive in mp/." }
     }
 
+    if ($RuntimeCase -eq 'StalkerNavigation') {
+        $Report.workItems = $Config.stalkerNavigation.workItems
+        $Report.runtime.navigationStatus = 'pending'
+        foreach ($Name in $Config.stalkerNavigation.files) {
+            $Path = Join-Path $MapDirectory $Name
+            $Asset = Get-Item -LiteralPath $Path -ErrorAction SilentlyContinue
+            if (!$Asset -or $Asset.PSIsContainer -or ($Asset.Attributes -band [IO.FileAttributes]::ReparsePoint) -or !$Asset.Length) {
+                throw "W1 navigation fixture requires a nonempty loose file at $Path."
+            }
+            $MapFiles += $Asset.FullName
+        }
+    }
+
     $Runtime = (New-Item -ItemType Directory -Path (Join-Path $Workspace 'runtime')).FullName
     $Robocopy = (Get-Command robocopy -CommandType Application | Select-Object -First 1).Source
     $CopyFlags = @('/XJ', '/R:0', '/W:0', '/NFL', '/NDL', '/NP')
@@ -200,7 +213,11 @@ function Invoke-W0Runtime {
         $Report.runtime.port = $Port
         if ($Case -ne 'ListenerFailure') { $Reservation.Dispose() }
 
-        $Server = Start-W0Process 'server' $ServerExecutable @('-start', "server($Map/deathmatch/maxplayers=32/portsv=$Port/public=0)", "client(localhost/port=$Port/name=W0Server)") $Runtime
+        $ServerOptions = "$Map/deathmatch/maxplayers=32/portsv=$Port/public=0"
+        if ($Case -eq 'StalkerNavigation') {
+            $ServerOptions += '/' + $Config.stalkerNavigation.serverOption
+        }
+        $Server = Start-W0Process 'server' $ServerExecutable @('-start', "server($ServerOptions)", "client(localhost/port=$Port/name=W0Server)") $Runtime
         $Children += $Server
         $ServerOutput = Join-Path $Bundle $Server.entry.stdout
 
@@ -217,7 +234,14 @@ function Invoke-W0Runtime {
         Wait-W0Evidence 'dedicated DM server readiness' $Config.serverTimeoutSeconds {
             $Output = Get-W0Log $ServerOutput
             if ($Output -cmatch '(?m)^Failed to start server\.\r?$') { throw 'The server reported startup failure. See server.stdout.log.' }
-            @(Get-W0ReadyPeers $Output | Where-Object { $_.role -ceq 'server' -and $_.pid -eq $Server.process.Id }).Count -eq 1
+            $ServerReady = @(Get-W0ReadyPeers $Output | Where-Object { $_.role -ceq 'server' -and $_.pid -eq $Server.process.Id }).Count -eq 1
+            if ($Case -eq 'StalkerNavigation') {
+                $Navigation = Get-W1NavigationOutcome $Output $Map $ServerReady
+                $Report.runtime.navigationStatus = $Navigation
+                if ($Navigation -ceq 'failed') { throw 'The dedicated server rejected the W1 navigation fixture. See server.stdout.log.' }
+                if ($Navigation -ceq 'not_loaded') { throw 'Dedicated DM became ready without W1 navigation. See server.stdout.log.' }
+            }
+            return $ServerReady
         } $Children
 
         foreach ($Index in 1..2) {
@@ -237,6 +261,7 @@ function Invoke-W0Runtime {
             } $Children
         }
         $Report.runtime.startupPassed = $true
+        if ($Case -eq 'StalkerNavigation') { return 'w1_navigation_passed' }
         if ($Case -eq 'Observe') {
             $Report.runtime.observationNotes = 'observation-notes.txt'
             $NotesPath = Join-Path $Bundle $Report.runtime.observationNotes

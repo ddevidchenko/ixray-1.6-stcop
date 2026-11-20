@@ -16,6 +16,22 @@ function Get-W0ListenerOutcome {
     return 'pending'
 }
 
+function Get-W1NavigationOutcome {
+    param([string] $Output, [string] $Map, [bool] $ServerReady)
+
+    $Ready = $false
+    $FailurePrefix = "W1 navigation: status=failed map=$Map reason="
+    foreach ($Line in ($Output -split '\r?\n')) {
+        if ($Line.StartsWith($FailurePrefix, [StringComparison]::Ordinal) -and $Line.Length -gt $FailurePrefix.Length) {
+            return 'failed'
+        }
+        if ($Line -ceq "W1 navigation: status=ready map=$Map") { $Ready = $true }
+    }
+    if ($Ready) { return 'ready' }
+    if ($ServerReady) { return 'not_loaded' }
+    return 'pending'
+}
+
 function Get-W0ReadyPeers {
     param([string] $Output)
 

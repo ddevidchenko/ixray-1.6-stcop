@@ -159,6 +159,11 @@
         "serverTimeoutSeconds": 120,
         "clientTimeoutSeconds": 180,
         "logTimeoutSeconds": 15,
+        "stalkerNavigation": {
+            "workItems": ["MP-005b"],
+            "files": ["alife.spawn", "level.ai"],
+            "serverOption": "w1_stalker_navigation=1"
+        },
         "observation": {
             "durationSeconds": 600,
             "checklist": [

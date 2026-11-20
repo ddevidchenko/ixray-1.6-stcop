@@ -22,6 +22,21 @@ $InternalJoin = '[SteamNetClient] Connecting to server at 127.0.0.1:5446'
 Assert-Result ((Get-W0ListenerOutcome "$BindFailure`n$InternalJoin" 5446) -ceq 'continued') 'An internal client attempt after the bind error demonstrates continued startup.'
 Assert-Result ((Get-W0ListenerOutcome "$InternalJoin`n$BindFailure" 5446) -ceq 'pending') 'Only an internal client attempt after the failed bind is evidence of continued startup.'
 
+$NavigationReady = 'W1 navigation: status=ready map=mp_atp'
+$NavigationFailed = 'W1 navigation: status=failed map=mp_atp reason=missing level.ai'
+Assert-Result ((Get-W1NavigationOutcome '' 'mp_atp') -ceq 'pending') 'An empty log must wait for a W1 navigation record.'
+Assert-Result ((Get-W1NavigationOutcome "prefix $NavigationReady" 'mp_atp') -ceq 'pending') 'Only an entire W1 navigation line is evidence.'
+Assert-Result ((Get-W1NavigationOutcome $NavigationReady 'mp_other') -ceq 'pending') 'Readiness for a different map cannot pass.'
+Assert-Result ((Get-W1NavigationOutcome "$NavigationReady`r`n$NavigationReady" 'mp_atp') -ceq 'ready') 'Repeated readiness for the same map is allowed.'
+Assert-Result ((Get-W1NavigationOutcome $NavigationFailed 'mp_atp') -ceq 'failed') 'Explicit same-map fixture failure is terminal.'
+Assert-Result ((Get-W1NavigationOutcome "$NavigationReady`n$NavigationFailed" 'mp_atp') -ceq 'failed') 'A failure overrides earlier readiness.'
+Assert-Result ((Get-W1NavigationOutcome "$NavigationFailed`n$NavigationReady" 'mp_atp') -ceq 'failed') 'A contradictory ready record cannot hide a failure.'
+
+Assert-Result ((Get-W1NavigationOutcome '' 'mp_atp' $true) -ceq 'not_loaded') 'DM readiness without prior navigation is a behavioral failure.'
+Assert-Result ((Get-W1NavigationOutcome $NavigationReady 'mp_atp' $true) -ceq 'ready') 'Navigation stays ready when DM becomes ready.'
+Assert-Result ((Get-W1NavigationOutcome "$NavigationReady extra" 'mp_atp' $true) -ceq 'not_loaded') 'A malformed readiness record cannot pass.'
+Assert-Result ((Get-W1NavigationOutcome "$NavigationFailed`nW1 navigation: status=ready map=mp_other" 'mp_other') -ceq 'ready') 'Failures for other maps do not override matched evidence.'
+
 $TransportOnly = "[SteamNetClient] Connected to server`n[SteamNetServer] server client connected"
 Assert-Result (@(Get-W0ReadyPeers $TransportOnly).Count -eq 0) 'Transport connections do not establish DM readiness.'
 $Peers = @(Get-W0ReadyPeers "DM ready: role=server peer=1 pid=21`r`nDM ready: role=remote peer=2 pid=22`nDM ready: role=remote peer=2 pid=22`nname: DM ready: role=remote peer=3 pid=23")

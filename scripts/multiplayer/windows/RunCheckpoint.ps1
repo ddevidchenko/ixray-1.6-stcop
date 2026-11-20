@@ -13,7 +13,7 @@ param(
     [string] $GameDataRoot,
     [ValidatePattern('^[a-z0-9_-]{1,63}$')]
     [string] $Map,
-    [ValidateSet('Join', 'ListenerFailure', 'Observe')]
+    [ValidateSet('Join', 'ListenerFailure', 'Observe', 'StalkerNavigation')]
     [string] $RuntimeCase = 'Join',
     [string] $WorkspaceRoot
 )

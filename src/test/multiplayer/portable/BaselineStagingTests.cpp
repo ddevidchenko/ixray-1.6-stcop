@@ -43,7 +43,8 @@ static bool CheckAssembly()
 	std::array<u8, 1024> Full;
 	Full.fill(0x25);
 	std::array<u8, 1060> Datagram;
-	BaselineStaging Receiver(Identity, Storage);
+	BaselineStagingBudget Budget(Storage.size(), 1);
+	BaselineStaging Receiver(Identity, Storage, Budget.TryReserve(Storage.size()).value());
 	const auto BeginSize = EncodeBaselineBegin(Declaration, Datagram);
 	const auto DecodedBegin = BeginSize ? DecodeBaselineBegin(xr_span(Datagram).first(*BeginSize)) : std::unexpected(BoundMessageError::InvalidEnvelope);
 	bool Passed = Expect("decoded manifest starts a transfer in caller storage", DecodedBegin && Receiver.Begin(*DecodedBegin).has_value());
@@ -78,7 +79,8 @@ static bool CheckBeginValidation()
 	std::array<u8, 1026> Storage;
 	Storage.fill(0xcc);
 	const auto Prior = Storage;
-	BaselineStaging Receiver(Identity, Storage);
+	BaselineStagingBudget Budget(Storage.size(), 2);
+	BaselineStaging Receiver(Identity, Storage, Budget.TryReserve(Storage.size()).value());
 	constexpr JoinIdentity Foreign[] = {
 		{Identity.ServerSession + 1, Identity.WorldEpoch, Identity.ConnectionEpoch},
 		{Identity.ServerSession, Identity.WorldEpoch + 1, Identity.ConnectionEpoch},
@@ -106,7 +108,7 @@ static bool CheckBeginValidation()
 		Receiver.AddChunk({Identity, 3, Id, 0, Tail}).has_value() && Receiver.Finish(End).has_value());
 
 	const JoinIdentity Unbound{0, Identity.WorldEpoch, Identity.ConnectionEpoch};
-	BaselineStaging Unassigned(Unbound, {});
+	BaselineStaging Unassigned(Unbound, {}, Budget.TryReserve(0).value());
 	Passed &= ExpectError("matching unbound identities cannot start a transfer", Unassigned.Begin({Unbound, 0, {Id, 0, 0, 0, 0, 0}}),
 		BaselineStagingError::IdentityMismatch);
 	return Passed;
@@ -120,7 +122,8 @@ static bool CheckRejectedUpdates()
 	Chunk.fill(0x25);
 	const BaselineChunk First{Identity, 10, Id, 0, Chunk};
 	const BaselineChunk Last{Identity, 11, Id, 1, Tail};
-	BaselineStaging Receiver(Identity, Storage);
+	BaselineStagingBudget Budget(Storage.size(), 1);
+	BaselineStaging Receiver(Identity, Storage, Budget.TryReserve(Storage.size()).value());
 	bool Passed = ExpectError("data cannot arrive before begin", Receiver.AddChunk(First), BaselineStagingError::InvalidState);
 	Passed &= ExpectError("end cannot arrive before begin", Receiver.Finish(End), BaselineStagingError::InvalidState);
 	Passed &= Expect("begin then one canonical chunk succeeds", Receiver.Begin(Declaration).has_value() && Receiver.AddChunk(First).has_value());
@@ -166,7 +169,8 @@ static bool CheckRoundReset()
 	std::array<u8, 1027> Storage{};
 	std::array<u8, 1024> Full;
 	Full.fill(0x51);
-	BaselineStaging Receiver(Identity, Storage);
+	BaselineStagingBudget Budget(Storage.size(), 1);
+	BaselineStaging Receiver(Identity, Storage, Budget.TryReserve(Storage.size()).value());
 	bool Passed = Expect("fixture receives the old world's first chunk", Receiver.Begin(Declaration).has_value() &&
 		Receiver.AddChunk({Identity, 10, Id, 0, Full}).has_value());
 	Passed &= Expect("duplicate and older owner updates do not advance the world", !Receiver.AdvanceWorld(37) && !Receiver.AdvanceWorld(36));
@@ -197,7 +201,8 @@ static bool CheckAliasedInput()
 {
 	std::array<u8, 6> Storage{0x77, 0x06, 0xa7, 0x00, 0xcc, 0xcc};
 	const auto Source = xr_span(Storage).subspan(1, 3);
-	BaselineStaging Receiver(Identity, Storage);
+	BaselineStagingBudget Budget(Storage.size(), 1);
+	BaselineStaging Receiver(Identity, Storage, Budget.TryReserve(Storage.size()).value());
 	bool Passed = Expect("overlap fixture starts", Receiver.Begin({Identity, 1, {Id, 10, 0, 3, 1, 1}}).has_value());
 	Passed &= Expect("chunk source may overlap the target bytes", Receiver.AddChunk({Identity, 2, Id, 0, Source}).has_value());
 	const auto Baseline = Receiver.Finish(End);
@@ -208,14 +213,15 @@ static bool CheckAliasedInput()
 
 static bool CheckEmptyAndMaximum()
 {
-	BaselineStaging Empty(Identity, {});
+	BaselineStagingBudget Budget(4194304, 2);
+	BaselineStaging Empty(Identity, {}, Budget.TryReserve(0).value());
 	bool Passed = Expect("an empty baseline needs no payload buffer", Empty.Begin({Identity, 1, {Id, 10, 0, 0, 0, 0}}).has_value());
 	Passed &= ExpectError("an empty baseline never accepts a chunk", Empty.AddChunk({Identity, 2, Id, 0, Tail}), BaselineStagingError::InvalidChunk);
 	const auto Blank = Empty.Finish(End);
 	Passed &= Expect("empty baseline yields an empty view only at end", Blank && Blank->Data.empty() && Blank->Manifest.ChunkCount == 0);
 
 	const auto Storage = std::make_unique<u8[]>(4194304);
-	BaselineStaging FullStage(Identity, {Storage.get(), 4194304});
+	BaselineStaging FullStage(Identity, {Storage.get(), 4194304}, Budget.TryReserve(4194304).value());
 	std::array<u8, 1024> Data;
 	Passed &= Expect("accepts the exact four MiB staging capacity", FullStage.Begin({Identity, 1, {Id, 10, 5, 4194304, 8192, 4096}}).has_value());
 	for (u16 Index = 4095; Index > 0; --Index)

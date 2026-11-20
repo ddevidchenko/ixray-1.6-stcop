@@ -275,9 +275,17 @@ Existing `M_SV_CONFIG_NEW_CLIENT`, `M_SV_CONFIG_GAME`, `M_SV_CONFIG_FINISHED` an
 
 The serialized connection owner supplies an exclusive buffer from its staging budget and binds the receiver to the current session, world, and connection. The receiver checks the declaration against the wire limits and available storage before tracking the transfer. It uses a fixed receipt bitmap and copies accepted chunks to their canonical offsets.
 
-A matching duplicate declaration or chunk is idempotent while receiving. A conflicting duplicate fails and preserves the accepted data. A matching end received before all chunks fails and can be retried after the missing chunks arrive. Once all chunks arrive, a matching end yields one read-only view of exactly the declared bytes for record validation. The view borrows the reserved buffer until the owner releases it or advances the world.
+A matching duplicate declaration or chunk is idempotent while receiving. A conflicting duplicate fails and preserves the accepted data. A matching end received before all chunks fails and can be retried after the missing chunks arrive. Once all chunks arrive, a matching end yields one read-only view of exactly the declared bytes for record validation. The view borrows the reserved buffer while its receiver and world remain current.
 
-A same-map round advance clears the declaration and receipt bitmap. The next world can reuse numeric baseline IDs, while frames for the old world fail the identity check. The owner supplies the aggregate budget and handles same-round rebase policy. Record validation, event catch-up, and world publication follow byte assembly. [Stager](../../src/xrNetServer/Multiplayer/BaselineStaging.h), [staging tests](../../src/test/multiplayer/portable/BaselineStagingTests.cpp).
+A same-map round advance clears the declaration and receipt bitmap. The next world can reuse numeric baseline IDs, while frames for the old world fail the identity check. The owner handles same-round rebase policy. Record validation, event catch-up, and world publication follow byte assembly. [Stager](../../src/xrNetServer/Multiplayer/BaselineStaging.h), [staging tests](../../src/test/multiplayer/portable/BaselineStagingTests.cpp).
+
+### Aggregate baseline staging budget
+
+A shared `BaselineStagingBudget` limits the sum of byte reservations and the number of outstanding buffers. Each reservation covers at most 4 MiB. A zero-byte baseline still uses one buffer place. The staging owner serializes reservation and release across receivers and keeps the budget alive through all reservations.
+
+The owner acquires the reservation before taking backing storage. The receiver takes the move-only reservation and requires it to cover the full supplied span. A completed receiver keeps its reservation while record validation reads the buffer. A same-map world advance retains the reservation for reuse. Return the backing storage on the same owning turn that destroys the receiver. An abandoned reservation returns both charges at scope exit.
+
+Owners supply the limits. Arena measurements and live allocation, queueing, and cleanup scenarios determine the production values. [Budget](../../src/xrNetServer/Multiplayer/BaselineStagingBudget.h), [capacity tests](../../src/test/multiplayer/portable/BaselineStagingBudgetTests.cpp).
 
 ### Baseline record validation
 

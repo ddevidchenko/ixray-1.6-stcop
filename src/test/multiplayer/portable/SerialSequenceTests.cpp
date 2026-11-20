@@ -84,6 +84,11 @@ namespace BaselineRecordsTests
 bool Run();
 }
 
+namespace BaselineStagingBudgetTests
+{
+bool Run();
+}
+
 namespace SerialSequenceTests
 {
 struct SequenceCase
@@ -189,6 +194,10 @@ int main(int ArgumentCount, char** Arguments)
 	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--baseline-records") == 0)
 	{
 		return BaselineRecordsTests::Run() ? EXIT_SUCCESS : EXIT_FAILURE;
+	}
+	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--baseline-staging-budget") == 0)
+	{
+		return BaselineStagingBudgetTests::Run() ? EXIT_SUCCESS : EXIT_FAILURE;
 	}
 	if (ArgumentCount != 1)
 	{

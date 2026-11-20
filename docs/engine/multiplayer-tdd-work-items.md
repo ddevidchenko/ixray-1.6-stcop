@@ -1,6 +1,6 @@
 # Multiplayer TDD work items
 
-The operator reports that W0 passed on Windows. The exact revision and result bundle are pending attachment. MP-010, MP-011a, MP-011b, MP-012, MP-020a, MP-020b, MP-020c, MP-020d, MP-020e, MP-020f, MP-020g, MP-022a, MP-022b, MP-022c, MP-022d, MP-037a and MP-037b have macOS evidence.
+The operator reports that W0 passed on Windows. The exact revision and result bundle are pending attachment. MP-010, MP-011a, MP-011b, MP-012, MP-020a, MP-020b, MP-020c, MP-020d, MP-020e, MP-020f, MP-020g, MP-022a, MP-022b, MP-022c, MP-022d, MP-037a, MP-037b and MP-037c have macOS evidence.
 
 Implements the [modern multiplayer plan](multiplayer-modernization-plan.md): 32 total human/bot combatants, simple DM, direct IP over GameNetworkingSockets first, human-like bots, authoritative simulation, prediction, lag compensation, and immediate local effects. Windows x64 is the initial runtime target; macOS remains usable for source work and portable tests. Hitscan, ballistics, and hybrid gunplay remain alternatives until the comparison gate.
 
@@ -357,7 +357,7 @@ The [peer runbook](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch
 #### MP-037a — Assemble a bounded baseline in owner storage
 
 - Bind portable staging to the current join identity. Reuse the wire manifest checks and accept only canonical chunk lengths and offsets within the owner-supplied buffer. Expose a completed byte view once on matching end. A trusted round advance invalidates old receipt state. [Staging contract](multiplayer-implementation-contracts.md#client-side-baseline-staging).
-- **Mac checks passed / Windows pending.** The initial two-chunk assembly failed before implementation. Reviewed tests cover decoded frames and datagram reuse, exact storage limits, reordering, duplicates, conflicting updates, early end, reset, and all 4,096 chunk indices. Aggregate buffer reservation, record decoding, and engine integration follow as separate work. [Tests](../../src/test/multiplayer/portable/BaselineStagingTests.cpp).
+- **Mac checks passed / Windows pending.** The initial two-chunk assembly failed before implementation. Reviewed tests cover decoded frames and datagram reuse, exact storage limits, reordering, duplicates, conflicting updates, early end, reset, and all 4,096 chunk indices. Record framing and aggregate buffer reservation have separate tests in MP-037b/c. Game record decoding and engine integration remain open. [Tests](../../src/test/multiplayer/portable/BaselineStagingTests.cpp).
 - [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) collects a passing `baseline-staging.xml` on Windows.
 
 #### MP-037b — Validate the complete baseline record stream
@@ -365,6 +365,12 @@ The [peer runbook](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch
 - Check staged identity, manifest, and byte count. Frame the declared records with a kind and bounded payload length, validate each through the supplied schema, and expose an ordered cursor after the full stream passes. [Record framing contract](multiplayer-implementation-contracts.md#baseline-record-validation).
 - **Mac checks passed / Windows pending.** The literal two-record fixture failed before implementation. The reviewed tests cover stale identities, malformed suffixes, schema rejection, exact counts, the full `u16` payload length, and a header split across chunks. Concrete entity schemas and world import follow as separate work. [Tests](../../src/test/multiplayer/portable/BaselineRecordsTests.cpp).
 - [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) collects a passing `baseline-records.xml` on Windows.
+
+#### MP-037c — Bound aggregate baseline staging reservations
+
+- Reserve bytes and a buffer place from one serialized owner budget before taking backing storage. Each receiver owns a reservation covering its full span through completion and same-map reset. Destruction returns both charges. [Aggregate budget contract](multiplayer-implementation-contracts.md#aggregate-baseline-staging-budget).
+- **Mac checks passed / Windows pending.** Reviewed tests failed against the unbounded reserve path. They cover both exact limits, zero-byte transfers, oversized requests, failed attempts, move and destruction, invalid buffer bindings, and reuse through completion and round reset. Production limits and allocator integration require later engine evidence. [Tests](../../src/test/multiplayer/portable/BaselineStagingBudgetTests.cpp).
+- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) collects a passing `baseline-staging-budget.xml` on Windows.
 
 ### MP-038 — Make death, score, round flow, and spectator state authoritative
 

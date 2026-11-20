@@ -2,10 +2,12 @@
 
 #include <algorithm>
 #include <cstring>
+#include <utility>
 
 namespace Multiplayer
 {
-BaselineStaging::BaselineStaging(JoinIdentity Identity, xr_span<u8> Storage) noexcept : Identity(Identity), Storage(Storage)
+BaselineStaging::BaselineStaging(JoinIdentity Identity, xr_span<u8> Storage, BaselineStagingReservation&& Reservation) noexcept
+	: Identity(Identity), Storage(Storage), Reservation(std::move(Reservation))
 {
 }
 
@@ -53,7 +55,7 @@ std::expected<void, BaselineStagingError> BaselineStaging::Begin(const Wire::Bas
 	{
 		return std::unexpected(BaselineStagingError::InvalidManifest);
 	}
-	if (Message.Manifest.ByteCount > Storage.size())
+	if (!Reservation.Covers(Storage.size()) || Message.Manifest.ByteCount > Storage.size())
 	{
 		return std::unexpected(BaselineStagingError::InsufficientStorage);
 	}

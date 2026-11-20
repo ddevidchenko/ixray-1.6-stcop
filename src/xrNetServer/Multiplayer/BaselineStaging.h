@@ -1,6 +1,7 @@
 #pragma once
 
 #include "BaselineTransfer.h"
+#include "BaselineStagingBudget.h"
 
 #include <bitset>
 #include <optional>
@@ -20,7 +21,7 @@ enum class BaselineStagingError
 	Incomplete,
 };
 
-// Data borrows reserved staging storage and is valid until the owner advances the world or releases the storage.
+// Data borrows staging storage while its receiver and world remain current.
 struct StagedBaseline
 {
 	JoinIdentity Identity;
@@ -31,8 +32,8 @@ struct StagedBaseline
 class BaselineStaging
 {
 public:
-	// The serialized owner keeps the storage alive and reserves it for this receiver.
-	BaselineStaging(JoinIdentity Identity, xr_span<u8> Storage) noexcept;
+	// The owner keeps Storage exclusive and alive, and returns it on the same turn it destroys the receiver.
+	BaselineStaging(JoinIdentity Identity, xr_span<u8> Storage, BaselineStagingReservation&& Reservation) noexcept;
 	BaselineStaging(const BaselineStaging&) = delete;
 	BaselineStaging& operator=(const BaselineStaging&) = delete;
 
@@ -48,6 +49,7 @@ private:
 
 	JoinIdentity Identity;
 	const xr_span<u8> Storage;
+	BaselineStagingReservation Reservation;
 	std::optional<Wire::BaselineManifest> Manifest;
 	std::bitset<Wire::MaxBaselineChunks> ReceivedChunks;
 	bool Completed = false;

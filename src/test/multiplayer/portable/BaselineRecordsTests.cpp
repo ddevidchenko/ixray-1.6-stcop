@@ -220,7 +220,8 @@ static bool CheckChunkBoundary()
 	Source[2] = 0x03;
 	std::ranges::copy(xr_span(Golden).first(6), Source.begin() + 1023);
 	std::array<u8, 1029> Storage;
-	BaselineStaging Receiver(Identity, Storage);
+	BaselineStagingBudget Budget(Storage.size(), 1);
+	BaselineStaging Receiver(Identity, Storage, Budget.TryReserve(Storage.size()).value());
 	constexpr Wire::BaselineManifest Split{Id, 10, 17, 1029, 2, 2};
 	if (!Expect("fixture assembles canonical chunks with a split record header", Receiver.Begin({Identity, 1, Split}).has_value() &&
 		Receiver.AddChunk({Identity, 3, Id, 1, xr_span(Source).subspan(1024)}).has_value() &&

@@ -1,8 +1,8 @@
 #include "WireEnvelope.h"
+#include "WireEndian.h"
 
 #include <algorithm>
 #include <array>
-#include <concepts>
 #include <cstring>
 #include <limits>
 
@@ -21,29 +21,6 @@ constexpr std::size_t SequenceOffset = ConnectionOffset + sizeof(u32);
 
 static_assert(SequenceOffset + sizeof(u32) == EnvelopeHeaderSize);
 static_assert(MaxPayloadSize <= std::numeric_limits<u16>::max());
-
-// The caller checks the frame size before taking the fixed-size header span.
-template <std::unsigned_integral Value, std::size_t Offset>
-static Value ReadLittleEndian(std::span<const u8, EnvelopeHeaderSize> Header) noexcept
-{
-	const auto Field = Header.subspan<Offset, sizeof(Value)>();
-	u64 Result = 0;
-	for (std::size_t Index = 0; Index < Field.size(); ++Index)
-	{
-		Result |= static_cast<u64>(Field[Index]) << (Index * 8);
-	}
-	return static_cast<Value>(Result);
-}
-
-template <std::size_t Offset, std::unsigned_integral Value>
-static void WriteLittleEndian(std::span<u8, EnvelopeHeaderSize> Header, Value Number) noexcept
-{
-	const auto Field = Header.subspan<Offset, sizeof(Value)>();
-	for (std::size_t Index = 0; Index < Field.size(); ++Index)
-	{
-		Field[Index] = static_cast<u8>(static_cast<u64>(Number) >> (Index * 8));
-	}
-}
 
 static bool IsSupportedType(MessageType Type) noexcept
 {
@@ -73,7 +50,7 @@ std::expected<EnvelopeView, EnvelopeError> DecodeEnvelope(std::span<const u8> By
 	{
 		return std::unexpected(EnvelopeError::InvalidMagic);
 	}
-	if (ReadLittleEndian<u16, VersionOffset>(Header) != ProtocolVersion)
+	if (Detail::ReadLittleEndian<u16>(Header.subspan<VersionOffset, sizeof(u16)>()) != ProtocolVersion)
 	{
 		return std::unexpected(EnvelopeError::UnsupportedVersion);
 	}
@@ -87,14 +64,19 @@ std::expected<EnvelopeView, EnvelopeError> DecodeEnvelope(std::span<const u8> By
 		return std::unexpected(EnvelopeError::UnsupportedFlags);
 	}
 	const auto Payload = Bytes.subspan<EnvelopeHeaderSize>();
-	if (ReadLittleEndian<u16, LengthOffset>(Header) != Payload.size())
+	if (Detail::ReadLittleEndian<u16>(Header.subspan<LengthOffset, sizeof(u16)>()) != Payload.size())
 	{
 		return std::unexpected(EnvelopeError::PayloadLengthMismatch);
 	}
 
 	return EnvelopeView{
-		{Type, ReadLittleEndian<u64, SessionOffset>(Header), ReadLittleEndian<u32, WorldOffset>(Header),
-			ReadLittleEndian<u32, ConnectionOffset>(Header), ReadLittleEndian<u32, SequenceOffset>(Header)},
+		{
+			Type,
+			Detail::ReadLittleEndian<u64>(Header.subspan<SessionOffset, sizeof(u64)>()),
+			Detail::ReadLittleEndian<u32>(Header.subspan<WorldOffset, sizeof(u32)>()),
+			Detail::ReadLittleEndian<u32>(Header.subspan<ConnectionOffset, sizeof(u32)>()),
+			Detail::ReadLittleEndian<u32>(Header.subspan<SequenceOffset, sizeof(u32)>()),
+		},
 		Payload,
 	};
 }
@@ -122,14 +104,14 @@ std::expected<std::size_t, EnvelopeError> EncodeEnvelope(EnvelopeHeader Header, 
 	}
 	const auto Bytes = Output.first<EnvelopeHeaderSize>();
 	std::ranges::copy(Magic, Bytes.begin());
-	WriteLittleEndian<VersionOffset>(Bytes, ProtocolVersion);
+	Detail::WriteLittleEndian(Bytes.subspan<VersionOffset, sizeof(u16)>(), ProtocolVersion);
 	Bytes[TypeOffset] = static_cast<u8>(Header.Type);
 	Bytes[FlagsOffset] = 0;
-	WriteLittleEndian<LengthOffset>(Bytes, static_cast<u16>(Payload.size()));
-	WriteLittleEndian<SessionOffset>(Bytes, Header.ServerSession);
-	WriteLittleEndian<WorldOffset>(Bytes, Header.WorldEpoch);
-	WriteLittleEndian<ConnectionOffset>(Bytes, Header.ConnectionEpoch);
-	WriteLittleEndian<SequenceOffset>(Bytes, Header.MessageSequence);
+	Detail::WriteLittleEndian(Bytes.subspan<LengthOffset, sizeof(u16)>(), static_cast<u16>(Payload.size()));
+	Detail::WriteLittleEndian(Bytes.subspan<SessionOffset, sizeof(u64)>(), Header.ServerSession);
+	Detail::WriteLittleEndian(Bytes.subspan<WorldOffset, sizeof(u32)>(), Header.WorldEpoch);
+	Detail::WriteLittleEndian(Bytes.subspan<ConnectionOffset, sizeof(u32)>(), Header.ConnectionEpoch);
+	Detail::WriteLittleEndian(Bytes.subspan<SequenceOffset, sizeof(u32)>(), Header.MessageSequence);
 	return MessageSize;
 }
 }

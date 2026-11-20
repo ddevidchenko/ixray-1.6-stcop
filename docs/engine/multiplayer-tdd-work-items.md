@@ -1,6 +1,6 @@
 # Multiplayer TDD work items
 
-The operator reports that W0 passed on Windows. The exact revision and result bundle are pending attachment. MP-010, MP-011a, MP-011b, MP-012 and MP-020a have macOS evidence.
+The operator reports that W0 passed on Windows. The exact revision and result bundle are pending attachment. MP-010, MP-011a, MP-011b, MP-012, MP-020a and MP-020b have macOS evidence.
 
 Implements the [modern multiplayer plan](multiplayer-modernization-plan.md): 32 total human/bot combatants, simple DM, direct IP over GameNetworkingSockets first, human-like bots, authoritative simulation, prediction, lag compensation, and immediate local effects. Windows x64 is the initial runtime target; macOS remains usable for source work and portable tests. Hitscan, ballistics, and hybrid gunplay remain alternatives until the comparison gate.
 
@@ -171,6 +171,12 @@ The [peer runbook](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch
 - **Design:** freeze the 30-byte little-endian header, the 1,100-byte complete-message limit, zero reserved flags, and the first three admission tags. Decode returns a copied header and a borrowed read-only payload. Encode validates the tag and sizes before writing, including when the payload overlaps the output. Typed payload fields, admission, and dispatch follow in later slices. [Wire contract](multiplayer-implementation-contracts.md#3-version-one-wire-contract), [codec](../../src/xrNetServer/Multiplayer/WireEnvelope.h).
 - **Mac checks passed / Windows pending:** `Multiplayer.WireEnvelope` first failed on a hand-authored welcome frame. The reviewed suite covers all truncated prefixes, all reserved tags and flag values, unsupported versions, exact lengths, both sides of the size cap, and untouched output on failure. The golden tests exercise the same codec compiled into `xrNetServer`. Fixtures use literal data without a seed or content pack. [Tests](../../src/test/multiplayer/portable/WireEnvelopeTests.cpp).
 - [ ] **Complete when:** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) reports a passing `wire-envelope.xml` on Windows.
+
+#### MP-020b — Add checked payload fields
+
+- **Design:** use caller-owned buffers and explicit little-endian integer fields, finite binary32 values, and bounded UTF-8 strings with a `u16` byte count. Readers and writers preserve their cursor on field failure. Frame and payload codecs share their endian conversion. [Payload encoding](multiplayer-implementation-contracts.md#payload-field-encoding), [codec](../../src/xrNetServer/Multiplayer/WirePayload.h).
+- **Mac checks passed / Windows pending:** `Multiplayer.WirePayload` first failed on overlong UTF-8. The reviewed tests also reproduced acceptance of NaNs and infinities and a changed read cursor. Hand-authored bytes now verify field order and values. Boundary tests cover truncated fields, byte and capacity limits, UTF-8 scalar validity, overlapping output, and exact finite float bits. Fixtures use literal data. [Tests](../../src/test/multiplayer/portable/WirePayloadTests.cpp).
+- [ ] **Complete when:** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) reports a passing `wire-payload.xml` on Windows.
 
 ### MP-021 — Bound legacy envelope parsing and decompression
 

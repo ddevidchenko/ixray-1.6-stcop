@@ -12,6 +12,7 @@ add_executable(TestMultiplayerUnit
     WeaponSpreadTests.cpp
     ScriptedTransportTests.cpp
     WireEnvelopeTests.cpp
+    WirePayloadTests.cpp
     ../transport/ScriptedTransport.cpp
 )
 target_link_libraries(TestMultiplayerUnit PRIVATE xrNetServerMultiplayer)
@@ -22,8 +23,9 @@ add_test(NAME Multiplayer.MapSyncDeadline COMMAND TestMultiplayerUnit --map-sync
 add_test(NAME Multiplayer.WeaponSpread COMMAND TestMultiplayerUnit --weapon-spread)
 add_test(NAME Multiplayer.ScriptedTransport COMMAND TestMultiplayerUnit --scripted-transport)
 add_test(NAME Multiplayer.WireEnvelope COMMAND TestMultiplayerUnit --wire-envelope)
+add_test(NAME Multiplayer.WirePayload COMMAND TestMultiplayerUnit --wire-payload)
 set_tests_properties(
-    Multiplayer.Sequence Multiplayer.MapSyncDeadline Multiplayer.WeaponSpread Multiplayer.ScriptedTransport Multiplayer.WireEnvelope
+    Multiplayer.Sequence Multiplayer.MapSyncDeadline Multiplayer.WeaponSpread Multiplayer.ScriptedTransport Multiplayer.WireEnvelope Multiplayer.WirePayload
     PROPERTIES LABELS multiplayer
 )
 

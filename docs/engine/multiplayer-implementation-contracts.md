@@ -78,6 +78,16 @@ This header is 30 bytes. Start with an application-message cap of 1,100 bytes in
 
 Initial limits: participant names up to 32 UTF-8 bytes, logical map identifiers up to 64 bytes, bounded credentials up to 128 bytes, at most four recent commands and eight pending discrete action records per input message. Reject invalid UTF-8, unknown required tags/bits, bad lengths/counts, nonfinite/out-of-profile values and unsupported versions before state mutation. Never log credential payloads.
 
+### Payload field encoding
+
+| Field | Encoding |
+| --- | --- |
+| Integers | Fixed-width little-endian `u8`, `u16`, `u32`, or `u64`. Signed `s8` and `s16` use two's complement. |
+| Finite scalar | Little-endian IEEE 754 binary32. Signed zeros and subnormals retain their bits. Encodings with an all-ones exponent are rejected. |
+| Text | A little-endian `u16` byte count followed by that many UTF-8 bytes. The caller supplies the field's byte limit. The primitive accepts empty text and U+0000 as Unicode scalars. Field codecs enforce any additional text policy. |
+
+Each operation checks its input before advancing the reader or writing output bytes. A decoded string borrows the payload buffer. Message codecs can read into a local cursor and publish decoded fields after checking the complete payload. [Payload codec](../../src/xrNetServer/Multiplayer/WirePayload.h), [UTF-8 syntax](https://www.rfc-editor.org/rfc/rfc3629.html#section-4).
+
 Additional initial engineering defaults, configurable within validated limits and subject to fixtures/profiling:
 
 | Limit | Starting value / handling |

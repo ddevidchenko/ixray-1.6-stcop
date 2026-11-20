@@ -1,5 +1,6 @@
 #pragma once
 #include "BaseClient.h"
+#include "LegacyGnsTransport.h"
 
 #pragma warning(push)
 #pragma warning(disable:4995)
@@ -8,13 +9,13 @@
 
 class XRNETSERVER_API SteamNetClient : public BaseClient
 {
-	friend void ClSteamNetConnectionStatusChangedCallback(SteamNetConnectionStatusChangedCallback_t *pInfo);
-	friend void steam_net_update_client(void* P);
+	friend void LegacyGnsTransport::Poll(SteamNetClient& Client, SteamNetServer* Server);
 
 private:
 	xrCriticalSection			csConnection;
 	ISteamNetworkingSockets*	m_pInterface = nullptr;
 	HSteamNetConnection			m_hConnection = k_HSteamNetConnection_Invalid;
+	s64 ConnectionGeneration = 0;
 
 	xr_string m_user_name = "";
 	xr_string m_user_pass = "";
@@ -28,18 +29,15 @@ public:
 	virtual ~SteamNetClient();
 
 private:
-	IC bool			IsConnectionCreated() const { return m_pInterface != nullptr; }
 	IC bool			GameDescriptionReceived() const { return m_bGameDescriptionRecieved; }
 
 	void			SendClientData();
 
-	void			Update();
-	void			OnSteamNetConnectionStatusChanged(SteamNetConnectionStatusChangedCallback_t *pInfo);
+	void ApplyConnectionStatus(const SteamNetConnectionStatusChangedCallback_t& Event);
 
 	void			GetIpAddress(SteamNetConnectionInfo_t& info, ip_address& out);
 
-	void			PollConnectionStateChanges();
-	void			PollIncomingMessages();
+	void PollIncomingMessages(u32 Budget);
 
 protected:
 	virtual bool	IsConnectionInit() override { return m_pInterface != nullptr; }

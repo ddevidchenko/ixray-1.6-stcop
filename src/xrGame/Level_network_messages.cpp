@@ -55,7 +55,7 @@ static bool SimmulateNetworkLag()
 }
 #endif
 
-void CLevel::ClientReceive()
+void CLevel::ClientReceive(u32 PacketBudget)
 {
 	PROF_EVENT("CLevel::ClientReceive");
 	m_dwRPC = 0;
@@ -70,8 +70,13 @@ void CLevel::ClientReceive()
 		return;
 #endif
 	StartProcessQueue();
-	for (NET_Packet* P = net_msg_Retreive(); P; P=net_msg_Retreive())
+	for (u32 Index = 0; Index < PacketBudget; ++Index)
 	{
+		auto* P = net_msg_Retreive();
+		if (!P)
+		{
+			break;
+		}
 		if (IsDemoSaveStarted())
 		{
 			SavePacket(*P);

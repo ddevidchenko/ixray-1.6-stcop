@@ -9,6 +9,11 @@ namespace MapSyncWaitTests
 bool Run();
 }
 
+namespace LegacyStartupTests
+{
+bool Run();
+}
+
 namespace LegacyClockSyncTests
 {
 bool Run();
@@ -224,6 +229,15 @@ int main(int ArgumentCount, char** Arguments)
 	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--verify-failure") == 0)
 	{
 		return SerialSequenceTests::CheckIsNewer({"deliberate failure", 42u, 41u, false}) ? EXIT_SUCCESS : EXIT_FAILURE;
+	}
+	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--legacy-startup") == 0)
+	{
+		if (!LegacyStartupTests::Run())
+		{
+			return EXIT_FAILURE;
+		}
+		std::puts("Legacy startup and admission checks passed");
+		return EXIT_SUCCESS;
 	}
 	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--legacy-clock-sync") == 0)
 	{

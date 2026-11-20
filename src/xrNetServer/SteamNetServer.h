@@ -1,5 +1,6 @@
 #pragma once
 #include "BaseServer.h"
+#include "LegacyGnsTransport.h"
 
 #pragma warning(push)
 #pragma warning(disable:4995)
@@ -18,20 +19,17 @@ enum enmDisconnectReason
 
 class XRNETSERVER_API SteamNetServer : public BaseServer
 {
-	friend void steam_net_update_server(void* P);
-	friend void SvSteamNetConnectionStatusChangedCallback(SteamNetConnectionStatusChangedCallback_t *pInfo);
+	friend void LegacyGnsTransport::Poll(SteamNetClient& Client, SteamNetServer* Server);
 
 private:
 	ISteamNetworkingSockets*      m_pInterface = nullptr;
 	HSteamListenSocket            m_hListenSock = k_HSteamListenSocket_Invalid;
 	HSteamNetPollGroup            m_hPollGroup = k_HSteamNetPollGroup_Invalid;
 
-	xrCriticalSection             csConnection;
 	xr_string                     m_server_password;
 	u32														m_max_players = 0;
 	bool													m_bServerClientConnected = false;
 
-	// Using in update thread!
 	xr_vector<HSteamNetConnection>	m_players;
 	xr_vector<SClientConnectData>	m_pending_clients;
 
@@ -40,20 +38,17 @@ public:
 	virtual ~SteamNetServer();
 
 private:
-	IC bool           IsConnectionCreated() const { return m_pInterface != nullptr; }
 
-	void							ProcessConnection(SteamNetConnectionStatusChangedCallback_t * pInfo);
+	void ProcessConnection(HSteamNetConnection Connection);
+	void RejectPendingConnection(HSteamNetConnection Connection);
+	void RetireClosedConnections();
 	void							FinishConnection(SClientConnectData &cl_data);
 
 	void							AddPendingClient(SClientConnectData &cl_data);
 	void							HandlePendingClients();
 	void							OnClientDataReceived(HSteamNetConnection connection, SteamNetworkingIdentity &identity, MSYS_CLIENT_DATA* data);
 
-	// update thread
-	void              OnSteamNetConnectionStatusChanged(SteamNetConnectionStatusChangedCallback_t *pInfo);
-	void			        Update();
-	void			        PollConnectionStateChanges();
-	void			        PollIncomingMessages();
+	void PollIncomingMessages(u32 Budget);
 
 	void			        DisconnectAll();
 	void			        CloseConnection(HSteamNetConnection connection, enmDisconnectReason nReason = EUnknownReason, const char* sReason = nullptr);

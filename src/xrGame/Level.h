@@ -12,6 +12,9 @@
 #include "GlobalFeelTouch.hpp"
 
 #include "Level_network_map_sync.h"
+#include "Multiplayer/LegacyClientStartup.h"
+
+#include <limits>
 #include "secure_messaging.h"
 #include "../xrEngine/xr_level_controller.h"
 
@@ -210,7 +213,12 @@ protected:
 	void						UpdateDeltaUpd					( u32 LastTime );
 	void						BlockCheatLoad					()				;
 
-	bool						Connect2Server					(const char* options);
+	Multiplayer::LegacyClientStartup ClientStartup;
+	void BeginClientConnection();
+	bool PollLoadingConnection();
+	void PollNetworkTransport();
+	void StopClientStartup();
+	void FailClientConnection(Multiplayer::LegacyStartupStatus Status);
 	void						SendClientDigestToServer		();
 	shared_str					m_client_digest;	//for screenshots
 public:
@@ -345,7 +353,7 @@ public:
 
 	// Game
 	void						InitializeClientGame	(NET_Packet& P);
-	void						ClientReceive			();
+	void						ClientReceive(u32 PacketBudget = std::numeric_limits<u32>::max());
 	void						ClientSend				();
 	void						ClientSendProfileData	();
 	void						ClientSave				();

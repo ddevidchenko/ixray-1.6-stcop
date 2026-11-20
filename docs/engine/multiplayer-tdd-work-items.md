@@ -340,7 +340,13 @@ The [peer runbook](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch
 
 - **Depends on:** MP-024a, MP-025a, MP-026a. The owner pumps callbacks for the shared GNS interface and forwards only transport lifecycle events. Inbound and outbound peers join their receive groups after the connect event enters the corresponding inbox. [Callback pump](../../src/xrNetServer/Multiplayer/GnsCallbackPump.h).
 - **Mac checks passed / Windows pending.** Deterministic cases cover hosted routing, reused handles, disconnect before readiness, duplicate and foreign callbacks, queue overflow, and partial native failure. Real peers exchange packets in both directions and exercise explicit peer close and listener cleanup using the same pump.
-- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) records these cases in `gns-loopback.xml` on Windows. Legacy engine startup and callback adoption remain under MP-025 and MP-026.
+- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) records these cases in `gns-loopback.xml` on Windows. The live legacy path shares the native callback dispatch under MP-025d. Adopting the version-one endpoints and datagrams remains under MP-025 and MP-026.
+
+#### MP-025d — Advance legacy startup and admission on the game owner
+
+- **Depends on:** MP-025b, MP-025c. Poll description and authentication as loading steps with independent deadlines. Direct startup waits for the local registration result without a native connection. A native callback records incoming handles. The owner then revalidates the connection, releases closed peers, and applies the existing capacity and access policy before native acceptance. [Startup state](../../src/xrGame/Multiplayer/LegacyClientStartup.h), [legacy GNS transport](../../src/xrNetServer/LegacyGnsTransport.cpp), [admission policy](../../src/xrNetServer/Multiplayer/LegacyAdmission.h).
+- **Mac checks passed / Windows pending.** Portable coverage includes deadline precedence, transport loss, cancellation, direct startup, admission precedence, and bounded request collection. The real GNS regression covers the shared callback dispatch.
+- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) records a passing `legacy-startup.xml` and the [two-client check](multiplayer-checkpoints/w0.md#run-the-two-client-check) verifies Windows join, disconnect, and reconnect using the live owner.
 
 ### MP-026 — Apply network events only at the simulation boundary
 

@@ -1,28 +1,8 @@
 #include "stdafx.h"
 #include "SteamNetServer.h"
+#include "Multiplayer/GnsCallbackDispatch.h"
+#include "Multiplayer/LegacyAdmission.h"
 #include <steam/isteamnetworkingutils.h>
-
-// -----------------------------------------------------------------------------
-
-SteamNetServer* GServerCallback = nullptr;
-
-void SvSteamNetConnectionStatusChangedCallback(SteamNetConnectionStatusChangedCallback_t *pInfo)
-{
-	if (GServerCallback)
-	{
-		GServerCallback->OnSteamNetConnectionStatusChanged(pInfo);
-	}
-}
-
-// -----------------------------------------------------------------------------
-
-void steam_net_update_server(void* P)
-{
-	Msg("- [SteamNetServer] Thread for steam network server is started");
-	Platform::SetCurrentThreadHighPriority();
-	SteamNetServer*	C = (SteamNetServer*)P;
-	C->Update();
-}
 
 // -----------------------------------------------------------------------------
 
@@ -86,8 +66,7 @@ bool SteamNetServer::CreateConnection(GameDescriptionData & game_descr, ServerCo
 	SteamNetworkingUtils()->SetGlobalConfigValueInt32(k_ESteamNetworkingConfig_SendBufferSize, 1024 * 1024);	
 
 	// SETUP CALLBACK
-	SteamNetworkingConfigValue_t opt;
-	opt.SetPtr(k_ESteamNetworkingConfig_Callback_ConnectionStatusChanged, (void*)SvSteamNetConnectionStatusChangedCallback);
+	const auto opt = Multiplayer::GnsCallbackDispatch::CallbackOption();
 
 	// CREATE LISTENER
 	m_hListenSock = m_pInterface->CreateListenSocketIP(bindServerAddress, 1, &opt);
@@ -115,17 +94,14 @@ bool SteamNetServer::CreateConnection(GameDescriptionData & game_descr, ServerCo
 	psNET_Port = connectOpt.dwServerPort;
 
 	Msg("- [SteamNetServer] created on port %d", bindServerAddress.m_port);
-	thread_spawn(steam_net_update_server, "snetwork-update-server", 0, this);
 
 	return true;
 }
 
 void SteamNetServer::DestroyConnection()
 {
-	// Pavel: дисконнект не должен исполняться, во время обработки колбека
-	xrCriticalSectionGuard lock(&csConnection);
-
 	m_server_password.clear();
+	m_bServerClientConnected = false;
 
 	if (m_pInterface == nullptr)
 	{
@@ -155,33 +131,9 @@ void SteamNetServer::DestroyConnection()
 
 // -----------------------------------------------------------------------------
 
-void SteamNetServer::Update()
+void SteamNetServer::PollIncomingMessages(u32 Budget)
 {
-	while (true)
-	{
-		csConnection.Enter();
-		if (!IsConnectionCreated())
-		{
-			csConnection.Leave();
-			return;
-		}
-		PollIncomingMessages();
-		PollConnectionStateChanges();
-
-		csConnection.Leave();
-		Sleep(1);
-	}
-}
-
-void SteamNetServer::PollConnectionStateChanges()
-{
-	GServerCallback = this;
-	m_pInterface->RunCallbacks();
-}
-
-void SteamNetServer::PollIncomingMessages()
-{
-	while (true)
+	for (u32 Index = 0; Index < Budget; ++Index)
 	{
 		if (m_pInterface == nullptr)
 			break;
@@ -193,6 +145,7 @@ void SteamNetServer::PollIncomingMessages()
 		{
 			break;
 		}
+		const xr_scope_exit Release([pIncomingMsg] { pIncomingMsg->Release(); });
 
 		void*	m_data = pIncomingMsg->m_pData;
 		u32	m_size = pIncomingMsg->m_cbSize;
@@ -215,81 +168,107 @@ void SteamNetServer::PollIncomingMessages()
 		{
 			MultipacketReciever::RecievePacket(m_data, m_size, m_sender);
 		}
-		pIncomingMsg->Release();
 	}
 }
 
-void SteamNetServer::ProcessConnection(SteamNetConnectionStatusChangedCallback_t * pInfo)
+void SteamNetServer::ProcessConnection(HSteamNetConnection Connection)
 {
-	if (std::find(m_players.begin(), m_players.end(), pInfo->m_hConn) != m_players.end())
+	using Multiplayer::LegacyAdmissionDecision;
+
+	SteamNetConnectionInfo_t Info{};
+	if (!m_pInterface->GetConnectionInfo(Connection, &Info) || Info.m_hListenSocket != m_hListenSock)
 	{
-		Msg("[SteamNetServer] Connection already exist");
 		return;
 	}
-
-	// Check to max players
-	if (m_players.size() >= m_max_players)
+	if (Info.m_eState != k_ESteamNetworkingConnectionState_Connecting)
 	{
-		m_pInterface->CloseConnection(pInfo->m_hConn, ESessionFull, nullptr, false);
-		return;
-	}
-	// Add to connection list
-	m_players.push_back(pInfo->m_hConn);
-
-	ip_address ip;
-	string64 ip_str;
-	GetIpAddress(pInfo->m_info, ip);
-	ip.to_buf(ip_str, sizeof(string64));
-
-	Msg("[SteamNetServer] Client connecting %s", ip_str);
-
-	// Check banned client
-	if (GetBannedClient(ip))
-	{
-		Msg("[SteamNetServer] Close connection. Player is banned [%s]", ip_str);
-		CloseConnection(pInfo->m_hConn, EPlayerBanned);
-		return;
-	}
-
-	// First connected client is SV_Client so if it is NULL then this server client tries to connect ;)
-	bool bServerClient = !SV_Client && pInfo->m_info.m_identityRemote.IsLocalHost();
-
-	if (!bServerClient && !m_ip_filter.is_ip_present(ip.m_data.data))
-	{
-		Msg("[SteamNetServer] Close connection. Ip address is not present [%s]", ip_str);
-		CloseConnection(pInfo->m_hConn, EUnknownReason);
-		return;
-	}
-
-	// Check server password
-	if (!bServerClient)
-	{
-		LPCSTR pServerPass = pInfo->m_info.m_identityRemote.GetGenericString();
-		if (pServerPass != NULL && xr_strcmp(m_server_password.c_str(), pServerPass) != 0)
+		if (Multiplayer::IsGnsPeerClosed(Info.m_eState))
 		{
-			Msg("[SteamNetServer] Close connection. Incorrect server password");
-			CloseConnection(pInfo->m_hConn, EInvalidPassword);
-			return;
+			m_pInterface->CloseConnection(Connection, EUnknownReason, nullptr, false);
+		}
+		return;
+	}
+
+	ip_address Address;
+	GetIpAddress(Info, Address);
+	const bool LocalHostCandidate = !SV_Client && Info.m_identityRemote.IsLocalHost();
+	const char* Password = Info.m_identityRemote.GetGenericString();
+	const Multiplayer::LegacyAdmissionChecks Checks{
+		m_players.size(),
+		m_max_players,
+		std::find(m_players.begin(), m_players.end(), Connection) != m_players.end(),
+		GetBannedClient(Address) != nullptr,
+		LocalHostCandidate,
+		LocalHostCandidate || m_ip_filter.is_ip_present(Address.m_data.data),
+		Password ? std::optional<xr_string_view>(Password) : std::nullopt,
+		m_server_password.c_str(),
+	};
+
+	enmDisconnectReason Rejection = EUnknownReason;
+	const char* Detail = nullptr;
+	switch (Multiplayer::CheckLegacyAdmission(Checks))
+	{
+	case LegacyAdmissionDecision::Duplicate:
+		return;
+	case LegacyAdmissionDecision::SessionFull:
+		Rejection = ESessionFull;
+		Detail = "Session full";
+		break;
+	case LegacyAdmissionDecision::Banned:
+		Rejection = EPlayerBanned;
+		Detail = "Player is banned";
+		break;
+	case LegacyAdmissionDecision::AddressDenied:
+		Detail = "IP address is not present";
+		break;
+	case LegacyAdmissionDecision::PasswordRejected:
+		Rejection = EInvalidPassword;
+		Detail = "Incorrect server password";
+		break;
+	case LegacyAdmissionDecision::Accept:
+		break;
+	}
+	if (Detail)
+	{
+		Msg("[SteamNetServer] Close connection. %s", Detail);
+		m_pInterface->CloseConnection(Connection, Rejection, nullptr, false);
+		return;
+	}
+
+	if (m_pInterface->AcceptConnection(Connection) != k_EResultOK ||
+		!m_pInterface->SetConnectionPollGroup(Connection, m_hPollGroup))
+	{
+		m_pInterface->CloseConnection(Connection, EUnknownReason, nullptr, false);
+		return;
+	}
+	m_players.push_back(Connection);
+}
+
+void SteamNetServer::RejectPendingConnection(HSteamNetConnection Connection)
+{
+	SteamNetConnectionInfo_t Info{};
+	if (m_pInterface->GetConnectionInfo(Connection, &Info) && Info.m_hListenSocket == m_hListenSock &&
+		(Info.m_eState == k_ESteamNetworkingConnectionState_Connecting || Multiplayer::IsGnsPeerClosed(Info.m_eState)))
+	{
+		m_pInterface->CloseConnection(Connection, ESessionFull, nullptr, false);
+	}
+}
+
+void SteamNetServer::RetireClosedConnections()
+{
+	xr_vector<HSteamNetConnection> Closed;
+	for (const auto Connection : m_players)
+	{
+		SteamNetConnectionInfo_t Info{};
+		if (!m_pInterface->GetConnectionInfo(Connection, &Info) || Multiplayer::IsGnsPeerClosed(Info.m_eState))
+		{
+			Closed.push_back(Connection);
 		}
 	}
-
-	// Try to accept the connection.
-	if (m_pInterface->AcceptConnection(pInfo->m_hConn) != k_EResultOK)
+	for (const auto Connection : Closed)
 	{
-		// This could fail.  If the remote host tried to connect, but then
-		// disconnected, the connection may already be half closed.  Just
-		// destroy whatever we have on our side.
-		Msg("[SteamNetServer] Can't accept connection.  (It was already closed?)");
-		CloseConnection(pInfo->m_hConn, EUnknownReason);
-		return;
-	}
-
-	// Assign the poll group
-	if (!m_pInterface->SetConnectionPollGroup(pInfo->m_hConn, m_hPollGroup))
-	{
-		Msg("[SteamNetServer] Close connection. Failed to set poll group");
-		CloseConnection(pInfo->m_hConn, EUnknownReason);
-		return;
+		CloseConnection(Connection, EUnknownReason);
+		DestroyCleint(Connection);
 	}
 }
 
@@ -361,75 +340,18 @@ void SteamNetServer::FinishConnection(SClientConnectData &cl_data)
 }
 
 
-void SteamNetServer::OnSteamNetConnectionStatusChanged(SteamNetConnectionStatusChangedCallback_t * pInfo)
-{
-	switch (pInfo->m_info.m_eState)
-	{
-	case k_ESteamNetworkingConnectionState_Connecting:
-		ProcessConnection(pInfo);
-		break;
-
-	case k_ESteamNetworkingConnectionState_ClosedByPeer:
-	case k_ESteamNetworkingConnectionState_ProblemDetectedLocally:
-		// Ignore if they were not previously connected.  (If they disconnected
-		// before we accepted the connection.)
-		if (pInfo->m_eOldState == k_ESteamNetworkingConnectionState_Connected)
-		{
-			if (pInfo->m_info.m_eState == k_ESteamNetworkingConnectionState_ProblemDetectedLocally)
-			{
-				Msg("[SteamNetServer] Connection %s problem detected locally, reason %d: %s\n",
-					pInfo->m_info.m_szConnectionDescription,
-					pInfo->m_info.m_eEndReason,
-					pInfo->m_info.m_szEndDebug
-				);
-			}
-			else
-			{
-				Msg("[SteamNetServer] Connection %s closed by peer, reason %d: %s\n",
-					pInfo->m_info.m_szConnectionDescription,
-					pInfo->m_info.m_eEndReason,
-					pInfo->m_info.m_szEndDebug
-				);
-			}
-
-			CloseConnection(pInfo->m_hConn, EUnknownReason);
-			DestroyCleint(pInfo->m_hConn);
-		}
-		break;
-
-	case k_ESteamNetworkingConnectionState_None:
-		// NOTE: We will get callbacks here when we destroy connections.  You can ignore these.
-		break;
-
-	case k_ESteamNetworkingConnectionState_Connected:
-		// NOTE: We will get a callback immediately after accepting the connection.
-		// Since we are the server, we can ignore this, it's not news to us.
-		break;
-
-	default:
-		Msg("! [SteamNetServer] unknown steam connection state %d", pInfo->m_info.m_eState);
-		break;
-	}
-}
-
-// -----------------------------------------------------------------------------
-
 #pragma region client disconnect
 
 void SteamNetServer::DisconnectAll()
 {
-	for (auto &connection : m_players)
-	{
-		m_pInterface->CloseConnection(connection, EServerShutdown, nullptr, false);
-		DestroyCleint(connection);
-	}
-	m_players.clear();
-
-	for (auto &cl_data : m_pending_clients)
-	{
-		m_pInterface->CloseConnection(cl_data.clientID.value(), EServerShutdown, nullptr, false);
-	}
+	xr_vector<HSteamNetConnection> Connections;
+	Connections.swap(m_players);
 	m_pending_clients.clear();
+	for (const auto Connection : Connections)
+	{
+		m_pInterface->CloseConnection(Connection, EServerShutdown, nullptr, false);
+		DestroyCleint(Connection);
+	}
 }
  
 bool SteamNetServer::DisconnectClient(IClient * C, LPCSTR Reason)
@@ -443,26 +365,14 @@ bool SteamNetServer::DisconnectClient(IClient * C, LPCSTR Reason)
 
 void SteamNetServer::CloseConnection(HSteamNetConnection connection, enmDisconnectReason nReason, LPCSTR sReason)
 {
-	auto player_it = std::find(m_players.cbegin(), m_players.cend(), connection);
-	if (player_it != m_players.cend())
+	if (std::erase(m_players, connection) != 0)
 	{
-		m_players.erase(player_it);
 		m_pInterface->CloseConnection(connection, nReason, sReason, false);
 	}
-
-	if (!m_pending_clients.empty())
+	std::erase_if(m_pending_clients, [connection](const SClientConnectData& Client)
 	{
-		auto pending_client_it = std::find_if(m_pending_clients.cbegin(), m_pending_clients.cend(),
-			[&](const auto &cl_data) {
-				return cl_data.clientID == connection;
-			}
-		);
-		if (pending_client_it != m_pending_clients.cend())
-		{
-			m_pending_clients.erase(pending_client_it);
-			m_pInterface->CloseConnection(connection, nReason, sReason, false);
-		}
-	}
+		return Client.clientID.value() == connection;
+	});
 }
 
 void SteamNetServer::DestroyCleint(ClientID clientId)

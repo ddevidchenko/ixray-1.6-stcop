@@ -35,6 +35,13 @@ bool CLevel::IsChecksumsEqual(u32 check_sum) const
 
 bool CLevel::synchronize_map_data()
 {
+	PollNetworkTransport();
+	if (!psNET_direct_connect && !IsDemoPlay() && net_isDisconnected())
+	{
+		connected_to_server = false;
+		net_Stop();
+		return false;
+	}
 	if (!OnClient() && !IsDemoSave())
 	{
 		deny_m_spawn		= false;
@@ -64,7 +71,6 @@ bool CLevel::synchronize_map_data()
 	
 	if (Status == Multiplayer::MapSyncStatus::Waiting)
 	{
-		Sleep(5);
 		return false;
 	}
 			

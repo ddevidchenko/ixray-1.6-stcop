@@ -20,6 +20,9 @@
 #include "ui/UIGameTutorial.h"
 #include "ui/UIPdaWnd.h"
 #include "../xrNetServer/NET_AuthCheck.h"
+#ifdef XR_MP_BUILD
+#include "../xrNetServer/LegacyGnsTransport.h"
+#endif
 #include "Actor.h"
 #include "holder_custom.h"
 
@@ -129,6 +132,7 @@ extern CUISequencer * g_tutorial2;
 void CLevel::net_Stop()
 {
 	Msg("- Disconnect");
+	ClientStartup.Cancel();
 	script_client_events.clear();
 
 	if(CurrentGameUI())
@@ -355,90 +359,124 @@ struct _NetworkProcessor	: public pureFrame
 
 pureFrame*	g_pNetProcessor	= &NET_processor;
 
-const int ConnectionTimeOut = 60000; //1 min
-
-bool CLevel::Connect2Server(const char* options)
+void CLevel::BeginClientConnection()
 {
-	NET_Packet					P;
-	m_bConnectResultReceived	= false	;
-	m_bConnectResult			= true	;
+	ClientStartup.Cancel();
+	connected_to_server = false;
+	m_bConnectResultReceived = false;
+	m_bConnectResult = true;
+	m_sConnectResult.clear();
 
-	if(!psNET_direct_connect)
+	const bool Direct = psNET_direct_connect;
+	if (!Direct)
 	{
-		xr_auth_strings_t	tmp_ignore;
-		xr_auth_strings_t	tmp_check;
-		fill_auth_check_params	(tmp_ignore, tmp_check);
-		FS.auth_generate		(tmp_ignore, tmp_check);
+		xr_auth_strings_t Ignore;
+		xr_auth_strings_t Check;
+		fill_auth_check_params(Ignore, Check);
+		FS.auth_generate(Ignore, Check);
 	}
 
-	if (!Connect(options))		return	false;
-	//---------------------------------------------------------------------------
-	if (psNET_direct_connect)
+	if ((Direct && !Server) || !Connect(*m_caClientOptions))
 	{
-		m_bConnectResultReceived = true;
+		FailClientConnection(Multiplayer::LegacyStartupStatus::TransportFailed);
+		return;
 	}
-	else
+
+	ClientStartup.Begin(Multiplayer::LegacyClientStartup::Clock::now(), Direct);
+	if (Direct)
 	{
-		size_t EndTime = CPU::GetTickCount() + ConnectionTimeOut;
-		while (!HasSessionName())
+		Server->create_direct_client();
+	}
+}
+
+void CLevel::PollNetworkTransport()
+{
+#ifdef XR_MP_BUILD
+	LegacyGnsTransport::Poll(*this, Server);
+#endif
+}
+
+bool CLevel::PollLoadingConnection()
+{
+	using Multiplayer::LegacyAuthentication;
+	using Multiplayer::LegacyStartupStatus;
+	const auto Prior = ClientStartup.GetStatus();
+	if (Prior == LegacyStartupStatus::Idle)
+	{
+		return true;
+	}
+
+	PollNetworkTransport();
+	if (Prior == LegacyStartupStatus::AwaitingAuthentication && !net_isDisconnected() && !net_isFails_Connect())
+	{
+		constexpr u32 AuthenticationPacketBudget = 64;
+		ClientReceive(AuthenticationPacketBudget);
+		if (Server)
 		{
-			Sleep(5);
-			size_t CurTime = CPU::GetTickCount();
-			if (CurTime > EndTime || net_isFails_Connect())
-			{
-				OnConnectRejected();
-				Disconnect();
-				return	false;
-			}
-		}
-
-		EndTime = CPU::GetTickCount() + ConnectionTimeOut;
-		while (!m_bConnectResultReceived)
-		{
-			ClientReceive();
-			Sleep(5);
-			if (Server)
-				Server->Update();
-
-			size_t CurTime = CPU::GetTickCount();
-			if (CurTime > EndTime)
-			{
-				NET_Packet	P;
-				P.B.count = 0;
-				P.r_pos = 0;
-
-				P.w_u8(0);
-				P.w_u8(0);
-				P.w_stringZ("Data verification failed. Cheater?");
-
-				OnConnectResult(&P);
-			}
-
-			if (net_isFails_Connect())
-			{
-				OnConnectRejected();
-				Disconnect();
-				return	false;
-			}
+			Server->Update();
 		}
 	}
 
-	Msg							("%c client : connection %s - <%s>", m_bConnectResult ?'*':'!', m_bConnectResult ? "accepted" : "rejected", m_sConnectResult.c_str());
-	if		(!m_bConnectResult) 
-	{
-		if(Server)
-		{
-			Server->Disconnect		();
-			xr_delete				(Server);
-		}
-		OnConnectRejected			();	
-		Disconnect					();
-		return false		;
+	const Multiplayer::LegacyStartupObservation Observation{
+		net_isDisconnected() || net_isFails_Connect(),
+		Prior == LegacyStartupStatus::AwaitingDescription && HasSessionName(),
+		!m_bConnectResultReceived ? LegacyAuthentication::Pending :
+			(m_bConnectResult ? LegacyAuthentication::Accepted : LegacyAuthentication::Rejected),
 	};
+	const auto Status = ClientStartup.Poll(Multiplayer::LegacyClientStartup::Clock::now(), Observation);
+	switch (Status)
+	{
+	case LegacyStartupStatus::AwaitingDescription:
+	case LegacyStartupStatus::AwaitingAuthentication:
+		return false;
+	case LegacyStartupStatus::Ready:
+		Msg("* client : connection accepted - <%s>", m_sConnectResult.c_str());
+		connected_to_server = true;
+		net_Syncronize();
+		ClientStartup.Cancel();
+		return true;
+	default:
+		FailClientConnection(Status);
+		return true;
+	}
+}
 
-	net_Syncronize();
-	return true;
-};
+void CLevel::FailClientConnection(Multiplayer::LegacyStartupStatus Status)
+{
+	using Multiplayer::LegacyStartupStatus;
+	if (Status == LegacyStartupStatus::AuthenticationExpired)
+	{
+		m_sConnectResult = "Data verification timed out";
+		if (auto* Menu = MainMenu())
+		{
+			Menu->SetErrorDialog(CMainMenu::ErrDifferentVersion);
+		}
+	}
+	else if (Status == LegacyStartupStatus::DescriptionExpired)
+	{
+		m_sConnectResult = "Game description timed out";
+	}
+	else if (Status == LegacyStartupStatus::TransportFailed)
+	{
+		m_sConnectResult = "Transport closed during startup";
+	}
+	Msg("! client : connection rejected - <%s>", m_sConnectResult.c_str());
+	StopClientStartup();
+}
+
+void CLevel::StopClientStartup()
+{
+	connected_to_server = false;
+	m_bConnectResult = false;
+	ClientStartup.Cancel();
+	OnConnectRejected();
+	Disconnect();
+	if (Server)
+	{
+		Server->Disconnect();
+		xr_delete(Server);
+	}
+}
 
 void CLevel::OnBuildVersionChallenge()
 {

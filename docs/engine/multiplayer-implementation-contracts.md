@@ -62,6 +62,12 @@ The transport owner captures the local admission identity from the receiving con
 
 Disconnect checks the local identity and releases that participant and any active body mapping together. It can arrive across a round change in the same session. Round advance preserves connection bindings and invalidates old-world packets. A new admission may reuse a freed handle with a newer connection epoch and its own participant ID. [Local connection identity](../../src/xrNetServer/Multiplayer/JoinTypes.h), [registry](../../src/xrGame/Multiplayer/CombatantRegistry.h).
 
+### Legacy loading and admission during endpoint migration
+
+The game owner advances the legacy connection in loading turns. A remote client waits up to 60 monotonic seconds for the game description, then receives a fresh 60-second authentication window. Direct single-player waits for the local registration result. A result processed on the deadline takes precedence over timer expiry. Transport loss takes precedence over either result. Authentication completes only after the legacy configuration gate and starts clock synchronization. Deadline handling uses the loading state directly.
+
+During loading and play, the owner pumps at most 64 native datagrams per endpoint before dispatching the shared GNS status queue. The callback records up to 64 distinct incoming requests. If that batch fills, GNS rejects additional arrivals as session full. After the callback returns, the owner retires closed connections, revalidates pending handles against the live listener, and then applies the legacy policy in order. Duplicate and capacity checks precede the ban list, address filter, and password. The hosted candidate remains subject to capacity and bans. The existing IP and password exceptions stay in the legacy policy. [Loading driver](../../src/xrGame/Level_network.cpp), [transport poll](../../src/xrNetServer/LegacyGnsTransport.cpp), [portable tests](../../src/test/multiplayer/portable/LegacyStartupTests.cpp).
+
 ### Legacy clock synchronization during endpoint migration
 
 The loading owner polls synchronization once per loading turn after a remote connection is accepted. During play the frame owner polls the same attempt for console resync. The owner cancels before releasing the client connection. Direct single-player completes without sending a probe.

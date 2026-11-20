@@ -600,6 +600,7 @@ void CLevel::OnFrame()
 	BulletManager().Update(Device.fTimeDelta);
 
 	// Client receive
+	PollNetworkTransport();
 	if (net_isDisconnected())
 	{
 		if (OnClient() && !IsGameTypeSingle())

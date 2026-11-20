@@ -1,5 +1,6 @@
 #pragma once
 
+#include "GnsCallbackDispatch.h"
 #include "GnsEndpoint.h"
 #include "TransportInbox.h"
 
@@ -84,12 +85,7 @@ public:
 	GnsCallbackPump(const GnsCallbackPump&) = delete;
 	GnsCallbackPump& operator=(const GnsCallbackPump&) = delete;
 
-	[[nodiscard]] static SteamNetworkingConfigValue_t CallbackOption() noexcept
-	{
-		SteamNetworkingConfigValue_t Option{};
-		Option.SetPtr(k_ESteamNetworkingConfig_Callback_ConnectionStatusChanged, reinterpret_cast<void*>(&Dispatch));
-		return Option;
-	}
+	[[nodiscard]] static SteamNetworkingConfigValue_t CallbackOption() noexcept { return GnsCallbackDispatch::CallbackOption(); }
 
 	[[nodiscard]] std::optional<ClientOptions> PrepareClient() noexcept
 	{
@@ -108,7 +104,7 @@ public:
 		{
 			return std::unexpected(GnsCallbackPollError::WrongThread);
 		}
-		if (g_Context)
+		if (GnsCallbackDispatch::IsPolling())
 		{
 			return std::unexpected(GnsCallbackPollError::AlreadyPolling);
 		}
@@ -132,9 +128,7 @@ public:
 		}
 
 		PollContext Context{*this, Server, Client};
-		g_Context = &Context;
-		Api.Run(*(Server ? Server->Endpoint.Sockets : Client->Endpoint.Sockets));
-		g_Context = nullptr;
+		GnsCallbackDispatch::Poll(*(Server ? Server->Endpoint.Sockets : Client->Endpoint.Sockets), &Context, Dispatch, Api.Run);
 		return Context.Result;
 	}
 
@@ -175,30 +169,21 @@ private:
 			Endpoint.PollGroup != k_HSteamNetPollGroup_Invalid && Endpoint.Connection != k_HSteamNetConnection_Invalid;
 	}
 
-	[[nodiscard]] static bool IsTerminal(ESteamNetworkingConnectionState State) noexcept
+	static void Dispatch(void* Target, const SteamNetConnectionStatusChangedCallback_t& Event) noexcept
 	{
-		return State == k_ESteamNetworkingConnectionState_ClosedByPeer || State == k_ESteamNetworkingConnectionState_ProblemDetectedLocally;
-	}
-
-	static void Dispatch(SteamNetConnectionStatusChangedCallback_t* Event) noexcept
-	{
-		if (!g_Context || !Event || Event->m_hConn == k_HSteamNetConnection_Invalid)
-		{
-			return;
-		}
-		auto& Context = *g_Context;
-		if (Event->m_info.m_hListenSocket != k_HSteamListenSocket_Invalid)
+		auto& Context = *static_cast<PollContext*>(Target);
+		if (Event.m_info.m_hListenSocket != k_HSteamListenSocket_Invalid)
 		{
 			if (Context.Server && Context.Result.Server == GnsEndpointEventStatus::Ok &&
-				Context.Server->Endpoint.Listener == Event->m_info.m_hListenSocket)
+				Context.Server->Endpoint.Listener == Event.m_info.m_hListenSocket)
 			{
-				Context.Result.Server = Context.Pump.HandleInbound(*Context.Server, *Event);
+				Context.Result.Server = Context.Pump.HandleInbound(*Context.Server, Event);
 			}
 		}
 		else if (Context.Client && Context.Result.Client == GnsEndpointEventStatus::Ok &&
-			Context.Client->Endpoint.Connection == Event->m_hConn)
+			Context.Client->Endpoint.Connection == Event.m_hConn)
 		{
-			Context.Result.Client = Context.Pump.HandleOutbound(*Context.Client, *Event);
+			Context.Result.Client = Context.Pump.HandleOutbound(*Context.Client, Event);
 		}
 	}
 
@@ -212,7 +197,7 @@ private:
 		}
 
 		const auto& Snapshot = Event.m_info;
-		if (IsTerminal(Snapshot.m_eState) && IsTerminal(Current.m_eState) && Snapshot.m_nUserData == Current.m_nUserData)
+		if (IsGnsPeerClosed(Snapshot.m_eState) && IsGnsPeerClosed(Current.m_eState) && Snapshot.m_nUserData == Current.m_nUserData)
 		{
 			const bool Posted = Current.m_nUserData <= 0 || Route.Events.PushDisconnected(
 				{Event.m_hConn, static_cast<u64>(Current.m_nUserData)}, static_cast<u32>(Snapshot.m_eEndReason)).has_value();
@@ -253,7 +238,7 @@ private:
 			return GnsEndpointEventStatus::Ok;
 		}
 
-		if (IsTerminal(Snapshot.m_eState) && IsTerminal(Current.m_eState))
+		if (IsGnsPeerClosed(Snapshot.m_eState) && IsGnsPeerClosed(Current.m_eState))
 		{
 			ClientState = OutboundState::Closed;
 			return Route.Events.PushDisconnected(TrackedClient, static_cast<u32>(Snapshot.m_eEndReason)) ?
@@ -278,7 +263,6 @@ private:
 			GnsEndpointEventStatus::Ok : GnsEndpointEventStatus::ReceiveGroupFailed;
 	}
 
-	inline static thread_local PollContext* g_Context = nullptr;
 	const std::thread::id Owner = std::this_thread::get_id();
 	const GnsCallbackApi Api;
 	s64 LastGeneration = 0;

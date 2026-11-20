@@ -51,20 +51,7 @@ bool	CLevel::net_start_client1				()
 bool	CLevel::net_start_client2				()
 {
 	PROF_EVENT("CLevel::net_start_client2");
-	if(psNET_direct_connect)
-	{
-		Server->create_direct_client();
-		//offline account creation
-		m_bConnectResultReceived = false;
-		while (!m_bConnectResultReceived)
-		{ 
-			ClientReceive	();
-			Server->Update	();
-		}
-	}
-
-	connected_to_server = Connect2Server(*m_caClientOptions);
-
+	BeginClientConnection();
 	return true;
 }
 bool CLevel::PollLoadingClockSync()
@@ -75,6 +62,7 @@ bool CLevel::PollLoadingClockSync()
 	}
 
 	using Multiplayer::LegacyClockSyncStatus;
+	PollNetworkTransport();
 	const auto Status = PollClockSync();
 	if (!net_isDisconnected())
 	{
@@ -89,9 +77,7 @@ bool CLevel::PollLoadingClockSync()
 	}
 
 	Msg("! Client clock synchronization failed during connection");
-	connected_to_server = false;
-	OnConnectRejected();
-	Disconnect();
+	StopClientStartup();
 	return true;
 }
 
@@ -183,13 +169,6 @@ bool CLevel::net_start_client4()
 		if (psDeviceFlags.test(mtNetwork))	Device.seqFrameMT.Add(g_pNetProcessor, REG_PRIORITY_HIGH + 2);
 		else								Device.seqFrame.Add(g_pNetProcessor, REG_PRIORITY_LOW - 2);
 
-		if (!psNET_direct_connect)
-		{
-			// Waiting for connection/configuration completition
-			CTimer	timer_sync;	timer_sync.Start();
-			while (!net_isCompleted_Connect())	Sleep(5);
-			Msg("* connection sync: %d ms", timer_sync.GetElapsed_ms());
-		}
 	}
 	return true;
 }

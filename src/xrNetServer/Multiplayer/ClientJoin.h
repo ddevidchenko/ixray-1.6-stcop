@@ -1,21 +1,10 @@
 #pragma once
 
-#include "JoinTypes.h"
-#include "../../xrCore/_stl_extensions_nonalloc.h"
-
-#include <expected>
+#include "BoundMessage.h"
 
 namespace Multiplayer::Wire
 {
-enum class ClientJoinError
-{
-	InvalidEnvelope,
-	WrongMessageType,
-	UnboundJoin,
-	TruncatedPayload,
-	TrailingPayload,
-	OutputTooSmall,
-};
+using ClientJoinError = BoundMessageError;
 
 struct ClientMapLoaded
 {

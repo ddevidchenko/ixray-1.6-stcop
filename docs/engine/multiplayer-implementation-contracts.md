@@ -73,6 +73,9 @@ The following tags are assigned for version one. Additional tags become valid as
 | `AdmissionReject` | `0x03` |
 | `ClientMapLoaded` | `0x04` |
 | `ReadyAcknowledgement` | `0x05` |
+| `BaselineBegin` | `0x06` |
+| `BaselineChunk` | `0x07` |
+| `BaselineEnd` | `0x08` |
 
 The envelope codec checks the complete message size and framing. Payload decoders and the admission state machine validate fields and identity before dispatch. The returned payload view borrows the receive buffer for the duration of decoding. [Codec](../../src/xrNetServer/Multiplayer/WireEnvelope.h), [independent golden frames](../../src/test/multiplayer/portable/WireEnvelopeTests.cpp).
 
@@ -183,6 +186,27 @@ Both messages travel from the client on the reliable control stream. The envelop
 | State-event watermark | `u32` |
 
 The decoders require the exact payload size and return owned values. Bind a decoded confirmation to the tracker for the receiving transport connection. `PeerJoin` checks the current identity and compares the acknowledgement with the server-declared barrier. [Codec](../../src/xrNetServer/Multiplayer/ClientJoin.h), [independent datagrams and readiness handoff](../../src/test/multiplayer/portable/ClientJoinTests.cpp).
+
+### Initial-state baseline transfer
+
+The server sends `BaselineBegin`, `BaselineChunk`, and `BaselineEnd` on the reliable control/state stream. The envelope carries the message sequence and the receiving peer's bound session, world epoch, and connection epoch. World epoch zero is valid.
+
+`BaselineBegin` has a 20-byte payload in this order.
+
+| Payload field | Encoding |
+| --- | --- |
+| Baseline ID | `u32` |
+| Capture tick | `u32` |
+| State-event watermark | `u32` |
+| Total baseline-data byte count | `u32` |
+| Record count | `u16` |
+| Chunk count | `u16` |
+
+A declaration allows at most 4 MiB, 8,192 records, and 4,096 chunks. The declared chunk count equals the total byte count divided by 1,024 and rounded up. An empty baseline has zero bytes, records, and chunks. Each encoded record occupies at least one byte, and a nonempty baseline declares at least one record.
+
+`BaselineChunk` carries a `u32` baseline ID, a zero-based `u16` chunk index from 0 through 4,095, and 1–1,024 opaque baseline-data bytes. The envelope length delimits the data. In a declared transfer, the encoded record stream is split at successive 1,024-byte offsets. The final chunk carries the remaining bytes. `BaselineEnd` carries the `u32` baseline ID alone.
+
+Decoded chunk data borrows the datagram. The transfer owner checks the identity and baseline ID against the active declaration, checks each chunk against its declared offset and length, and verifies completeness and the encoded records before publishing a baseline. Aggregate staging limits and readiness remain with the transfer and world owners. [Codec](../../src/xrNetServer/Multiplayer/BaselineTransfer.h), [independent datagrams](../../src/test/multiplayer/portable/BaselineTransferTests.cpp).
 
 ### Pending admission decision
 

@@ -19,6 +19,9 @@ enum class MessageType : u8
 	AdmissionReject = 0x03,
 	ClientMapLoaded = 0x04,
 	ReadyAcknowledgement = 0x05,
+	BaselineBegin = 0x06,
+	BaselineChunk = 0x07,
+	BaselineEnd = 0x08,
 };
 
 enum class EnvelopeError

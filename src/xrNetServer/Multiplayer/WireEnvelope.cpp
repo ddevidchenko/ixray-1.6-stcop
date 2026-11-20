@@ -31,6 +31,9 @@ static bool IsSupportedType(MessageType Type) noexcept
 	case MessageType::AdmissionReject:
 	case MessageType::ClientMapLoaded:
 	case MessageType::ReadyAcknowledgement:
+	case MessageType::BaselineBegin:
+	case MessageType::BaselineChunk:
+	case MessageType::BaselineEnd:
 		return true;
 	}
 	return false;

@@ -1,5 +1,6 @@
 #include "PendingAdmission.h"
 #include "ClientHello.h"
+#include "WireEnvelope.h"
 
 namespace Multiplayer
 {
@@ -11,7 +12,7 @@ PendingAdmission::PendingAdmission(Clock::time_point Expiration) noexcept : Dead
 
 std::optional<AdmissionRejectReason> PendingAdmission::Expire(Clock::time_point Now) noexcept
 {
-	if (State == PendingAdmissionState::Closing || Now < Deadline)
+	if ((State != PendingAdmissionState::AwaitingHello && State != PendingAdmissionState::AwaitingSlot) || Now < Deadline)
 	{
 		return std::nullopt;
 	}
@@ -66,7 +67,51 @@ std::expected<VerifiedHello, PendingAdmissionFailure> PendingAdmission::ReceiveH
 		return Reject(AdmissionRejectReason::CredentialsRejected);
 	}
 
+	VerifiedContent = Hello->Content;
+	VerifiedRules = Hello->Rules;
 	State = PendingAdmissionState::AwaitingSlot;
 	return VerifiedHello{Hello->MessageSequence, Hello->DisplayName};
+}
+
+std::expected<void, AdmissionCompletionError> PendingAdmission::Complete(const Wire::ServerWelcome& Welcome,
+	IAdmissionSlotReservation& Slot, IAdmissionWelcomeQueue& Queue, Clock::time_point Now) noexcept
+{
+	if (Expire(Now))
+	{
+		return std::unexpected(AdmissionCompletionError::AdmissionTimedOut);
+	}
+	if (State != PendingAdmissionState::AwaitingSlot)
+	{
+		return std::unexpected(AdmissionCompletionError::InvalidState);
+	}
+
+	const auto Close = [this](AdmissionCompletionError Error)
+	{
+		State = PendingAdmissionState::Closing;
+		return std::unexpected(Error);
+	};
+	if (Welcome.ContentId != VerifiedContent || Welcome.RulesId != VerifiedRules)
+	{
+		return Close(AdmissionCompletionError::InvalidWelcome);
+	}
+	xr_array<u8, Wire::MaxMessageSize> Packet;
+	const auto Size = Wire::EncodeServerWelcome(Welcome, Packet);
+	if (!Size)
+	{
+		return Close(AdmissionCompletionError::InvalidWelcome);
+	}
+	if (!Slot.TryReserve())
+	{
+		return Close(AdmissionCompletionError::ServerFull);
+	}
+	if (!Queue.TryQueue(xr_span(Packet).first(*Size)))
+	{
+		Slot.Cancel();
+		return Close(AdmissionCompletionError::WelcomeQueueFailed);
+	}
+
+	Slot.Commit();
+	State = PendingAdmissionState::Admitted;
+	return {};
 }
 }

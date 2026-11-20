@@ -169,9 +169,17 @@ All other reason bytes are reserved and rejected. Client presentation maps these
 
 The connection owner creates one pending tracker with an absolute monotonic deadline, initially 10 seconds after connect. A hello received at or after the deadline expires before validation. The same deadline applies while waiting for a slot. Expiry reports a reason once when the peer enters `Closing`.
 
-The tracker validates the complete unbound hello and compares build, content, and rules IDs in that order against server requirements. A protected server requires nonempty credentials and calls its verifier with the borrowed bytes. An open server skips credential verification. The first verified hello produces a slot request carrying the message sequence and borrowed display name. The slot owner reserves capacity and assigns the connection identity before it can send a welcome.
+The tracker validates the complete unbound hello and compares build, content, and rules IDs in that order against server requirements. A protected server requires nonempty credentials and calls its verifier with the borrowed bytes. An open server skips credential verification. The first verified hello produces a slot request carrying the message sequence and borrowed display name. The connection owner supplies the assigned identity for the welcome and the roster supplies the reservation.
 
 The peer remains `AwaitingSlot` if another hello arrives before expiry. Such a hello yields `InvalidState` for diagnostics and leaves the original request intact. The initial terminal failure tells the caller to send one rejection. Calls after `Closing` yield `InvalidState` without another rejection. [Portable tracker](../../src/xrNetServer/Multiplayer/PendingAdmission.h), [deterministic tests](../../src/test/multiplayer/portable/PendingAdmissionTests.cpp).
+
+### Admission completion
+
+Complete the handoff on one serialized owner turn while the peer is `AwaitingSlot`. The owner supplies current welcome settings and the server-assigned session, round and connection identities. The tracker checks the initial deadline first, then verifies that the welcome carries the content and rules IDs from the accepted hello and can be encoded.
+
+The roster can provisionally hold one eligible slot. The reliable welcome queue copies the encoded packet while the reservation is held. Successful queueing commits the reservation and moves the peer to `Admitted`. The roster owns that committed reservation through loading and releases it on disconnect or later failure. A failed queue operation publishes no packet and cancels the hold. Adapter calls stay on the owning turn without reentering admission. An eventual transport failure after successful queueing follows normal disconnect cleanup.
+
+No eligible slot yields `ServerFull`; expiry yields `AdmissionTimedOut` once. These reasons can be sent to the peer. Invalid welcome configuration and local queue failure close the connection with a local diagnostic. Repeated completion after a terminal transition returns `InvalidState` without another reservation or response. After `Admitted`, the initial deadline ends and loading/readiness have their own lifecycle. [Portable handoff tests](../../src/test/multiplayer/portable/AdmissionCompletionTests.cpp), [authoritative roster policy](multiplayer-bot-ai-design.md#population-joining-and-lifecycle).
 
 ### Input and discrete actions
 

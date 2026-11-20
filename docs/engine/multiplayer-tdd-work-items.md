@@ -1,6 +1,6 @@
 # Multiplayer TDD work items
 
-The operator reports that W0 passed on Windows. The exact revision and result bundle are pending attachment. MP-010, MP-011a, MP-011b, MP-012, MP-020a, MP-020b, MP-020c, MP-020d, MP-020e and MP-022a have macOS evidence.
+The operator reports that W0 passed on Windows. The exact revision and result bundle are pending attachment. MP-010, MP-011a, MP-011b, MP-012, MP-020a, MP-020b, MP-020c, MP-020d, MP-020e, MP-022a and MP-022b have macOS evidence.
 
 Implements the [modern multiplayer plan](multiplayer-modernization-plan.md): 32 total human/bot combatants, simple DM, direct IP over GameNetworkingSockets first, human-like bots, authoritative simulation, prediction, lag compensation, and immediate local effects. Windows x64 is the initial runtime target; macOS remains usable for source work and portable tests. Hitscan, ballistics, and hybrid gunplay remain alternatives until the comparison gate.
 
@@ -215,6 +215,12 @@ The [peer runbook](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch
 - Use the portable wire codecs to validate a complete unbound hello, compare server-supplied compatibility IDs, and apply a trusted credential verifier. The tracker advances through `AwaitingHello`, `AwaitingSlot`, or `Closing` using the owner's monotonic deadline. A terminal transition produces one rejection. A later hello leaves the existing slot request intact. [Pending admission contract](multiplayer-implementation-contracts.md#pending-admission-decision), [tracker](../../src/xrNetServer/Multiplayer/PendingAdmission.h).
 - **Mac checks passed / Windows pending.** The initial compatible hello failed before implementation. The reviewed tests cover independent peers, wire and compatibility failures, credential policy, duplicates, and exact deadline ordering with literal timestamps. Slot allocation, welcome dispatch, loading, readiness, and engine integration are later slices. [Tests](../../src/test/multiplayer/portable/PendingAdmissionTests.cpp).
 - [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) collects a passing `pending-admission.xml` on Windows.
+
+#### MP-022b — Reserve a slot and queue the welcome
+
+- Complete the portable handoff on the owner turn. Validate the bound welcome before touching capacity, queue reliably while a slot is held, and commit admission only when the queue accepts the packet. A rejected queue operation cancels the reservation. The connection owner supplies identities and the roster adapter owns eligibility, bot replacement, and committed-slot cleanup. [Admission completion contract](multiplayer-implementation-contracts.md#admission-completion).
+- **Mac checks passed / Windows pending.** The initial welcome failed before implementation. The reviewed tests cover competing peers, capacity reuse, queue rollback, duplicate completion, expiry at the exact deadline, unassigned identities, and inconsistent welcome settings. Pending-peer limits, loading and engine integration are later slices. [Tests](../../src/test/multiplayer/portable/AdmissionCompletionTests.cpp).
+- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) collects a passing `admission-completion.xml` on Windows.
 
 ### MP-023 — Separate connection, participant, entity, and life identity
 

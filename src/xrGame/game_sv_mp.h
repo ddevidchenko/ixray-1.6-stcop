@@ -39,6 +39,8 @@ protected:
 	void RecordParticipantKill(game_PlayerState* Killer, game_PlayerState& Victim, u16 KillerBodyId,
 		u16 WeaponId, KILL_TYPE KillType, SPECIAL_KILL_TYPE SpecialKill);
 
+	bool W1StalkerNavigation = false;
+
 	//список трупов для удаления
 	using CORPSE_LIST = xr_deque<u16>;
 	using CORPSE_LIST_it = CORPSE_LIST::iterator;
@@ -115,6 +117,7 @@ public:
 									game_sv_mp				();
 				virtual				~game_sv_mp				();
 	virtual		void				Create					(shared_str &options);
+	[[nodiscard]] bool UsesW1StalkerNavigation() const noexcept { return W1StalkerNavigation; }
 	virtual		void				OnPlayerConnect			(ClientID id_who);
 	virtual		void				OnPlayerDisconnect		(ClientID id_who, LPSTR Name, u16 GameID);
 	virtual		bool				OnTouch					(u16 eid_who, u16 eid_target, bool bForced = false){return true;};			// true=allow ownership, false=denied

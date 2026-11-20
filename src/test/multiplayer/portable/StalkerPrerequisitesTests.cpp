@@ -1,5 +1,6 @@
 #include "../../../xrGame/Multiplayer/StalkerNavigation.h"
 #include "../../../xrGame/Multiplayer/StalkerAuthority.h"
+#include "../../../xrGame/Multiplayer/W1NavigationOption.h"
 
 #include <cstdio>
 #include <map>
@@ -115,6 +116,27 @@ bool RunNavigation()
 	if (Passed)
 	{
 		std::puts("Stalker navigation checks passed");
+	}
+	return Passed;
+}
+
+bool RunW1Option()
+{
+	using StalkerNavigation::W1Requested;
+	bool Passed = Expect("ordinary dedicated DM leaves W1 disabled", !W1Requested(true, "arena/deathmatch/maxplayers=32"));
+	Passed &= Expect("dedicated DM accepts a final opt-in", W1Requested(true, "arena/deathmatch/w1_stalker_navigation=1"));
+	Passed &= Expect("dedicated DM accepts an opt-in between options", W1Requested(true, "arena/deathmatch/w1_stalker_navigation=1/public=0"));
+	Passed &= Expect("other processes or game types cannot opt in", !W1Requested(false, "arena/deathmatch/w1_stalker_navigation=1"));
+	Passed &= Expect("longer option values are rejected", !W1Requested(true, "arena/deathmatch/w1_stalker_navigation=10"));
+	Passed &= Expect("another option cannot opt in by sharing the suffix", !W1Requested(true, "arena/deathmatch/xw1_stalker_navigation=1"));
+	Passed &= Expect("explicit zero is disabled", !W1Requested(true, "arena/deathmatch/w1_stalker_navigation=0"));
+	Passed &= Expect("a map name is not an option", !W1Requested(true, "w1_stalker_navigation=1/deathmatch"));
+	Passed &= Expect("contradictory values cannot opt in", !W1Requested(true, "arena/deathmatch/w1_stalker_navigation=0/w1_stalker_navigation=1"));
+	Passed &= Expect("duplicate opt-ins are ambiguous", !W1Requested(true, "arena/deathmatch/w1_stalker_navigation=1/w1_stalker_navigation=1"));
+	Passed &= Expect("a bare option cannot be combined with an opt-in", !W1Requested(true, "arena/deathmatch/w1_stalker_navigation/w1_stalker_navigation=1"));
+	if (Passed)
+	{
+		std::puts("W1 navigation option checks passed");
 	}
 	return Passed;
 }

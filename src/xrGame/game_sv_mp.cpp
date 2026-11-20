@@ -1,5 +1,6 @@
 #include "StdAfx.h"
 #include "game_sv_mp.h"
+#include "Multiplayer/W1NavigationOption.h"
 #include "xrServer.h"
 #include "xrMessages.h"
 #include "xrServer_Object_Base.h"
@@ -538,7 +539,14 @@ void game_sv_mp::Create (shared_str &options)
 
 	string_path file_name;
 
-	if (FS.exist(file_name, "$level$", "alife", ".spawn"))
+#ifndef SHIPPING_BUILD
+	W1StalkerNavigation = StalkerNavigation::W1Requested(g_dedicated_server && Type() == eGameIDDeathmatch, *options);
+#endif
+	if (W1StalkerNavigation)
+	{
+		Msg("* W1: using graph-only stalker navigation");
+	}
+	else if (FS.exist(file_name, "$level$", "alife", ".spawn"))
 	{
 		m_alife_simulator = new CALifeSimulator(&server(), &options);
 	}

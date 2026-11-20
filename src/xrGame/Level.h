@@ -139,9 +139,10 @@ protected:
 	u32							m_dwRPC;	//ReceivedPacketsCount
 	u32							m_dwRPS;	//ReceivedPacketsSize
 	//---------------------------------------------
-	IReader						*m_chunk;
-	IReader						*spawn;
-	IGameGraph					*m_game_graph;
+	// The multiplayer game graph borrows its chunk and the chunk can borrow the file.
+	xr_unique_ptr<IReader> MultiplayerSpawnFile;
+	xr_unique_ptr<IReader> MultiplayerGraphChunk;
+	[[nodiscard]] const char* LoadMultiplayerGraph(const char* RequiredNavigationLevel);
 
 	xr_deque<NET_Packet>		script_client_events;
 

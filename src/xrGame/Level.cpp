@@ -201,10 +201,6 @@ CLevel::CLevel():
 	m_lzo_working_memory			= nullptr;
 	m_lzo_working_buffer			= nullptr;
 
-	m_game_graph = 0;
-	m_chunk = 0;
-	spawn = 0;
-
 	GCondlistGC = new CCondlistGarbageCollector;
 
 	WorldSpaceUIManager = new CUIWorldSpaceManager();
@@ -304,7 +300,7 @@ CLevel::~CLevel()
 	ai().unload					();
 
 	//-----------------------------------------------------------
-	if (!IsGameTypeSingle())
+	if (MultiplayerGraphChunk || !IsGameTypeSingle())
 	{
 		Msg("game graph destroyed");
 		ai().destroy_game_graph();
@@ -352,9 +348,6 @@ CLevel::~CLevel()
 	deinit_compression();
 
 	xr_delete(GCondlistGC);
-	xr_delete(m_game_graph);
-	m_chunk->close();
-	FS.r_close(spawn);
 
 	xr_delete(WorldSpaceUIManager);
 }

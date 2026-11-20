@@ -113,6 +113,7 @@ namespace StalkerPrerequisitesTests
 {
 bool RunNavigation();
 bool RunAuthority();
+bool RunW1Option();
 }
 
 namespace SerialSequenceTests
@@ -248,6 +249,10 @@ int main(int ArgumentCount, char** Arguments)
 	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--stalker-authority") == 0)
 	{
 		return StalkerPrerequisitesTests::RunAuthority() ? EXIT_SUCCESS : EXIT_FAILURE;
+	}
+	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--w1-navigation-option") == 0)
+	{
+		return StalkerPrerequisitesTests::RunW1Option() ? EXIT_SUCCESS : EXIT_FAILURE;
 	}
 	if (ArgumentCount != 1)
 	{

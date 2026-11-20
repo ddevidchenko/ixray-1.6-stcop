@@ -10,18 +10,20 @@ void LegacyGnsTransport::Poll(SteamNetClient& Client, SteamNetServer* Server)
 	using Multiplayer::GnsCallbackDispatch;
 	using Multiplayer::IsGnsPeerClosed;
 
-	auto* Sockets = Client.m_pInterface ? Client.m_pInterface : (Server ? Server->m_pInterface : nullptr);
+	const auto ClientView = Client.Endpoint.Get();
+	const auto ServerView = Server ? Server->Endpoint.Get() : Multiplayer::GnsEndpointView{};
+	auto* Sockets = ClientView.Sockets ? ClientView.Sockets : ServerView.Sockets;
 	if (!Sockets || GnsCallbackDispatch::IsPolling())
 	{
 		return;
 	}
 
 	constexpr u32 PacketBudget = 64;
-	if (Server && Server->m_pInterface)
+	if (ServerView.Sockets)
 	{
 		Server->PollIncomingMessages(PacketBudget);
 	}
-	if (Client.m_pInterface)
+	if (ClientView.Sockets)
 	{
 		Client.PollIncomingMessages(PacketBudget);
 	}
@@ -29,6 +31,7 @@ void LegacyGnsTransport::Poll(SteamNetClient& Client, SteamNetServer* Server)
 	struct CallbackBatch
 	{
 		SteamNetServer* Server;
+		HSteamListenSocket Listener;
 		HSteamNetConnection Client;
 		s64 ClientGeneration;
 		Multiplayer::LegacyAdmissionBatch Arrivals;
@@ -36,14 +39,15 @@ void LegacyGnsTransport::Poll(SteamNetClient& Client, SteamNetServer* Server)
 		std::optional<SteamNetConnectionStatusChangedCallback_t> Closed{};
 	};
 	xr_array<u32, 64> Requests;
-	CallbackBatch Batch{Server, Client.m_hConnection, Client.ConnectionGeneration, Multiplayer::LegacyAdmissionBatch(Requests)};
+	CallbackBatch Batch{ServerView.Sockets ? Server : nullptr, ServerView.Listener, ClientView.Connection, Client.ConnectionGeneration,
+		Multiplayer::LegacyAdmissionBatch(Requests)};
 	GnsCallbackDispatch::Poll(*Sockets, &Batch, [](void* Target, const SteamNetConnectionStatusChangedCallback_t& Event) noexcept
 	{
 		auto& Batch = *static_cast<CallbackBatch*>(Target);
 		const auto& Info = Event.m_info;
 		if (Info.m_hListenSocket != k_HSteamListenSocket_Invalid)
 		{
-			if (Batch.Server && Info.m_hListenSocket == Batch.Server->m_hListenSock &&
+			if (Batch.Server && Info.m_hListenSocket == Batch.Listener &&
 				Info.m_eState == k_ESteamNetworkingConnectionState_Connecting && !Batch.Arrivals.TryRecord(Event.m_hConn))
 			{
 				Batch.Server->RejectPendingConnection(Event.m_hConn);
@@ -64,7 +68,7 @@ void LegacyGnsTransport::Poll(SteamNetClient& Client, SteamNetServer* Server)
 		}
 	});
 
-	if (Server && Server->m_pInterface)
+	if (Server && Server->Endpoint.Get().Sockets)
 	{
 		Server->RetireClosedConnections();
 		for (const auto Handle : Batch.Arrivals.GetRequests())
@@ -73,12 +77,14 @@ void LegacyGnsTransport::Poll(SteamNetClient& Client, SteamNetServer* Server)
 		}
 	}
 
-	if (Client.m_pInterface && !Client.net_isDisconnected() && (Batch.Closed || Batch.Connected))
+	const auto CurrentClient = Client.Endpoint.Get();
+	if (CurrentClient.Sockets && Client.ConnectionGeneration == Batch.ClientGeneration && !Client.net_isDisconnected() &&
+		(Batch.Closed || Batch.Connected))
 	{
 		const auto& Event = Batch.Closed ? *Batch.Closed : *Batch.Connected;
 		SteamNetConnectionInfo_t Current{};
-		if (Client.m_pInterface->GetConnectionInfo(Client.m_hConnection, &Current) && Current.m_hListenSocket == k_HSteamListenSocket_Invalid &&
-			Current.m_nUserData == Client.ConnectionGeneration &&
+		if (Event.m_hConn == CurrentClient.Connection && CurrentClient.Sockets->GetConnectionInfo(CurrentClient.Connection, &Current) &&
+			Current.m_hListenSocket == k_HSteamListenSocket_Invalid && Current.m_nUserData == Batch.ClientGeneration &&
 			Current.m_eState == Event.m_info.m_eState)
 		{
 			Client.ApplyConnectionStatus(Event);

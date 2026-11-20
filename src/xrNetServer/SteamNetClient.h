@@ -2,10 +2,7 @@
 #include "BaseClient.h"
 #include "LegacyGnsTransport.h"
 
-#pragma warning(push)
-#pragma warning(disable:4995)
-#include <steam/steamnetworkingsockets.h>
-#pragma warning(pop)
+#include "GnsProcessRuntime.h"
 
 class XRNETSERVER_API SteamNetClient : public BaseClient
 {
@@ -13,15 +10,13 @@ class XRNETSERVER_API SteamNetClient : public BaseClient
 
 private:
 	xrCriticalSection			csConnection;
-	ISteamNetworkingSockets*	m_pInterface = nullptr;
-	HSteamNetConnection			m_hConnection = k_HSteamNetConnection_Invalid;
+	Multiplayer::GnsProcessEndpoint Endpoint;
 	s64 ConnectionGeneration = 0;
 
 	xr_string m_user_name = "";
 	xr_string m_user_pass = "";
 
 	bool m_bWasConnected = false;
-	bool m_bServerClient = false;
 	bool m_bGameDescriptionRecieved = false;
 
 public:
@@ -40,7 +35,7 @@ private:
 	void PollIncomingMessages(u32 Budget);
 
 protected:
-	virtual bool	IsConnectionInit() override { return m_pInterface != nullptr; }
+	virtual bool	IsConnectionInit() override { return Endpoint.Get().Sockets != nullptr; }
 
 	virtual bool	CreateConnection(ClientConnectionOptions& opt) override;
 	virtual void	DestroyConnection() override;

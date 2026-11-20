@@ -314,7 +314,7 @@ The [peer runbook](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch
 #### MP-024a — Protect the process runtime with endpoint leases
 
 - Give the GNS owner one serialized start/shutdown path and movable endpoint leases. Preserve the initial process identity while leased. Release the library after the last lease. [Runtime](../../src/xrNetServer/Multiplayer/GnsRuntime.h).
-- **Mac checks passed / Windows pending.** Real GNS loopback exercises the shared interface after a server lease releases, reversed close order, move assignment, and repeated startup. Injected failures check init failure, missing interface, and retry. The live endpoint switch depends on owned receive shutdown and callback routing under MP-025.
+- **Mac checks passed / Windows pending.** Real GNS loopback exercises the shared interface after a server lease releases, reversed close order, move assignment, and repeated startup. Injected failures check init failure, missing interface, and retry. MP-025e installs the same process runtime in the live SteamNet endpoints.
 - [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) records a passing `gns-loopback.xml` on Windows with the shared runtime.
 
 ### MP-025 — Own endpoint resources and unwind every creation failure
@@ -328,7 +328,7 @@ The [peer runbook](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch
 
 - Acquire an endpoint lease before creating a listener and poll group or a client connection. A failed open releases acquired handles and the lease. Close requests worker stop, joins it, and then releases its GNS handles. [Endpoint owner](../../src/xrNetServer/Multiplayer/GnsEndpoint.h).
 - **Mac checks passed / Windows pending.** The GNS fixture checks failure at each native creation step, worker creation failure, duplicate open, repeated close, and shutdown while a worker is running. It also connects the owned endpoints over loopback and verifies that the client lease survives server close.
-- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) records the endpoint cases in `gns-loopback.xml` on Windows. The legacy receive path still needs the callback ownership refactor before switching to these endpoints.
+- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) records the endpoint cases in `gns-loopback.xml` on Windows. MP-025e uses the owner-polled endpoint opens in the live legacy transport. The worker-backed mode remains available for version-one transport.
 
 #### MP-025b — Advance legacy clock synchronization from the loading and frame owner
 
@@ -347,6 +347,12 @@ The [peer runbook](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch
 - **Depends on:** MP-025b, MP-025c. Poll description and authentication as loading steps with independent deadlines. Direct startup waits for the local registration result without a native connection. A native callback records incoming handles. The owner then revalidates the connection, releases closed peers, and applies the existing capacity and access policy before native acceptance. [Startup state](../../src/xrGame/Multiplayer/LegacyClientStartup.h), [legacy GNS transport](../../src/xrNetServer/LegacyGnsTransport.cpp), [admission policy](../../src/xrNetServer/Multiplayer/LegacyAdmission.h).
 - **Mac checks passed / Windows pending.** Portable coverage includes deadline precedence, transport loss, cancellation, direct startup, admission precedence, and bounded request collection. The real GNS regression covers the shared callback dispatch.
 - [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) records a passing `legacy-startup.xml` and the [two-client check](multiplayer-checkpoints/w0.md#run-the-two-client-check) verifies Windows join, disconnect, and reconnect using the live owner.
+
+#### MP-025e — Own the live GNS runtime and endpoint handles
+
+- **Depends on:** MP-024a, MP-025a, MP-025d. The live SteamNet classes hold the process runtime through their endpoints. The existing game owner polls the listener group and outbound connection. Startup failures release any handles already acquired. Normal server disconnect closes accepted peers before the listener. The endpoint destructor handles native cleanup when startup unwinds or explicit disconnect is skipped. [Process runtime](../../src/xrNetServer/GnsProcessRuntime.h), [endpoint owner](../../src/xrNetServer/Multiplayer/GnsEndpoint.h).
+- **Mac checks passed / Windows pending.** The peer suite exercises polled startup failures, duplicate open, both close orders, exact packet exchange, and reopening after the last lease releases.
+- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) records these cases in `gns-loopback.xml` and the [two-client check](multiplayer-checkpoints/w0.md#run-the-two-client-check) verifies Windows join and reconnect with the owned live endpoints.
 
 ### MP-026 — Apply network events only at the simulation boundary
 

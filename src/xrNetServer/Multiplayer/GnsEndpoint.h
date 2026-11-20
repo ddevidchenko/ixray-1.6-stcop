@@ -83,16 +83,31 @@ public:
 	GnsEndpoint(const GnsEndpoint&) = delete;
 	GnsEndpoint& operator=(const GnsEndpoint&) = delete;
 
+	// Owner-polled endpoints receive through the server poll group or the client's native connection.
+	[[nodiscard]] std::expected<void, GnsEndpointError> OpenServer(RuntimeLease Acquired, const SteamNetworkingIPAddr& Address,
+		xr_span<const SteamNetworkingConfigValue_t> Options) noexcept
+	{
+		return Open(std::move(Acquired), Address, Options, true, nullptr);
+	}
+
+	[[nodiscard]] std::expected<void, GnsEndpointError> OpenClient(RuntimeLease Acquired, const SteamNetworkingIPAddr& Address,
+		xr_span<const SteamNetworkingConfigValue_t> Options) noexcept
+	{
+		return Open(std::move(Acquired), Address, Options, false, nullptr);
+	}
+
 	[[nodiscard]] std::expected<void, GnsEndpointError> OpenServer(RuntimeLease Acquired, const SteamNetworkingIPAddr& Address,
 		xr_span<const SteamNetworkingConfigValue_t> Options, GnsEndpointRun Run, void* Context) noexcept
 	{
-		return Open(std::move(Acquired), Address, Options, Run, Context, true);
+		const WorkerStart Start{Run, Context};
+		return Open(std::move(Acquired), Address, Options, true, &Start);
 	}
 
 	[[nodiscard]] std::expected<void, GnsEndpointError> OpenClient(RuntimeLease Acquired, const SteamNetworkingIPAddr& Address,
 		xr_span<const SteamNetworkingConfigValue_t> Options, GnsEndpointRun Run, void* Context) noexcept
 	{
-		return Open(std::move(Acquired), Address, Options, Run, Context, false);
+		const WorkerStart Start{Run, Context};
+		return Open(std::move(Acquired), Address, Options, false, &Start);
 	}
 
 	void Close() noexcept
@@ -124,8 +139,14 @@ public:
 	[[nodiscard]] GnsEndpointView Get() const noexcept { return Handles; }
 
 private:
+	struct WorkerStart
+	{
+		GnsEndpointRun Run;
+		void* Context;
+	};
+
 	[[nodiscard]] std::expected<void, GnsEndpointError> Open(RuntimeLease Acquired, const SteamNetworkingIPAddr& Address,
-		xr_span<const SteamNetworkingConfigValue_t> Options, GnsEndpointRun Run, void* Context, bool Server) noexcept
+		xr_span<const SteamNetworkingConfigValue_t> Options, bool Server, const WorkerStart* Start) noexcept
 	{
 		if (Handles.Sockets)
 		{
@@ -140,7 +161,7 @@ private:
 		{
 			return std::unexpected(GnsEndpointError::InvalidOptions);
 		}
-		if (!Run)
+		if (Start && !Start->Run)
 		{
 			return std::unexpected(GnsEndpointError::WorkerFailed);
 		}
@@ -164,15 +185,22 @@ private:
 			}
 		}
 
-		Handles.PollGroup = Api.CreatePollGroup(*Sockets);
-		if (Handles.PollGroup == k_HSteamNetPollGroup_Invalid)
+		if (Server || Start)
 		{
-			return Fail(GnsEndpointError::PollGroupFailed);
+			Handles.PollGroup = Api.CreatePollGroup(*Sockets);
+			if (Handles.PollGroup == k_HSteamNetPollGroup_Invalid)
+			{
+				return Fail(GnsEndpointError::PollGroupFailed);
+			}
+		}
+		if (!Start)
+		{
+			return {};
 		}
 
 		try
 		{
-			Worker = Api.StartWorker(Run, Handles, Context);
+			Worker = Api.StartWorker(Start->Run, Handles, Start->Context);
 		}
 		catch (const std::system_error&)
 		{

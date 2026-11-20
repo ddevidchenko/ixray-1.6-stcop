@@ -216,6 +216,7 @@ struct Resources
 	int Listeners = 0;
 	int PollGroups = 0;
 	int Connections = 0;
+	int WorkerStarts = 0;
 	bool ClosedEarly = false;
 	std::atomic<bool> Started = false;
 	std::atomic<bool> Exited = false;
@@ -270,6 +271,7 @@ static const GnsEndpointApi FixtureApi{
 	},
 	[](GnsEndpointRun Run, GnsEndpointView View, void* Context)
 	{
+		++g_Resources.WorkerStarts;
 		if (g_Resources.Failure == Attempt::Worker)
 		{
 			return std::jthread{};
@@ -352,6 +354,79 @@ static bool CheckEndpointLifecycle()
 	}
 	return true;
 }
+static bool CheckPolledEndpointLifecycle()
+{
+	ProcessRuntime Runtime;
+	SteamNetworkingIPAddr Address{};
+	SteamNetworkingErrMsg Error{};
+	GnsEndpoint<ProcessRuntime::Lease> Server(FixtureApi);
+	const int PreviousWorkerStarts = g_Resources.WorkerStarts;
+	if (Server.OpenServer({}, Address, {}) != std::unexpected(GnsEndpointError::RuntimeUnavailable))
+	{
+		std::fputs("a polled endpoint still requires a runtime lease\n", stderr);
+		return false;
+	}
+
+	g_Resources.Failure = Attempt::PollGroup;
+	if (Server.OpenServer(Runtime.AcquireServer(Error), Address, {}) != std::unexpected(GnsEndpointError::PollGroupFailed) ||
+		Server.Get().Sockets || g_Resources.Listeners != 0 || g_Resources.PollGroups != 0 || SteamNetworkingSockets())
+	{
+		std::fputs("a polled listener must unwind its native handle and lease when group creation fails\n", stderr);
+		return false;
+	}
+
+	g_Resources.Failure = Attempt::WorkerThrows;
+	if (!Server.OpenServer(Runtime.AcquireServer(Error), Address, {}))
+	{
+		std::fputs("opening an owner-polled server must not start a worker\n", stderr);
+		return false;
+	}
+	const auto ServerView = Server.Get();
+	{
+		GnsEndpoint<ProcessRuntime::Lease> Client(FixtureApi);
+		g_Resources.Failure = Attempt::Connection;
+		if (Client.OpenClient(Runtime.AcquireClient("polled fixture", Error), Address, {}) != std::unexpected(GnsEndpointError::ConnectionFailed) ||
+			Client.Get().Sockets || SteamNetworkingSockets() != ServerView.Sockets || g_Resources.Connections != 0)
+		{
+			std::fputs("a failed hosted client open must preserve the listener and release only the client lease\n", stderr);
+			return false;
+		}
+
+		g_Resources.Failure = Attempt::PollGroup;
+		if (!Client.OpenClient(Runtime.AcquireClient("polled fixture", Error), Address, {}) ||
+			Client.Get().PollGroup != k_HSteamNetPollGroup_Invalid || Client.Get().Sockets != ServerView.Sockets ||
+			g_Resources.PollGroups != 1 || g_Resources.Connections != 1)
+		{
+			std::fputs("a directly polled client must use its native connection without creating a group\n", stderr);
+			return false;
+		}
+		const auto Connection = Client.Get().Connection;
+		if (Client.OpenClient(Runtime.AcquireClient("polled fixture", Error), Address, {}) != std::unexpected(GnsEndpointError::AlreadyOpen) ||
+			Client.Get().Connection != Connection || g_Resources.Connections != 1)
+		{
+			std::fputs("a duplicate owner-polled open must preserve the existing connection\n", stderr);
+			return false;
+		}
+
+		Server.Close();
+		Server.Close();
+		if (Server.Get().Sockets || SteamNetworkingSockets() != Client.Get().Sockets ||
+			g_Resources.Listeners != 0 || g_Resources.PollGroups != 0)
+		{
+			std::fputs("closing the polled server must release its native resources and preserve the hosted client lease\n", stderr);
+			return false;
+		}
+	}
+	if (SteamNetworkingSockets() || g_Resources.Connections != 0 || g_Resources.WorkerStarts != PreviousWorkerStarts)
+	{
+		std::fputs("the polled client destructor must close its connection and release the final lease without a worker\n", stderr);
+		return false;
+	}
+
+	g_Resources.Failure = Attempt::None;
+	return true;
+}
+
 struct InboxLock
 {
 	std::atomic_flag Held;
@@ -414,6 +489,109 @@ static bool WaitFor(Predicate&& Ready)
 	}
 	while (std::chrono::steady_clock::now() < Deadline);
 	return false;
+}
+
+static bool CheckPolledNativeEndpoints()
+{
+	ProcessRuntime Runtime;
+	SteamNetworkingErrMsg Error{};
+	GnsEndpoint<ProcessRuntime::Lease> Server;
+	GnsEndpoint<ProcessRuntime::Lease> Client;
+	SteamNetworkingIPAddr Address{};
+	const auto Callback = GnsCallbackDispatch::CallbackOption();
+	for (u16 Port = 48800; Port < 48832; ++Port)
+	{
+		Address.SetIPv4(0x7f000001u, Port);
+		const auto Opened = Server.OpenServer(Runtime.AcquireServer(Error), Address, xr_span(&Callback, 1));
+		if (Opened || Opened.error() != GnsEndpointError::ListenerFailed)
+		{
+			break;
+		}
+	}
+	const auto Listen = Server.Get();
+	if (!Listen.Sockets || !Listen.Sockets->GetListenSocketAddress(Listen.Listener, &Address) ||
+		!Client.OpenClient(Runtime.AcquireClient("hosted fixture", Error), Address, {}))
+	{
+		std::fputs("could not open owner-polled native endpoints over one runtime\n", stderr);
+		return false;
+	}
+	const auto Outbound = Client.Get();
+	auto& Sockets = *Listen.Sockets;
+	struct Arrival
+	{
+		HSteamListenSocket Listener;
+		HSteamNetConnection Pending = k_HSteamNetConnection_Invalid;
+	} Peer{Listen.Listener};
+	bool Accepted = false;
+	const bool Connected = WaitFor([&]
+	{
+		GnsCallbackDispatch::Poll(Sockets, &Peer, [](void* Context, const SteamNetConnectionStatusChangedCallback_t& Event) noexcept
+		{
+			auto& Peer = *static_cast<Arrival*>(Context);
+			if (Event.m_info.m_hListenSocket == Peer.Listener && Event.m_info.m_eState == k_ESteamNetworkingConnectionState_Connecting)
+			{
+				Peer.Pending = Event.m_hConn;
+			}
+		});
+		if (Peer.Pending != k_HSteamNetConnection_Invalid && !Accepted)
+		{
+			Accepted = Sockets.AcceptConnection(Peer.Pending) == k_EResultOK &&
+				Sockets.SetConnectionPollGroup(Peer.Pending, Listen.PollGroup);
+		}
+		SteamNetConnectionInfo_t Info{};
+		return Accepted && Sockets.GetConnectionInfo(Outbound.Connection, &Info) &&
+			Info.m_eState == k_ESteamNetworkingConnectionState_Connected;
+	});
+	constexpr u8 ToClient[]{0x6a, 0, 0xc8};
+	constexpr u8 ToServer[]{0xc3, 0, 0x19};
+	if (!Connected || Outbound.Sockets != Listen.Sockets ||
+		Sockets.SendMessageToConnection(Peer.Pending, ToClient, sizeof(ToClient), k_nSteamNetworkingSend_ReliableNoNagle, nullptr) != k_EResultOK ||
+		Sockets.SendMessageToConnection(Outbound.Connection, ToServer, sizeof(ToServer), k_nSteamNetworkingSend_ReliableNoNagle, nullptr) != k_EResultOK)
+	{
+		std::fputs("the hosted polled connection must exchange data over the same GNS runtime\n", stderr);
+		return false;
+	}
+
+	const auto ReceivedBytes = [](auto Receive, xr_span<const u8> Expected)
+	{
+		SteamNetworkingMessage_t* Raw = nullptr;
+		if (!WaitFor([&] { return Receive(&Raw) == 1; }))
+		{
+			return false;
+		}
+		const auto Release = [](SteamNetworkingMessage_t* Message) noexcept { Message->Release(); };
+		const std::unique_ptr<SteamNetworkingMessage_t, decltype(Release)> Message(Raw, Release);
+		return Message && Message->m_cbSize == static_cast<int>(Expected.size()) &&
+			std::memcmp(Message->m_pData, Expected.data(), Expected.size()) == 0;
+	};
+	if (!ReceivedBytes([&](auto** Message) { return Sockets.ReceiveMessagesOnConnection(Outbound.Connection, Message, 1); }, ToClient) ||
+		!ReceivedBytes([&](auto** Message) { return Sockets.ReceiveMessagesOnPollGroup(Listen.PollGroup, Message, 1); }, ToServer))
+	{
+		std::fputs("owner polling must preserve packet bytes through the client connection and server receive group\n", stderr);
+		return false;
+	}
+
+	Client.Close();
+	if (SteamNetworkingSockets() != Listen.Sockets || !WaitFor([&]
+	{
+		SteamNetConnectionInfo_t Info{};
+		return Sockets.GetConnectionInfo(Peer.Pending, &Info) && Info.m_eState == k_ESteamNetworkingConnectionState_ClosedByPeer;
+	}))
+	{
+		std::fputs("client-first close must keep the listener able to observe peer closure\n", stderr);
+		return false;
+	}
+	Server.Close();
+	if (SteamNetworkingSockets() || !Client.OpenClient(Runtime.AcquireClient("standalone fixture", Error), Address, {}))
+	{
+		std::fputs("after final close the runtime must reopen with a fresh standalone client identity\n", stderr);
+		return false;
+	}
+	SteamNetworkingIdentity Identity{};
+	const bool Standalone = Client.Get().Sockets->GetIdentity(&Identity) && Identity.GetGenericString() &&
+		std::strcmp(Identity.GetGenericString(), "standalone fixture") == 0;
+	Client.Close();
+	return Standalone && SteamNetworkingSockets() == nullptr;
 }
 
 static std::optional<TransportEvent> NextEvent(EventInbox& Inbox)
@@ -738,6 +916,8 @@ int main()
 		Passed &= Lease.Get() && GnsCallbackPumpTests::Run(*Lease.Get());
 	}
 	Passed &= EndpointTests::CheckEndpointLifecycle();
+	Passed &= EndpointTests::CheckPolledEndpointLifecycle();
+	Passed &= EndpointTests::CheckPolledNativeEndpoints();
 	Passed &= EndpointTests::CheckRealEndpoints(EndpointTests::CloseOrder::ListenerFirst);
 	Passed &= EndpointTests::CheckRealEndpoints(EndpointTests::CloseOrder::ClientFirst);
 	Passed &= EndpointTests::CheckRealEndpoints(EndpointTests::CloseOrder::ServerPeerFirst);

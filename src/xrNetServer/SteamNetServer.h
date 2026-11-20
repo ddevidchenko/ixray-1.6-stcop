@@ -2,10 +2,7 @@
 #include "BaseServer.h"
 #include "LegacyGnsTransport.h"
 
-#pragma warning(push)
-#pragma warning(disable:4995)
-#include <steam/steamnetworkingsockets.h>
-#pragma warning(pop)
+#include "GnsProcessRuntime.h"
 
 enum enmDisconnectReason
 {
@@ -22,9 +19,7 @@ class XRNETSERVER_API SteamNetServer : public BaseServer
 	friend void LegacyGnsTransport::Poll(SteamNetClient& Client, SteamNetServer* Server);
 
 private:
-	ISteamNetworkingSockets*      m_pInterface = nullptr;
-	HSteamListenSocket            m_hListenSock = k_HSteamListenSocket_Invalid;
-	HSteamNetPollGroup            m_hPollGroup = k_HSteamNetPollGroup_Invalid;
+	Multiplayer::GnsProcessEndpoint Endpoint;
 
 	xr_string                     m_server_password;
 	u32														m_max_players = 0;

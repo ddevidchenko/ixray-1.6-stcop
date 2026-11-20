@@ -4,7 +4,6 @@
 #include "Multiplayer/GnsCallbackDispatch.h"
 #include "ip_address.h"
 #include "WinsocksHelper.h"
-#include <steam/isteamnetworkingutils.h>
 
 #include <limits>
 
@@ -17,10 +16,7 @@ SteamNetClient::SteamNetClient(CTimer* tm)
 
 // -----------------------------------------------------------------------------
 
-SteamNetClient::~SteamNetClient()
-{
-
-}
+SteamNetClient::~SteamNetClient() = default;
 
 // -----------------------------------------------------------------------------
 
@@ -29,42 +25,14 @@ SteamNetClient::~SteamNetClient()
 bool SteamNetClient::CreateConnection(ClientConnectionOptions & connectOpt)
 {
 	m_bWasConnected = false;
-	m_bServerClient = false;
 	m_bGameDescriptionRecieved = false;
-	m_pInterface = SteamNetworkingSockets();
 
-	if (m_pInterface != nullptr)
+	SteamNetworkingErrMsg Error{};
+	auto Lease = Multiplayer::GetGnsProcessRuntime().AcquireClient(connectOpt.server_pass, Error);
+	if (!Lease.Get())
 	{
-		// server client
-		SteamNetworkingIdentity identity;
-		m_pInterface->GetIdentity(&identity);
-		R_ASSERT2(identity.IsLocalHost(), "! [SteamNetClient] Interface is initialized and identity is not localhost!");
-		m_bServerClient = true;
-	}
-	else
-	{
-		SteamNetworkingIdentity identity;
-		identity.Clear();
-		if (!identity.SetGenericString(connectOpt.server_pass))
-		{
-			Msg("! [SteamNetClient] server password is too long!");
-			return false;
-		}
-
-		SteamDatagramErrMsg errMsg;
-		if (!GameNetworkingSockets_Init(&identity, errMsg))
-		{
-			Msg("! [SteamNetClient] GameNetworkingSockets_Init failed.  %s", errMsg);
-			return false;
-		}
-
-		m_pInterface = SteamNetworkingSockets();
-
-		if (m_pInterface == nullptr)
-		{
-			Msg("! [SteamNetClient] Server interface is NULL");
-			return false;
-		}
+		Msg("! [SteamNetClient] Could not acquire the GNS runtime. %s", Error);
+		return false;
 	}
 
 	SteamNetworkingIPAddr serverAddr;
@@ -106,10 +74,10 @@ bool SteamNetClient::CreateConnection(ClientConnectionOptions & connectOpt)
 	ConnectionGeneration = ++g_LegacyOutboundGeneration;
 	xr_array Options{Multiplayer::GnsCallbackDispatch::CallbackOption(), SteamNetworkingConfigValue_t{}};
 	Options[1].SetInt64(k_ESteamNetworkingConfig_ConnectionUserData, ConnectionGeneration);
-	m_hConnection = m_pInterface->ConnectByIPAddress(serverAddr, static_cast<int>(Options.size()), Options.data());
-	if (m_hConnection == k_HSteamNetConnection_Invalid)
+	const auto Opened = Endpoint.OpenClient(std::move(Lease), serverAddr, Options);
+	if (!Opened)
 	{
-		Msg("! [SteamNetClient] Failed to create connection");
+		Msg("! [SteamNetClient] Failed to open connection (%d)", static_cast<int>(Opened.error()));
 		return false;
 	}
 
@@ -130,26 +98,9 @@ void SteamNetClient::DestroyConnection()
 	net_Disconnected = true;
 	ConnectionGeneration = 0;
 
-	if (m_pInterface == nullptr)
-	{
-		return;
-	}
-
-	if (m_hConnection != k_HSteamNetConnection_Invalid)
-	{
-		m_pInterface->CloseConnection(m_hConnection, 0, nullptr, false);
-		m_hConnection = k_HSteamNetConnection_Invalid;
-	}
-	m_pInterface = nullptr;
-
+	Endpoint.Close();
 	m_user_name.clear();
 	m_user_pass.clear();
-
-	// if no server client
-	if (!m_bServerClient)
-	{
-		GameNetworkingSockets_Kill();
-	}
 }
 
 #pragma endregion
@@ -160,13 +111,16 @@ void SteamNetClient::DestroyConnection()
 
 void SteamNetClient::PollIncomingMessages(u32 Budget)
 {
+	const auto View = Endpoint.Get();
+	if (!View.Sockets)
+	{
+		return;
+	}
+
 	for (u32 Index = 0; Index < Budget; ++Index)
 	{
-		if (m_pInterface == nullptr)
-			break;
-
 		ISteamNetworkingMessage *pIncomingMsg = nullptr;
-		int numMsgs = m_pInterface->ReceiveMessagesOnConnection(m_hConnection, &pIncomingMsg, 1);
+		int numMsgs = View.Sockets->ReceiveMessagesOnConnection(View.Connection, &pIncomingMsg, 1);
 		if (numMsgs <= 0)
 		{
 			break;
@@ -287,9 +241,14 @@ void SteamNetClient::SendClientData()
 
 void SteamNetClient::SendTo_LL(void * data, u32 size, u32 dwFlags, u32 dwTimeout)
 {
+	const auto View = Endpoint.Get();
+	if (!View.Sockets)
+	{
+		return;
+	}
 	net_Statistic.dwBytesSended += size;
 
-	EResult result = m_pInterface->SendMessageToConnection(m_hConnection, data, size, convert_flags_for_steam(dwFlags), nullptr);
+	EResult result = View.Sockets->SendMessageToConnection(View.Connection, data, size, convert_flags_for_steam(dwFlags), nullptr);
 	if (result != k_EResultOK)
 	{
 		//Msg("! [SteamNetClient] ERROR: Failed to send net-packet, reason: %d", result);
@@ -305,7 +264,8 @@ Multiplayer::ClockProbeResult SteamNetClient::TrySendClockProbe(MSYS_PING& Ping)
 	}
 	const xr_scope_exit Unlock([this] { csConnection.Leave(); });
 
-	if (net_isDisconnected() || !m_pInterface || m_hConnection == k_HSteamNetConnection_Invalid)
+	const auto View = Endpoint.Get();
+	if (net_isDisconnected() || !View.Sockets)
 	{
 		return ClockProbeResult::Failed;
 	}
@@ -319,7 +279,7 @@ Multiplayer::ClockProbeResult SteamNetClient::TrySendClockProbe(MSYS_PING& Ping)
 		return ClockProbeResult::Deferred;
 	}
 
-	const auto Sent = m_pInterface->SendMessageToConnection(m_hConnection, &Ping, sizeof(Ping), k_nSteamNetworkingSend_UnreliableNoNagle, nullptr);
+	const auto Sent = View.Sockets->SendMessageToConnection(View.Connection, &Ping, sizeof(Ping), k_nSteamNetworkingSend_UnreliableNoNagle, nullptr);
 	if (Sent == k_EResultLimitExceeded)
 	{
 		return ClockProbeResult::Deferred;
@@ -335,8 +295,9 @@ Multiplayer::ClockProbeResult SteamNetClient::TrySendClockProbe(MSYS_PING& Ping)
 
 void SteamNetClient::UpdateStatistic()
 {
+	const auto View = Endpoint.Get();
 	SteamNetConnectionRealTimeStatus_t status;
-	if (!m_pInterface->GetConnectionRealTimeStatus(m_hConnection, &status, 0, nullptr))
+	if (!View.Sockets || !View.Sockets->GetConnectionRealTimeStatus(View.Connection, &status, 0, nullptr))
 	{
 		return;
 	}
@@ -351,11 +312,9 @@ void SteamNetClient::UpdateStatistic()
 
 bool SteamNetClient::GetPendingMessagesCount(DWORD& dwPending)
 {
-	R_ASSERT(m_pInterface);
-	R_ASSERT(m_hConnection != k_HSteamNetConnection_Invalid);
-
+	const auto View = Endpoint.Get();
 	SteamNetConnectionRealTimeStatus_t pStatus;
-	if (m_pInterface->GetConnectionRealTimeStatus(m_hConnection, &pStatus, 0, nullptr))
+	if (View.Sockets && View.Sockets->GetConnectionRealTimeStatus(View.Connection, &pStatus, 0, nullptr))
 	{
 		dwPending = pStatus.m_cbPendingReliable + pStatus.m_cbPendingUnreliable;
 		return true;
@@ -382,8 +341,9 @@ bool SteamNetClient::GetServerAddress(ip_address& pAddress, DWORD* pPort)
 {
 	*pPort = 0;
 
+	const auto View = Endpoint.Get();
 	SteamNetConnectionInfo_t pInfo;
-	if (m_pInterface->GetConnectionInfo(m_hConnection, &pInfo))
+	if (View.Sockets && View.Sockets->GetConnectionInfo(View.Connection, &pInfo))
 	{
 		GetIpAddress(pInfo, pAddress);
 		*pPort = pInfo.m_addrRemote.m_port;

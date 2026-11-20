@@ -1,6 +1,6 @@
 # Multiplayer TDD work items
 
-The operator reports that W0 passed on Windows. The exact revision and result bundle are pending attachment. MP-010, MP-011a, MP-011b and MP-012 have macOS evidence.
+The operator reports that W0 passed on Windows. The exact revision and result bundle are pending attachment. MP-010, MP-011a, MP-011b, MP-012 and MP-020a have macOS evidence.
 
 Implements the [modern multiplayer plan](multiplayer-modernization-plan.md): 32 total human/bot combatants, simple DM, direct IP over GameNetworkingSockets first, human-like bots, authoritative simulation, prediction, lag compensation, and immediate local effects. Windows x64 is the initial runtime target; macOS remains usable for source work and portable tests. Hitscan, ballistics, and hybrid gunplay remain alternatives until the comparison gate.
 
@@ -165,6 +165,12 @@ The [peer runbook](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch
 - **Red:** hand-authored golden bytes decode into the expected fields; every truncated prefix and invalid count/tag/string/NaN/Inf input is rejected without committing partial state. Encoding reaches documented quantization bounds. A round trip alone is insufficient because encoder/decoder can share a bug.
 - **Green / seam:** freeze each message family's numeric tags and field order from the [wire contract](multiplayer-implementation-contracts.md#3-version-one-wire-contract), starting with its little-endian 30-byte envelope and bounded fields. Use independent golden bytes, a checked reader/writer and immutable decoded values owned by `xrNetServer`; reject unsupported versions and raw-struct-layout assumptions explicitly.
 - [ ] **Complete when:** golden vectors run on both platforms and malformed input is rejected in an assertions-disabled build as well as Debug.
+
+#### MP-020a — Encode and validate the common wire envelope
+
+- **Design:** freeze the 30-byte little-endian header, the 1,100-byte complete-message limit, zero reserved flags, and the first three admission tags. Decode returns a copied header and a borrowed read-only payload. Encode validates the tag and sizes before writing, including when the payload overlaps the output. Typed payload fields, admission, and dispatch follow in later slices. [Wire contract](multiplayer-implementation-contracts.md#3-version-one-wire-contract), [codec](../../src/xrNetServer/Multiplayer/WireEnvelope.h).
+- **Mac checks passed / Windows pending:** `Multiplayer.WireEnvelope` first failed on a hand-authored welcome frame. The reviewed suite covers all truncated prefixes, all reserved tags and flag values, unsupported versions, exact lengths, both sides of the size cap, and untouched output on failure. The golden tests exercise the same codec compiled into `xrNetServer`. Fixtures use literal data without a seed or content pack. [Tests](../../src/test/multiplayer/portable/WireEnvelopeTests.cpp).
+- [ ] **Complete when:** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) reports a passing `wire-envelope.xml` on Windows.
 
 ### MP-021 — Bound legacy envelope parsing and decompression
 

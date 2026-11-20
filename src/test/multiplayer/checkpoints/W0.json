@@ -1,7 +1,7 @@
 {
     "id": "W0",
     "Portable": {
-        "workItems": ["MP-010", "MP-011a", "MP-011b", "MP-012"],
+        "workItems": ["MP-010", "MP-011a", "MP-011b", "MP-012", "MP-020a"],
         "configuration": "RelWithDebInfo",
         "sourceDirectory": "src/test/multiplayer/portable",
         "architecture": "x64",
@@ -23,6 +23,11 @@
                 "name": "Multiplayer.ScriptedTransport",
                 "successMessage": "Scripted transport checks passed",
                 "step": "scripted-transport"
+            },
+            {
+                "name": "Multiplayer.WireEnvelope",
+                "successMessage": "Wire envelope checks passed",
+                "step": "wire-envelope"
             }
         ],
         "deliberateFailureTest": "Multiplayer.Sequence.DeliberateFailure",
@@ -32,7 +37,7 @@
         "testTimeoutSeconds": 30
     },
     "Peers": {
-        "workItems": ["MP-010", "MP-011a", "MP-011b", "MP-012"],
+        "workItems": ["MP-010", "MP-011a", "MP-011b", "MP-012", "MP-020a"],
         "configuration": "RelWithDebInfo",
         "targets": ["TestMultiplayerUnit", "TestMultiplayerGns"],
         "test": {

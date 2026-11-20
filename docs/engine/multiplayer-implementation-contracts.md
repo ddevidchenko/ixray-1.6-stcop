@@ -50,19 +50,29 @@ Initial handshake messages have an explicit unbound state. They may establish id
 
 Use explicit little-endian primitives, UTF-8 length-prefixed strings and checked reads/writes. A wire table is not a packed C++ structure. Freeze numeric message tags, field order and independent golden byte vectors in MP-020 before implementing each message family; update this contract alongside those vectors.
 
-Proposed common envelope, in order:
+Version-one common envelope in byte order.
 
 | Field | Encoding |
 | --- | --- |
 | Magic | Four fixed bytes `IXMP` |
-| Protocol version | `u16` |
+| Protocol version | `u16` equal to `1` |
 | Message type | `u8` |
-| Flags | `u8`, only documented bits allowed |
+| Flags | `u8` equal to `0`. All bits are reserved for this slice. |
 | Payload byte length | `u16`, must match the actual complete message |
 | Server session | `u64` |
 | World epoch | `u32` |
 | Connection epoch | `u32` |
 | Message sequence | `u32`, scoped to direction/message stream; not a substitute for command/action/state-event IDs |
+
+MP-020a assigns the following envelope tags. Additional tags become valid as their message families are specified. The receiver rejects every other tag.
+
+| Message type | Tag |
+| --- | --- |
+| `ClientHello` | `0x01` |
+| `ServerWelcome` | `0x02` |
+| `AdmissionReject` | `0x03` |
+
+The envelope codec checks the complete message size and framing. Payload decoders and the admission state machine validate fields and identity before dispatch. The returned payload view borrows the receive buffer for the duration of decoding. [Codec](../../src/xrNetServer/Multiplayer/WireEnvelope.h), [independent golden frames](../../src/test/multiplayer/portable/WireEnvelopeTests.cpp).
 
 This header is 30 bytes. Start with an application-message cap of 1,100 bytes including it, leaving 1,070 payload bytes. Measure actual UDP/GNS overhead against the parent's roughly 1,200-byte target; the allowance is not a transport guarantee. Large initial state uses bounded chunks. Do not enable compression in the new envelope until a measured need and decompression limits/tests exist; legacy envelopes retain their separately checked compatibility path.
 

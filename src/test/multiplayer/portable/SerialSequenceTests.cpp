@@ -19,6 +19,11 @@ namespace ScriptedTransportTests
 bool Run();
 }
 
+namespace WireEnvelopeTests
+{
+bool Run();
+}
+
 namespace SerialSequenceTests
 {
 struct SequenceCase
@@ -72,6 +77,10 @@ int main(int ArgumentCount, char** Arguments)
 	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--scripted-transport") == 0)
 	{
 		return ScriptedTransportTests::Run() ? EXIT_SUCCESS : EXIT_FAILURE;
+	}
+	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--wire-envelope") == 0)
+	{
+		return WireEnvelopeTests::Run() ? EXIT_SUCCESS : EXIT_FAILURE;
 	}
 	if (ArgumentCount != 1)
 	{

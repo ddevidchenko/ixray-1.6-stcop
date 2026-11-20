@@ -1,4 +1,7 @@
-add_library(xrNetServerMultiplayer OBJECT SerialSequence.cpp SerialSequence.h)
+add_library(xrNetServerMultiplayer OBJECT
+    SerialSequence.cpp SerialSequence.h
+    WireEnvelope.cpp WireEnvelope.h
+)
 target_include_directories(xrNetServerMultiplayer PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 set_target_properties(xrNetServerMultiplayer PROPERTIES
     CXX_STANDARD 23

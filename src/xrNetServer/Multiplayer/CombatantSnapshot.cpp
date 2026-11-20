@@ -183,6 +183,14 @@ std::expected<SnapshotRecordView, CombatantRecordError> EncodeCombatantSnapshot(
 	return PublishRecord(SnapshotRecordKind::StalkerCombatant, Writer.Written(), Output);
 }
 
+bool HasCombatantIdentityConflict(const PublicCombatantState& State, xr_span<const CombatantSnapshot> Records) noexcept
+{
+	return std::ranges::any_of(Records, [&State](const PublicCombatantState& Other)
+	{
+		return Other.Participant == State.Participant || Other.Body.ObjectId == State.Body.ObjectId;
+	}, GetPublicCombatantState);
+}
+
 std::expected<CombatantSnapshotBatch, BoundMessageError> CombatantSnapshotBatch::Decode(xr_span<const u8> Bytes) noexcept
 {
 	auto Batch = SnapshotBatch::Decode(Bytes);
@@ -204,11 +212,7 @@ std::expected<CombatantSnapshotBatch, BoundMessageError> CombatantSnapshotBatch:
 		{
 			return std::unexpected(BoundMessageError::InvalidPayload);
 		}
-		const auto& State = GetPublicCombatantState(*Record);
-		if (std::ranges::any_of(Result.GetRecords(), [&State](const PublicCombatantState& Previous)
-		{
-			return Previous.Participant == State.Participant || Previous.Body.ObjectId == State.Body.ObjectId;
-		}, GetPublicCombatantState))
+		if (HasCombatantIdentityConflict(GetPublicCombatantState(*Record), Result.GetRecords()))
 		{
 			return std::unexpected(BoundMessageError::InvalidPayload);
 		}

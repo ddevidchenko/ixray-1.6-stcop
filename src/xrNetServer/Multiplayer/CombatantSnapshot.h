@@ -95,6 +95,8 @@ using CombatantSnapshot = std::variant<HumanCombatantSnapshot, StalkerCombatantS
 	return std::visit([](const auto& Typed) noexcept -> const PublicCombatantState& { return Typed.State; }, Snapshot);
 }
 
+[[nodiscard]] bool HasCombatantIdentityConflict(const PublicCombatantState& State, xr_span<const CombatantSnapshot> Records) noexcept;
+
 enum class CombatantRecordError
 {
 	UnknownKind,

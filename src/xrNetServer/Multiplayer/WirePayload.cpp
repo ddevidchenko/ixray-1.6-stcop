@@ -157,6 +157,29 @@ std::expected<void, PayloadError> PayloadWriter::WriteBytes(xr_span<const u8> By
 	return {};
 }
 
+std::expected<void, PayloadError> PayloadWriter::WriteRecord(PayloadRecordView Record) noexcept
+{
+	if (Record.Payload.size() > std::numeric_limits<u16>::max())
+	{
+		return std::unexpected(PayloadError::LengthOutOfRange);
+	}
+	const std::size_t EncodedSize = PayloadRecordHeaderSize + Record.Payload.size();
+	if (EncodedSize > Output.size() - Position)
+	{
+		return std::unexpected(PayloadError::OutputTooSmall);
+	}
+
+	const auto Field = Output.subspan(Position, EncodedSize);
+	if (!Record.Payload.empty())
+	{
+		std::memmove(Field.data() + PayloadRecordHeaderSize, Record.Payload.data(), Record.Payload.size());
+	}
+	Field[0] = Record.Kind;
+	Detail::WriteLittleEndian(Field.subspan<sizeof(u8), sizeof(u16)>(), static_cast<u16>(Record.Payload.size()));
+	Position += EncodedSize;
+	return {};
+}
+
 std::expected<void, PayloadError> PayloadWriter::WriteFiniteFloat(f32 Value) noexcept
 {
 	const auto Bits = std::bit_cast<u32>(Value);

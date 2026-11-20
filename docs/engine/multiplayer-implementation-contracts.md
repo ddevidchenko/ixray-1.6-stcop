@@ -389,6 +389,12 @@ Validate the staged identity and baseline ID against the current connection and 
 
 Successful validation returns an ordered cursor over the reserved immutable buffer. Consume it while the staged view is valid. Concrete record layouts, cross-record consistency checks, and committing world state belong to the import path. [Validator](../../src/xrNetServer/Multiplayer/BaselineRecords.h), [record tests](../../src/test/multiplayer/portable/BaselineRecordsTests.cpp).
 
+### Public combatant baseline records
+
+The public combatant capture uses the human and stalker [record body formats](#public-combatant-record-bodies) and their `0x01` and `0x02` kinds inside the reliable baseline record stream. Each capture holds zero through 32 combatants in stream order. Only one record can use a participant ID or engine object slot. The largest capture is 2,944 bytes, split into three chunks by the existing baseline transfer rules.
+
+The encoder validates all bodies and cross-record identities before writing caller storage. It returns the exact manifest, including the chunk count. The decoder checks the admitted receiver first, then the selected baseline ID, capture tick, and event watermark. It validates the whole framed stream and the typed body values before returning owned records. The staged buffer can be released after decoding. The world owner resolves the content IDs and commits the imported world before confirming the baseline to the catch-up tracker. [Combatant baseline codec](../../src/xrNetServer/Multiplayer/CombatantBaseline.h), [typed and staged transfer tests](../../src/test/multiplayer/portable/CombatantSnapshotTests.cpp).
+
 ### Server-side join readiness
 
 The connection owner starts `Loading` after queuing the accepted welcome. Loading expires after 120 seconds, and a current-session/world/connection confirmation starts the 30-second synchronization window. Use monotonic wall time. An event at the exact deadline expires the peer before applying that event. The owner can poll idle peers and receives the stage-specific failure once for connection and roster cleanup.

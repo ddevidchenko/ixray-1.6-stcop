@@ -17,6 +17,8 @@ enum class PayloadError
 	NonFiniteFloat,
 };
 
+inline constexpr std::size_t PayloadRecordHeaderSize = sizeof(u8) + sizeof(u16);
+
 struct PayloadRecordView
 {
 	u8 Kind;
@@ -80,6 +82,8 @@ public:
 	}
 
 	[[nodiscard]] std::expected<void, PayloadError> WriteBytes(xr_span<const u8> Bytes) noexcept;
+	// The record body may overlap the output buffer.
+	[[nodiscard]] std::expected<void, PayloadError> WriteRecord(PayloadRecordView Record) noexcept;
 	[[nodiscard]] std::expected<void, PayloadError> WriteFiniteFloat(f32 Value) noexcept;
 	[[nodiscard]] std::expected<void, PayloadError> WriteUtf8(xr_string_view Value, std::size_t MaxBytes) noexcept;
 	[[nodiscard]] xr_span<const u8> Written() const noexcept { return Output.first(Position); }

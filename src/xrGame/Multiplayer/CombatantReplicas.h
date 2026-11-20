@@ -225,9 +225,8 @@ private:
 		return static_cast<std::size_t>(Match - Active.begin());
 	}
 
-	static constexpr std::size_t Capacity = 32;
 	WorldIdentity Identity;
 	const xr_span<u32, InvalidObjectId> RetiredGenerations;
-	xr_array<Entry, Capacity> Active{};
+	xr_array<Entry, MaxCombatants> Active{};
 };
 }

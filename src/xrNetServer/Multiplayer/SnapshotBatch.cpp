@@ -94,9 +94,8 @@ std::expected<std::size_t, BoundMessageError> EncodeSnapshotBatch(SnapshotBatchH
 
 	for (const auto& Record : Records)
 	{
-		if (!IsSupportedKind(Record.Kind) || Record.Payload.empty() || Record.Payload.size() > MaxPayloadSize ||
-			!Writer.WriteInteger(static_cast<u8>(Record.Kind)) || !Writer.WriteInteger(static_cast<u16>(Record.Payload.size())) ||
-			!Writer.WriteBytes(Record.Payload))
+		if (!IsSupportedKind(Record.Kind) || Record.Payload.empty() ||
+			!Writer.WriteRecord({static_cast<u8>(Record.Kind), Record.Payload}))
 		{
 			return std::unexpected(BoundMessageError::InvalidPayload);
 		}

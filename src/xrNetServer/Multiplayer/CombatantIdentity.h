@@ -2,8 +2,12 @@
 
 #include "../../xrCore/ScalarTypes.h"
 
+#include <cstddef>
+
 namespace Multiplayer
 {
+inline constexpr std::size_t MaxCombatants = 32;
+
 struct WorldIdentity
 {
 	u64 ServerSession = 0;

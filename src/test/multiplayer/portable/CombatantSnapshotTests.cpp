@@ -1,4 +1,4 @@
-#include "CombatantSnapshot.h"
+#include "CombatantBaseline.h"
 
 #include <algorithm>
 #include <bit>
@@ -252,6 +252,241 @@ static bool CheckMixedBatch()
 	Passed &= ExpectError("one tick cannot carry two bodies for the same slot in a batch", CombatantSnapshotBatch::Decode(Bytes),
 		BoundMessageError::InvalidPayload);
 	return Passed;
+}
+
+constexpr JoinIdentity BaselineReceiver{0x8877665544332211ull, 37, 11};
+constexpr BaselineBoundary Capture{0x12345678u, 0xfffffffau, 0};
+constexpr auto GoldenBaseline = []
+{
+	xr_array<u8, 158> Bytes{};
+	Bytes[0] = 0x01;
+	Bytes[1] = 0x3f;
+	std::ranges::copy(GoldenHuman, Bytes.begin() + 3);
+	Bytes[66] = 0x02;
+	Bytes[67] = 0x59;
+	std::ranges::copy(GoldenStalker, Bytes.begin() + 69);
+	return Bytes;
+}();
+constexpr BaselineManifest GoldenManifest{0x12345678u, 0xfffffffau, 0, 158, 2, 1};
+constexpr CombatantSnapshot GoldenCombatants[] = {Human, Stalker};
+
+static bool CheckGoldenBaseline()
+{
+	auto ReceiveStorage = GoldenBaseline;
+	const auto Decoded = CombatantBaseline::Decode({BaselineReceiver, GoldenManifest, ReceiveStorage}, BaselineReceiver, Capture);
+	ReceiveStorage.fill(0);
+	bool Passed = Expect("the golden baseline publishes owned human and stalker state in stream order",
+		Decoded && Decoded->GetIdentity() == BaselineReceiver && Decoded->GetBoundary() == Capture &&
+		std::ranges::equal(Decoded->GetRecords(), GoldenCombatants));
+	constexpr u8 Canary = 0x7b;
+	xr_array<u8, 160> Output;
+	Output.fill(Canary);
+	const auto Bytes = xr_span(Output).subspan(1, 158);
+	const auto Manifest = EncodeCombatantBaseline(Capture, GoldenCombatants, Bytes);
+	Passed &= Expect("encoded public baseline matches independent record headers and payloads",
+		Manifest && *Manifest == GoldenManifest && std::ranges::equal(Bytes, GoldenBaseline));
+	Passed &= Expect("baseline encoding preserves the surrounding bytes", Output.front() == Canary && Output.back() == Canary);
+	return Passed;
+}
+
+static bool CheckBaselineScope()
+{
+	constexpr StagedBaseline Staged{BaselineReceiver, GoldenManifest, GoldenBaseline};
+	constexpr JoinIdentity OtherScopes[]{
+		{BaselineReceiver.ServerSession + 1, BaselineReceiver.WorldEpoch, BaselineReceiver.ConnectionEpoch},
+		{BaselineReceiver.ServerSession, BaselineReceiver.WorldEpoch + 1, BaselineReceiver.ConnectionEpoch},
+		{BaselineReceiver.ServerSession, BaselineReceiver.WorldEpoch, BaselineReceiver.ConnectionEpoch + 1},
+	};
+	bool Passed = true;
+	for (const auto Other : OtherScopes)
+	{
+		Passed &= ExpectError("the staged baseline requires the exact receiver",
+			CombatantBaseline::Decode(Staged, Other, Capture), BaselineRecordsError::IdentityMismatch);
+	}
+	auto ForeignMalformed = Staged;
+	ForeignMalformed.Identity = OtherScopes[2];
+	ForeignMalformed.Manifest.CaptureTick++;
+	ForeignMalformed.Manifest.RecordCount = 33;
+	Passed &= ExpectError("foreign data is rejected before capture or record diagnostics",
+		CombatantBaseline::Decode(ForeignMalformed, BaselineReceiver, Capture), BaselineRecordsError::IdentityMismatch);
+
+	constexpr JoinIdentity Unbound{BaselineReceiver.ServerSession, BaselineReceiver.WorldEpoch, 0};
+	Passed &= ExpectError("unbound scopes cannot validate a baseline",
+		CombatantBaseline::Decode({Unbound, GoldenManifest, GoldenBaseline}, Unbound, Capture), BaselineRecordsError::IdentityMismatch);
+
+	constexpr BaselineBoundary OtherCaptures[]{
+		{Capture.BaselineId + 1, Capture.CaptureTick, Capture.EventWatermark},
+		{Capture.BaselineId, Capture.CaptureTick + 1, Capture.EventWatermark},
+		{Capture.BaselineId, Capture.CaptureTick, Capture.EventWatermark + 1},
+	};
+	for (const auto Other : OtherCaptures)
+	{
+		Passed &= ExpectError("baseline ID, capture tick and event watermark must all match the selection",
+			CombatantBaseline::Decode(Staged, BaselineReceiver, Other), BaselineRecordsError::BaselineMismatch);
+	}
+	return Passed;
+}
+
+static bool CheckBaselineInvalidRecords()
+{
+	auto Bytes = GoldenBaseline;
+	Bytes[66] = 0xff;
+	bool Passed = ExpectError("a later unsupported kind prevents publication",
+		CombatantBaseline::Decode({BaselineReceiver, GoldenManifest, Bytes}, BaselineReceiver, Capture), BaselineRecordsError::InvalidRecord);
+	Bytes = GoldenBaseline;
+	Bytes[69 + 84] = 0xff;
+	Passed &= ExpectError("a valid record frame with an invalid body prevents publication",
+		CombatantBaseline::Decode({BaselineReceiver, GoldenManifest, Bytes}, BaselineReceiver, Capture), BaselineRecordsError::InvalidRecord);
+	Bytes = GoldenBaseline;
+	Bytes[69] = Bytes[3];
+	Passed &= ExpectError("a second body for the same participant is rejected",
+		CombatantBaseline::Decode({BaselineReceiver, GoldenManifest, Bytes}, BaselineReceiver, Capture), BaselineRecordsError::InvalidRecord);
+	Bytes = GoldenBaseline;
+	Bytes[69 + 4] = Bytes[3 + 4];
+	Bytes[69 + 6] = 0x45;
+	Passed &= ExpectError("a second generation in the same slot is rejected",
+		CombatantBaseline::Decode({BaselineReceiver, GoldenManifest, Bytes}, BaselineReceiver, Capture), BaselineRecordsError::InvalidRecord);
+
+	auto Manifest = GoldenManifest;
+	Manifest.RecordCount = 1;
+	Passed &= ExpectError("a smaller declared count cannot hide a record",
+		CombatantBaseline::Decode({BaselineReceiver, Manifest, GoldenBaseline}, BaselineReceiver, Capture), BaselineRecordsError::TrailingData);
+	Manifest.RecordCount = 3;
+	Passed &= ExpectError("a larger declared count cannot publish a partial capture",
+		CombatantBaseline::Decode({BaselineReceiver, Manifest, GoldenBaseline}, BaselineReceiver, Capture), BaselineRecordsError::MissingRecords);
+	Manifest = GoldenManifest;
+	Manifest.ByteCount = 67;
+	Passed &= ExpectError("a truncated last record header is rejected",
+		CombatantBaseline::Decode({BaselineReceiver, Manifest, xr_span(GoldenBaseline).first(67)}, BaselineReceiver, Capture),
+		BaselineRecordsError::TruncatedHeader);
+	Manifest.ByteCount = 157;
+	Passed &= ExpectError("a truncated last record body is rejected",
+		CombatantBaseline::Decode({BaselineReceiver, Manifest, xr_span(GoldenBaseline).first(157)}, BaselineReceiver, Capture),
+		BaselineRecordsError::TruncatedPayload);
+	Passed &= ExpectError("the staged byte count must match the manifest",
+		CombatantBaseline::Decode({BaselineReceiver, GoldenManifest, xr_span(GoldenBaseline).first(157)}, BaselineReceiver, Capture),
+		BaselineRecordsError::ByteCountMismatch);
+	Manifest = GoldenManifest;
+	Manifest.ChunkCount = 2;
+	Passed &= ExpectError("typed decode preserves manifest validation",
+		CombatantBaseline::Decode({BaselineReceiver, Manifest, GoldenBaseline}, BaselineReceiver, Capture), BaselineRecordsError::InvalidManifest);
+	return Passed;
+}
+
+static bool CheckBaselineEncodeAndCountLimits()
+{
+	xr_array<u8, 33 * 92> Output;
+	Output.fill(0xa7);
+	const auto Before = Output;
+	constexpr BaselineManifest Empty{0x12345678u, 0xfffffffau, 0, 0, 0, 0};
+	const auto DecodedEmpty = CombatantBaseline::Decode({BaselineReceiver, Empty, {}}, BaselineReceiver, Capture);
+	bool Passed = Expect("empty capture is valid with no chunks or records", EncodeCombatantBaseline(Capture, {}, {}) == Empty &&
+		DecodedEmpty && DecodedEmpty->GetRecords().empty() && DecodedEmpty->GetBoundary() == Capture);
+	Passed &= ExpectError("short output is rejected",
+		EncodeCombatantBaseline(Capture, GoldenCombatants, xr_span(Output).first(157)), CombatantBaselineEncodeError::OutputTooSmall);
+	auto Invalid = Stalker;
+	Invalid.State.AimPitch = 16385;
+	const CombatantSnapshot BadRecords[] = {Human, Invalid};
+	Passed &= ExpectError("invalid later state does not publish an earlier record",
+		EncodeCombatantBaseline(Capture, BadRecords, Output), CombatantBaselineEncodeError::InvalidRecord);
+	Invalid = Stalker;
+	Invalid.State.Participant = Human.State.Participant;
+	const CombatantSnapshot Duplicated[] = {Human, Invalid};
+	Passed &= ExpectError("encoder rejects duplicate participants as well",
+		EncodeCombatantBaseline(Capture, Duplicated, Output), CombatantBaselineEncodeError::InvalidRecord);
+	Invalid = Stalker;
+	Invalid.State.Body.ObjectId = Human.State.Body.ObjectId;
+	const CombatantSnapshot DuplicateSlots[] = {Human, Invalid};
+	Passed &= ExpectError("encoder rejects duplicate engine slots as well",
+		EncodeCombatantBaseline(Capture, DuplicateSlots, Output), CombatantBaselineEncodeError::InvalidRecord);
+
+	xr_array<CombatantSnapshot, 33> TooMany{};
+	xr_array<u8, 33 * 92> Oversized{};
+	for (u8 Index = 0; Index < TooMany.size(); ++Index)
+	{
+		auto Body = Stalker;
+		Body.State.Participant.Value = 0x01020300u + Index;
+		Body.State.Body.ObjectId = static_cast<u16>(0x1200u + Index);
+		TooMany[Index] = Body;
+		auto Record = xr_span(Oversized).subspan(static_cast<std::size_t>(Index) * 92, 92);
+		Record[0] = 0x02;
+		Record[1] = 0x59;
+		std::ranges::copy(GoldenStalker, Record.begin() + 3);
+		Record[3] = Index;
+		Record[7] = Index;
+	}
+	Passed &= ExpectError("a valid 33-body stream exceeds the combatant cap",
+		CombatantBaseline::Decode({BaselineReceiver, {Capture.BaselineId, Capture.CaptureTick, Capture.EventWatermark, 3036, 33, 3},
+			Oversized}, BaselineReceiver, Capture), BaselineRecordsError::InvalidRecord);
+	Passed &= ExpectError("33 distinct combatants are also rejected on encode",
+		EncodeCombatantBaseline(Capture, TooMany, Output), CombatantBaselineEncodeError::InvalidRecord);
+	Passed &= Expect("failed encodes preserve the whole output span", Output == Before);
+	return Passed;
+}
+
+static bool CheckChunkedCombatantBaseline()
+{
+	xr_array<CombatantSnapshot, 32> Bodies{};
+	for (u32 Index = 0; Index < Bodies.size(); ++Index)
+	{
+		auto Body = Stalker;
+		Body.State.Participant = {Index + 1};
+		Body.State.Body = {static_cast<u16>(Index), Index + 1, 1};
+		Bodies[Index] = Body;
+	}
+	xr_array<u8, 2944> Stream;
+	const auto Manifest = EncodeCombatantBaseline(Capture, Bodies, Stream);
+	if (!Expect("32 stalkers require three chunks with an exact tail", Manifest &&
+		Manifest->RecordCount == 32 && Manifest->ByteCount == 2944 && Manifest->ChunkCount == 3))
+	{
+		return false;
+	}
+	xr_array<u8, 2944> Storage;
+	xr_array<u8, 1100> Datagram;
+	BaselineStagingBudget Budget(Storage.size(), 1);
+	BaselineStaging Staging(BaselineReceiver, Storage, Budget.TryReserve(Storage.size()).value());
+	const auto BeginSize = EncodeBaselineBegin({BaselineReceiver, 7, *Manifest}, Datagram);
+	const auto Begin = BeginSize ? DecodeBaselineBegin(xr_span(Datagram).first(*BeginSize)) : std::unexpected(BoundMessageError::InvalidEnvelope);
+	bool Passed = Expect("typed manifest goes through the reliable begin codec", Begin && Staging.Begin(*Begin).has_value());
+	for (const u16 Index : {u16{2}, u16{1}, u16{0}})
+	{
+		const std::size_t Offset = Index * 1024u;
+		const auto Bytes = xr_span(Stream).subspan(Offset, std::min<std::size_t>(1024, Stream.size() - Offset));
+		const auto Size = EncodeBaselineChunk({BaselineReceiver, 8u + Index, Capture.BaselineId, Index, Bytes}, Datagram);
+		const auto Chunk = Size ? DecodeBaselineChunk(xr_span(Datagram).first(*Size)) : std::unexpected(BoundMessageError::InvalidEnvelope);
+		Passed &= Expect("typed snapshot chunks can arrive in reverse order across record boundaries",
+			Chunk && Staging.AddChunk(*Chunk).has_value());
+	}
+	const auto EndSize = EncodeBaselineEnd({BaselineReceiver, 11, Capture.BaselineId}, Datagram);
+	const auto End = EndSize ? DecodeBaselineEnd(xr_span(Datagram).first(*EndSize)) : std::unexpected(BoundMessageError::InvalidEnvelope);
+	if (!Expect("typed end frame decodes", End.has_value()))
+	{
+		return false;
+	}
+	const auto Staged = Staging.Finish(*End);
+	if (!Expect("the completed staged view has the full public capture", Staged.has_value()))
+	{
+		return false;
+	}
+	const auto Typed = CombatantBaseline::Decode(*Staged, BaselineReceiver, Capture);
+	Passed &= Expect("a complete staged capture decodes all 32 bodies in original order",
+		Typed && Typed->GetBoundary() == Capture && std::ranges::equal(Typed->GetRecords(), Bodies));
+	return Passed;
+}
+
+bool RunBaseline()
+{
+	bool Passed = CheckGoldenBaseline();
+	Passed &= CheckBaselineScope();
+	Passed &= CheckBaselineInvalidRecords();
+	Passed &= CheckBaselineEncodeAndCountLimits();
+	Passed &= CheckChunkedCombatantBaseline();
+	if (!Passed)
+	{
+		return false;
+	}
+	std::puts("Combatant baseline codec checks passed");
+	return true;
 }
 
 bool Run()

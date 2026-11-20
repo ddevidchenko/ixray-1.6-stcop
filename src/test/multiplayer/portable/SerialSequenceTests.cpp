@@ -149,6 +149,7 @@ bool Run();
 namespace CombatantSnapshotTests
 {
 bool Run();
+bool RunBaseline();
 }
 
 namespace ReplicaSnapshotDispatchTests
@@ -330,6 +331,10 @@ int main(int ArgumentCount, char** Arguments)
 	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--replica-snapshot-queue") == 0)
 	{
 		return ReplicaSnapshotDispatchTests::RunQueue() ? EXIT_SUCCESS : EXIT_FAILURE;
+	}
+	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--combatant-baseline") == 0)
+	{
+		return CombatantSnapshotTests::RunBaseline() ? EXIT_SUCCESS : EXIT_FAILURE;
 	}
 	if (ArgumentCount != 1)
 	{

@@ -229,6 +229,29 @@ static bool CheckRawBytes()
 	return Passed;
 }
 
+static bool CheckRecordWriting()
+{
+	std::array<u8, 8> Bytes{0x58, 0x27, 0x4a, 0x39, Canary, Canary, Canary, Canary};
+	PayloadWriter Writer(xr_span(Bytes).first(7));
+	bool Passed = Expect("record writer starts after the existing fields", Writer.WriteInteger(u8{0x58}).has_value());
+	const auto Saved = Bytes;
+	Passed &= Expect("short framed record leaves cursor and backing bytes intact", IsError(Writer.WriteRecord({0xc2, xr_span(Bytes).first(4)}),
+		PayloadError::OutputTooSmall) && Writer.Written().size() == 1 && Bytes == Saved);
+	Passed &= Expect("overlapping record data moves before its header is written",
+		Writer.WriteRecord({0xc2, xr_span(Bytes).subspan(1, 3)}).has_value() &&
+		Bytes == std::array<u8, 8>{0x58, 0xc2, 0x03, 0x00, 0x27, 0x4a, 0x39, Canary});
+	std::array<u8, 3> Empty{};
+	PayloadWriter EmptyWriter(Empty);
+	Passed &= Expect("generic record framing supports a schema's empty body",
+		EmptyWriter.WriteRecord({0x85, {}}).has_value() && Empty == std::array<u8, 3>{0x85, 0, 0});
+
+	const std::array<u8, 65536> Oversized{};
+	Passed &= Expect("record framing rejects lengths that cannot fit on the wire",
+		IsError(EmptyWriter.WriteRecord({0x85, Oversized}), PayloadError::LengthOutOfRange) &&
+		EmptyWriter.Written().size() == 3 && Empty == std::array<u8, 3>{0x85, 0, 0});
+	return Passed;
+}
+
 bool Run()
 {
 	bool Passed = CheckGolden();
@@ -237,6 +260,7 @@ bool Run()
 	Passed &= CheckFloatBits();
 	Passed &= CheckShortScalarsAndOverlap();
 	Passed &= CheckRawBytes();
+	Passed &= CheckRecordWriting();
 	if (Passed)
 	{
 		std::puts("Wire payload checks passed");

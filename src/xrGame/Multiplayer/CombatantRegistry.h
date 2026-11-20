@@ -238,9 +238,8 @@ private:
 		return static_cast<std::size_t>(Match - Participants.begin());
 	}
 
-	static constexpr std::size_t Capacity = 32;
 	WorldIdentity Identity;
-	xr_array<Entry, Capacity> Participants{};
+	xr_array<Entry, MaxCombatants> Participants{};
 	u32 LastParticipantId = 0;
 	u32 LastGeneration = 0;
 	u32 LastConnectionEpoch = 0;

@@ -1,6 +1,6 @@
 # Multiplayer TDD work items
 
-The operator reports that W0 passed on Windows. The exact revision and result bundle are pending attachment. MP-010, MP-011a, MP-011b, MP-012, MP-020a, MP-020b, MP-020c, MP-020d, MP-020e, MP-020f, MP-020g, MP-022a, MP-022b, MP-022c, MP-022d, MP-037a, MP-037b and MP-037c have macOS evidence.
+The operator reports that W0 passed on Windows. The exact revision and result bundle are pending attachment. MP-010, MP-011a, MP-011b, MP-012, MP-020a, MP-020b, MP-020c, MP-020d, MP-020e, MP-020f, MP-020g, MP-022a, MP-022b, MP-022c, MP-022d, MP-037a, MP-037b, MP-037c and MP-037d have macOS evidence.
 
 Implements the [modern multiplayer plan](multiplayer-modernization-plan.md): 32 total human/bot combatants, simple DM, direct IP over GameNetworkingSockets first, human-like bots, authoritative simulation, prediction, lag compensation, and immediate local effects. Windows x64 is the initial runtime target; macOS remains usable for source work and portable tests. Hitscan, ballistics, and hybrid gunplay remain alternatives until the comparison gate.
 
@@ -371,6 +371,12 @@ The [peer runbook](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch
 - Reserve bytes and a buffer place from one serialized owner budget before taking backing storage. Each receiver owns a reservation covering its full span through completion and same-map reset. Destruction returns both charges. [Aggregate budget contract](multiplayer-implementation-contracts.md#aggregate-baseline-staging-budget).
 - **Mac checks passed / Windows pending.** Reviewed tests failed against the unbounded reserve path. They cover both exact limits, zero-byte transfers, oversized requests, failed attempts, move and destruction, invalid buffer bindings, and reuse through completion and round reset. Production limits and allocator integration require later engine evidence. [Tests](../../src/test/multiplayer/portable/BaselineStagingBudgetTests.cpp).
 - [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) collects a passing `baseline-staging-budget.xml` on Windows.
+
+#### MP-037d — Replace a staged baseline within its round
+
+- Accept an owner-selected declaration with a newer baseline ID and capture tick and a current or newer event watermark. Validate identity, manifest, and storage before clearing the previous receipts. Reuse the existing reservation and require the selected baseline ID at record validation. [Replacement contract](multiplayer-implementation-contracts.md#same-round-baseline-replacement).
+- **Mac checks passed / Windows pending.** Reviewed tests failed before replacement and baseline ID validation existed. They cover stale data, invalid replacements preserving in-progress and completed transfers, storage reuse, wrap and half-range serials, and world reset. Server retry limits and readiness coordination follow separately. [Tests](../../src/test/multiplayer/portable/BaselineRebaseTests.cpp).
+- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) collects a passing `baseline-rebase.xml` on Windows.
 
 ### MP-038 — Make death, score, round flow, and spectator state authoritative
 

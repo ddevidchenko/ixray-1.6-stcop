@@ -1,4 +1,5 @@
 #include "BaselineStaging.h"
+#include "SerialSequence.h"
 
 #include <algorithm>
 #include <cstring>
@@ -33,6 +34,19 @@ std::optional<BaselineStagingError> BaselineStaging::CheckActive(JoinIdentity Ot
 	return std::nullopt;
 }
 
+std::optional<BaselineStagingError> BaselineStaging::CheckManifest(const Wire::BaselineManifest& Next) const noexcept
+{
+	if (!Wire::IsValidBaselineManifest(Next))
+	{
+		return BaselineStagingError::InvalidManifest;
+	}
+	if (!Reservation.Covers(Storage.size()) || Next.ByteCount > Storage.size())
+	{
+		return BaselineStagingError::InsufficientStorage;
+	}
+	return std::nullopt;
+}
+
 std::expected<void, BaselineStagingError> BaselineStaging::Begin(const Wire::BaselineBegin& Message) noexcept
 {
 	if (!MatchesIdentity(Message.Identity))
@@ -51,16 +65,39 @@ std::expected<void, BaselineStagingError> BaselineStaging::Begin(const Wire::Bas
 		}
 		return {};
 	}
-	if (!Wire::IsValidBaselineManifest(Message.Manifest))
+	if (const auto Error = CheckManifest(Message.Manifest))
 	{
-		return std::unexpected(BaselineStagingError::InvalidManifest);
-	}
-	if (!Reservation.Covers(Storage.size()) || Message.Manifest.ByteCount > Storage.size())
-	{
-		return std::unexpected(BaselineStagingError::InsufficientStorage);
+		return std::unexpected(*Error);
 	}
 
 	Manifest = Message.Manifest;
+	return {};
+}
+
+std::expected<void, BaselineStagingError> BaselineStaging::Rebase(const Wire::BaselineBegin& Message) noexcept
+{
+	if (!MatchesIdentity(Message.Identity))
+	{
+		return std::unexpected(BaselineStagingError::IdentityMismatch);
+	}
+	if (!Manifest)
+	{
+		return std::unexpected(BaselineStagingError::InvalidState);
+	}
+
+	const auto& Next = Message.Manifest;
+	const bool WatermarkIsCurrentOrNewer = Next.EventWatermark == Manifest->EventWatermark || IsSequenceNewer(Next.EventWatermark, Manifest->EventWatermark);
+	if (!IsSequenceNewer(Next.BaselineId, Manifest->BaselineId) || !IsSequenceNewer(Next.CaptureTick, Manifest->CaptureTick) || !WatermarkIsCurrentOrNewer)
+	{
+		return std::unexpected(BaselineStagingError::StaleBaseline);
+	}
+	if (const auto Error = CheckManifest(Next))
+	{
+		return std::unexpected(*Error);
+	}
+
+	ClearTransfer();
+	Manifest = Next;
 	return {};
 }
 
@@ -121,9 +158,14 @@ bool BaselineStaging::AdvanceWorld(u32 WorldEpoch) noexcept
 		return false;
 	}
 	Identity.WorldEpoch = WorldEpoch;
+	ClearTransfer();
+	return true;
+}
+
+void BaselineStaging::ClearTransfer() noexcept
+{
 	Manifest.reset();
 	ReceivedChunks.reset();
 	Completed = false;
-	return true;
 }
 }

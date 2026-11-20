@@ -31,6 +31,7 @@ enum class BaselineRecordsError
 	TruncatedPayload,
 	InvalidRecord,
 	TrailingData,
+	BaselineMismatch,
 };
 
 // The cursor and its records borrow the immutable staged data for the same lifetime.
@@ -39,7 +40,7 @@ class BaselineRecords
 public:
 	// Returns a cursor only after every record frame and payload has been validated.
 	[[nodiscard]] static std::expected<BaselineRecords, BaselineRecordsError> Validate(const StagedBaseline& Baseline,
-		JoinIdentity CurrentIdentity, const IBaselineRecordSchema& Schema) noexcept;
+		JoinIdentity CurrentIdentity, u32 ExpectedBaselineId, const IBaselineRecordSchema& Schema) noexcept;
 
 	[[nodiscard]] const JoinIdentity& GetIdentity() const noexcept { return Identity; }
 	[[nodiscard]] const Wire::BaselineManifest& GetManifest() const noexcept { return Manifest; }

@@ -27,11 +27,15 @@ BaselineRecords::BaselineRecords(const StagedBaseline& Baseline) noexcept
 }
 
 std::expected<BaselineRecords, BaselineRecordsError> BaselineRecords::Validate(const StagedBaseline& Baseline,
-	JoinIdentity CurrentIdentity, const IBaselineRecordSchema& Schema) noexcept
+	JoinIdentity CurrentIdentity, u32 ExpectedBaselineId, const IBaselineRecordSchema& Schema) noexcept
 {
 	if (!CurrentIdentity.IsBound() || Baseline.Identity != CurrentIdentity)
 	{
 		return std::unexpected(BaselineRecordsError::IdentityMismatch);
+	}
+	if (Baseline.Manifest.BaselineId != ExpectedBaselineId)
+	{
+		return std::unexpected(BaselineRecordsError::BaselineMismatch);
 	}
 	if (!Wire::IsValidBaselineManifest(Baseline.Manifest))
 	{

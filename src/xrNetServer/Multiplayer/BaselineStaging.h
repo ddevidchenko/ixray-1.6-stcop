@@ -19,9 +19,10 @@ enum class BaselineStagingError
 	InvalidChunk,
 	ConflictingChunk,
 	Incomplete,
+	StaleBaseline,
 };
 
-// Data borrows staging storage while its receiver and world remain current.
+// Data borrows staging storage until a successful rebase, a world advance, or receiver destruction.
 struct StagedBaseline
 {
 	JoinIdentity Identity;
@@ -38,6 +39,8 @@ public:
 	BaselineStaging& operator=(const BaselineStaging&) = delete;
 
 	[[nodiscard]] std::expected<void, BaselineStagingError> Begin(const Wire::BaselineBegin& Message) noexcept;
+	// The connection owner selects the replacement declaration in the current world.
+	[[nodiscard]] std::expected<void, BaselineStagingError> Rebase(const Wire::BaselineBegin& Message) noexcept;
 	[[nodiscard]] std::expected<void, BaselineStagingError> AddChunk(const Wire::BaselineChunk& Message) noexcept;
 	[[nodiscard]] std::expected<StagedBaseline, BaselineStagingError> Finish(const Wire::BaselineEnd& Message) noexcept;
 	// Only the connection owner advances the epoch.
@@ -46,6 +49,8 @@ public:
 private:
 	[[nodiscard]] bool MatchesIdentity(JoinIdentity Other) const noexcept;
 	[[nodiscard]] std::optional<BaselineStagingError> CheckActive(JoinIdentity Other, u32 BaselineId) const noexcept;
+	[[nodiscard]] std::optional<BaselineStagingError> CheckManifest(const Wire::BaselineManifest& Next) const noexcept;
+	void ClearTransfer() noexcept;
 
 	JoinIdentity Identity;
 	const xr_span<u8> Storage;

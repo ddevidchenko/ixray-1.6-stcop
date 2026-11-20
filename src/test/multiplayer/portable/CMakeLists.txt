@@ -25,6 +25,7 @@ add_executable(TestMultiplayerUnit
     BaselineStagingTests.cpp
     BaselineRecordsTests.cpp
     BaselineStagingBudgetTests.cpp
+    BaselineRebaseTests.cpp
     ../transport/ScriptedTransport.cpp
 )
 target_link_libraries(TestMultiplayerUnit PRIVATE xrNetServerMultiplayer)
@@ -48,8 +49,9 @@ add_test(NAME Multiplayer.BaselineTransfer COMMAND TestMultiplayerUnit --baselin
 add_test(NAME Multiplayer.BaselineStaging COMMAND TestMultiplayerUnit --baseline-staging)
 add_test(NAME Multiplayer.BaselineRecords COMMAND TestMultiplayerUnit --baseline-records)
 add_test(NAME Multiplayer.BaselineStagingBudget COMMAND TestMultiplayerUnit --baseline-staging-budget)
+add_test(NAME Multiplayer.BaselineRebase COMMAND TestMultiplayerUnit --baseline-rebase)
 set_tests_properties(
-    Multiplayer.Sequence Multiplayer.MapSyncDeadline Multiplayer.WeaponSpread Multiplayer.ScriptedTransport Multiplayer.WireEnvelope Multiplayer.WirePayload Multiplayer.ClientHello Multiplayer.ServerWelcome Multiplayer.AdmissionReject Multiplayer.PendingAdmission Multiplayer.AdmissionCompletion Multiplayer.PendingAdmissionLimit Multiplayer.PeerJoin Multiplayer.ClientJoin Multiplayer.BaselineTransfer Multiplayer.BaselineStaging Multiplayer.BaselineRecords Multiplayer.BaselineStagingBudget
+    Multiplayer.Sequence Multiplayer.MapSyncDeadline Multiplayer.WeaponSpread Multiplayer.ScriptedTransport Multiplayer.WireEnvelope Multiplayer.WirePayload Multiplayer.ClientHello Multiplayer.ServerWelcome Multiplayer.AdmissionReject Multiplayer.PendingAdmission Multiplayer.AdmissionCompletion Multiplayer.PendingAdmissionLimit Multiplayer.PeerJoin Multiplayer.ClientJoin Multiplayer.BaselineTransfer Multiplayer.BaselineStaging Multiplayer.BaselineRecords Multiplayer.BaselineStagingBudget Multiplayer.BaselineRebase
     PROPERTIES LABELS multiplayer
 )
 

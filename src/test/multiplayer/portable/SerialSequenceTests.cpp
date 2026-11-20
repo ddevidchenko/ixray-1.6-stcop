@@ -89,6 +89,11 @@ namespace BaselineStagingBudgetTests
 bool Run();
 }
 
+namespace BaselineRebaseTests
+{
+bool Run();
+}
+
 namespace SerialSequenceTests
 {
 struct SequenceCase
@@ -198,6 +203,10 @@ int main(int ArgumentCount, char** Arguments)
 	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--baseline-staging-budget") == 0)
 	{
 		return BaselineStagingBudgetTests::Run() ? EXIT_SUCCESS : EXIT_FAILURE;
+	}
+	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--baseline-rebase") == 0)
+	{
+		return BaselineRebaseTests::Run() ? EXIT_SUCCESS : EXIT_FAILURE;
 	}
 	if (ArgumentCount != 1)
 	{

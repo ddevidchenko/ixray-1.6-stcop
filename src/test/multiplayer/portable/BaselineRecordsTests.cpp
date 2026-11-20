@@ -50,7 +50,7 @@ static bool ExpectError(const char* Step, const std::expected<BaselineRecords, B
 static bool CheckGolden()
 {
 	const FixtureSchema Schema;
-	auto Records = BaselineRecords::Validate({Identity, Manifest, Golden}, Identity, Schema);
+	auto Records = BaselineRecords::Validate({Identity, Manifest, Golden}, Identity, Id, Schema);
 	if (!Expect("golden baseline validates the whole stream before returning a cursor", Records && Schema.Calls == 2))
 	{
 		return false;
@@ -75,28 +75,31 @@ static bool CheckStagedInput()
 	bool Passed = true;
 	for (const auto& Other : Foreign)
 	{
-		Passed &= ExpectError("staged data must match the current session, world and connection", BaselineRecords::Validate({Other, Manifest, Golden}, Identity, Schema),
+		Passed &= ExpectError("staged data must match the current session, world and connection", BaselineRecords::Validate({Other, Manifest, Golden}, Identity, Id, Schema),
 			BaselineRecordsError::IdentityMismatch);
 	}
 	constexpr JoinIdentity Unbound{Identity.ServerSession, Identity.WorldEpoch, 0};
-	Passed &= ExpectError("matching unbound identities still fail", BaselineRecords::Validate({Unbound, Manifest, Golden}, Unbound, Schema), BaselineRecordsError::IdentityMismatch);
+	Passed &= ExpectError("matching unbound identities still fail", BaselineRecords::Validate({Unbound, Manifest, Golden}, Unbound, Id, Schema), BaselineRecordsError::IdentityMismatch);
+	constexpr u32 CurrentId = Id + 1;
+	Passed &= ExpectError("a same-round baseline superseded by rebase cannot reach record validation",
+		BaselineRecords::Validate({Identity, Manifest, Golden}, Identity, CurrentId, Schema), BaselineRecordsError::BaselineMismatch);
 	auto Bad = Manifest;
 	Bad.ChunkCount = 2;
-	Passed &= ExpectError("manually constructed views still require a valid manifest", BaselineRecords::Validate({Identity, Bad, Golden}, Identity, Schema),
+	Passed &= ExpectError("manually constructed views still require a valid manifest", BaselineRecords::Validate({Identity, Bad, Golden}, Identity, Id, Schema),
 		BaselineRecordsError::InvalidManifest);
 	Bad = Manifest;
 	Bad.ByteCount = 0xffffffffu;
-	Passed &= ExpectError("bad byte limits fail before framing", BaselineRecords::Validate({Identity, Bad, Golden}, Identity, Schema), BaselineRecordsError::InvalidManifest);
+	Passed &= ExpectError("bad byte limits fail before framing", BaselineRecords::Validate({Identity, Bad, Golden}, Identity, Id, Schema), BaselineRecordsError::InvalidManifest);
 	for (std::size_t Length = 0; Length < sizeof(Golden); ++Length)
 	{
-		Passed &= ExpectError("shorter staged storage fails before parsing records", BaselineRecords::Validate({Identity, Manifest, xr_span(Golden).first(Length)}, Identity, Schema),
+		Passed &= ExpectError("shorter staged storage fails before parsing records", BaselineRecords::Validate({Identity, Manifest, xr_span(Golden).first(Length)}, Identity, Id, Schema),
 			BaselineRecordsError::ByteCountMismatch);
 	}
 	std::array<u8, 10> Extra{};
 	std::ranges::copy(Golden, Extra.begin());
-	Passed &= ExpectError("larger staged storage must also match the declared byte count", BaselineRecords::Validate({Identity, Manifest, Extra}, Identity, Schema),
+	Passed &= ExpectError("larger staged storage must also match the declared byte count", BaselineRecords::Validate({Identity, Manifest, Extra}, Identity, Id, Schema),
 		BaselineRecordsError::ByteCountMismatch);
-	Passed &= Expect("rejected identity, manifest and size never invoke the schema", Schema.Calls == 0);
+	Passed &= Expect("rejected identity, baseline, manifest and size never invoke the schema", Schema.Calls == 0);
 	return Passed;
 }
 
@@ -108,35 +111,35 @@ static bool CheckFraming()
 	{
 		const Wire::BaselineManifest Declaration{Id, 10, 17, Length, 1, 1};
 		const auto Error = Length < 3 ? BaselineRecordsError::TruncatedHeader : BaselineRecordsError::TruncatedPayload;
-		Passed &= ExpectError("a full staged range can contain a truncated record", BaselineRecords::Validate({Identity, Declaration, xr_span(Golden).first(Length)}, Identity, Schema), Error);
+		Passed &= ExpectError("a full staged range can contain a truncated record", BaselineRecords::Validate({Identity, Declaration, xr_span(Golden).first(Length)}, Identity, Id, Schema), Error);
 	}
 	Passed &= Expect("partial record cannot reach the schema", Schema.Calls == 0);
 
 	const FixtureSchema LateSchema;
 	auto Damaged = std::to_array(Golden);
 	Damaged[7] = 1;
-	Passed &= ExpectError("a truncated last record fails the whole baseline", BaselineRecords::Validate({Identity, Manifest, Damaged}, Identity, LateSchema),
+	Passed &= ExpectError("a truncated last record fails the whole baseline", BaselineRecords::Validate({Identity, Manifest, Damaged}, Identity, Id, LateSchema),
 		BaselineRecordsError::TruncatedPayload);
 	Passed &= Expect("only the complete prefix was eligible for schema validation", LateSchema.Calls == 1);
 
 	auto Count = Manifest;
 	--Count.ByteCount;
 	const FixtureSchema ShortHeaderSchema;
-	Passed &= ExpectError("a short final header fails after a valid prefix", BaselineRecords::Validate({Identity, Count, xr_span(Golden).first(8)}, Identity, ShortHeaderSchema),
+	Passed &= ExpectError("a short final header fails after a valid prefix", BaselineRecords::Validate({Identity, Count, xr_span(Golden).first(8)}, Identity, Id, ShortHeaderSchema),
 		BaselineRecordsError::TruncatedHeader);
 	Passed &= Expect("a short final header never reaches the schema", ShortHeaderSchema.Calls == 1);
 
 	Count = Manifest;
 	Count.RecordCount = 3;
-	Passed &= ExpectError("exact record boundary before the declared count is missing records", BaselineRecords::Validate({Identity, Count, Golden}, Identity, Schema),
+	Passed &= ExpectError("exact record boundary before the declared count is missing records", BaselineRecords::Validate({Identity, Count, Golden}, Identity, Id, Schema),
 		BaselineRecordsError::MissingRecords);
 	Count.RecordCount = 1;
-	Passed &= ExpectError("an extra complete record is trailing data", BaselineRecords::Validate({Identity, Count, Golden}, Identity, Schema), BaselineRecordsError::TrailingData);
+	Passed &= ExpectError("an extra complete record is trailing data", BaselineRecords::Validate({Identity, Count, Golden}, Identity, Id, Schema), BaselineRecordsError::TrailingData);
 	std::array<u8, 10> Extra{};
 	std::ranges::copy(Golden, Extra.begin());
 	Count = Manifest;
 	Count.ByteCount = Extra.size();
-	Passed &= ExpectError("a trailing byte is not silently ignored", BaselineRecords::Validate({Identity, Count, Extra}, Identity, Schema), BaselineRecordsError::TrailingData);
+	Passed &= ExpectError("a trailing byte is not silently ignored", BaselineRecords::Validate({Identity, Count, Extra}, Identity, Id, Schema), BaselineRecordsError::TrailingData);
 	return Passed;
 }
 
@@ -145,12 +148,12 @@ static bool CheckSchema()
 	auto WrongKind = std::to_array(Golden);
 	WrongKind[6] = 0x57;
 	const FixtureSchema Schema;
-	bool Passed = ExpectError("late unknown kind prevents obtaining any record cursor", BaselineRecords::Validate({Identity, Manifest, WrongKind}, Identity, Schema),
+	bool Passed = ExpectError("late unknown kind prevents obtaining any record cursor", BaselineRecords::Validate({Identity, Manifest, WrongKind}, Identity, Id, Schema),
 		BaselineRecordsError::InvalidRecord);
 	Passed &= Expect("even the last framed record reaches the trusted schema", Schema.Calls == 2);
 	auto WrongPayload = std::to_array(Golden);
 	WrongPayload[5] ^= 0x80;
-	Passed &= ExpectError("known kind with bad payload fails the baseline", BaselineRecords::Validate({Identity, Manifest, WrongPayload}, Identity, Schema),
+	Passed &= ExpectError("known kind with bad payload fails the baseline", BaselineRecords::Validate({Identity, Manifest, WrongPayload}, Identity, Id, Schema),
 		BaselineRecordsError::InvalidRecord);
 	return Passed;
 }
@@ -158,7 +161,7 @@ static bool CheckSchema()
 static bool CheckCountLimits()
 {
 	const FixtureSchema Schema;
-	auto Empty = BaselineRecords::Validate({Identity, {Id, 0, 0, 0, 0, 0}, {}}, Identity, Schema);
+	auto Empty = BaselineRecords::Validate({Identity, {Id, 0, 0, 0, 0, 0}, {}}, Identity, Id, Schema);
 	bool Passed = Expect("empty baseline is validated without schema calls", Empty && !Empty->Next() && Schema.Calls == 0);
 	std::array<u8, 24576> Data{};
 	for (std::size_t Offset = 0; Offset < Data.size(); Offset += 3)
@@ -168,9 +171,9 @@ static bool CheckCountLimits()
 	constexpr Wire::BaselineManifest MaxCount{Id, 10, 17, 24576, 8192, 24};
 	auto Excess = MaxCount;
 	++Excess.RecordCount;
-	Passed &= ExpectError("record cap applies before schema calls", BaselineRecords::Validate({Identity, Excess, Data}, Identity, Schema), BaselineRecordsError::InvalidManifest);
+	Passed &= ExpectError("record cap applies before schema calls", BaselineRecords::Validate({Identity, Excess, Data}, Identity, Id, Schema), BaselineRecordsError::InvalidManifest);
 	Passed &= Expect("over-count baseline reached no schema calls", Schema.Calls == 0);
-	auto Records = BaselineRecords::Validate({Identity, MaxCount, Data}, Identity, Schema);
+	auto Records = BaselineRecords::Validate({Identity, MaxCount, Data}, Identity, Id, Schema);
 	if (!Expect("all 8,192 bounded records validate", Records && Schema.Calls == 8192))
 	{
 		return false;
@@ -196,7 +199,7 @@ static bool CheckMaximumPayload()
 	Data[2] = 0xff;
 	constexpr Wire::BaselineManifest Large{Id, 10, 17, 65538, 1, 65};
 	const FixtureSchema Schema;
-	auto Records = BaselineRecords::Validate({Identity, Large, Data}, Identity, Schema);
+	auto Records = BaselineRecords::Validate({Identity, Large, Data}, Identity, Id, Schema);
 	if (!Expect("u16 length accepts its full unsigned range", Records.has_value()))
 	{
 		return false;
@@ -206,7 +209,7 @@ static bool CheckMaximumPayload()
 		Record->Payload.data() == Data.data() + 3 && !Records->Next());
 	auto Short = Large;
 	--Short.ByteCount;
-	Passed &= ExpectError("one missing byte of a maximum payload is detected", BaselineRecords::Validate({Identity, Short, xr_span(Data).first(65537)}, Identity, Schema),
+	Passed &= ExpectError("one missing byte of a maximum payload is detected", BaselineRecords::Validate({Identity, Short, xr_span(Data).first(65537)}, Identity, Id, Schema),
 		BaselineRecordsError::TruncatedPayload);
 	return Passed;
 }
@@ -235,7 +238,7 @@ static bool CheckChunkBoundary()
 		return false;
 	}
 	const FixtureSchema Schema;
-	auto Records = BaselineRecords::Validate(*Staged, Identity, Schema);
+	auto Records = BaselineRecords::Validate(*Staged, Identity, Id, Schema);
 	if (!Expect("staged records validate across the chunk boundary", Records && Schema.Calls == 2))
 	{
 		return false;

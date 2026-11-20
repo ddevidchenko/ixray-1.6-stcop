@@ -271,13 +271,21 @@ The client must not wait for the continually moving server to become perfectly c
 
 Existing `M_SV_CONFIG_NEW_CLIENT`, `M_SV_CONFIG_GAME`, `M_SV_CONFIG_FINISHED` and `M_CLIENTREADY` show integration points. Existing map-change receive handling can reconnect; seamless map rotation is outside this initial contract. [Server config/spawn flow](../../src/xrGame/xrServer.cpp), [client receive](../../src/xrGame/Level_network_messages.cpp), [client startup](../../src/xrGame/Level_start.cpp).
 
+### Client-side baseline staging
+
+The serialized connection owner supplies an exclusive buffer from its staging budget and binds the receiver to the current session, world, and connection. The receiver checks the declaration against the wire limits and available storage before tracking the transfer. It uses a fixed receipt bitmap and copies accepted chunks to their canonical offsets.
+
+A matching duplicate declaration or chunk is idempotent while receiving. A conflicting duplicate fails and preserves the accepted data. A matching end received before all chunks fails and can be retried after the missing chunks arrive. Once all chunks arrive, a matching end yields one read-only view of exactly the declared bytes for record validation. The view borrows the reserved buffer until the owner releases it or advances the world.
+
+A same-map round advance clears the declaration and receipt bitmap. The next world can reuse numeric baseline IDs, while frames for the old world fail the identity check. The owner supplies the aggregate budget and handles same-round rebase policy. Record validation, event catch-up, and world publication follow byte assembly. [Stager](../../src/xrNetServer/Multiplayer/BaselineStaging.h), [staging tests](../../src/test/multiplayer/portable/BaselineStagingTests.cpp).
+
 ### Server-side join readiness
 
 The connection owner starts `Loading` after queuing the accepted welcome. Loading expires after 120 seconds, and a current-session/world/connection confirmation starts the 30-second synchronization window. Use monotonic wall time. An event at the exact deadline expires the peer before applying that event. The owner can poll idle peers and receives the stage-specific failure once for connection and roster cleanup.
 
 During `Synchronizing`, the owner declares one staged barrier for the current identity. The peer acknowledgement matches session, world, connection, baseline ID, barrier ID, snapshot tick, and event watermark exactly. A successful match moves the peer to `ReadySpectator` once. The world owner handles activation and spawning after that transition.
 
-A same-map round advance must increase the world epoch without wrapping. It invalidates the old barrier and preserves the outstanding loading or synchronization deadline. A loading confirmation must match the new epoch. A peer already waiting as a ready spectator returns to synchronization with a fresh synchronization deadline. Peer messages cannot advance the epoch. The portable tracker operates on checked values. The client confirmation layouts are defined in the wire contract. Baseline staging and same-round rebasing follow their snapshot work items. [Tracker](../../src/xrNetServer/Multiplayer/PeerJoin.h), [join tests](../../src/test/multiplayer/portable/PeerJoinTests.cpp).
+A same-map round advance must increase the world epoch without wrapping. It invalidates the old barrier and preserves the outstanding loading or synchronization deadline. A loading confirmation must match the new epoch. A peer already waiting as a ready spectator returns to synchronization with a fresh synchronization deadline. Peer messages cannot advance the epoch. The portable tracker operates on checked values. The client confirmation layouts are defined in the wire contract. Record validation and same-round rebasing follow their snapshot work items. [Tracker](../../src/xrNetServer/Multiplayer/PeerJoin.h), [join tests](../../src/test/multiplayer/portable/PeerJoinTests.cpp).
 
 ## 5. Round and spawn behavior
 

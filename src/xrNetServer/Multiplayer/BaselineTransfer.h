@@ -21,6 +21,8 @@ struct BaselineManifest
 	bool operator==(const BaselineManifest&) const = default;
 };
 
+[[nodiscard]] bool IsValidBaselineManifest(const BaselineManifest& Manifest) noexcept;
+
 struct BaselineBegin
 {
 	JoinIdentity Identity;

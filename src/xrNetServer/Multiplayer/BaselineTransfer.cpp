@@ -18,7 +18,7 @@ constexpr std::size_t MaxChunkSize = ChunkPrefixSize + MaxBaselineChunkBytes;
 constexpr std::size_t EndSize = sizeof(u32);
 static_assert(MaxChunkSize <= MaxPayloadSize);
 
-static bool IsValidManifest(const BaselineManifest& Manifest) noexcept
+bool IsValidBaselineManifest(const BaselineManifest& Manifest) noexcept
 {
 	if (Manifest.ByteCount > MaxBaselineBytes || Manifest.RecordCount > MaxBaselineRecords || Manifest.RecordCount > Manifest.ByteCount)
 	{
@@ -48,7 +48,7 @@ std::expected<BaselineBegin, BoundMessageError> DecodeBaselineBegin(xr_span<cons
 		Detail::ReadLittleEndian<u16>(Payload.subspan<RecordCountOffset, sizeof(u16)>()),
 		Detail::ReadLittleEndian<u16>(Payload.subspan<ChunkCountOffset, sizeof(u16)>())
 	};
-	if (!IsValidManifest(Manifest))
+	if (!IsValidBaselineManifest(Manifest))
 	{
 		return std::unexpected(BoundMessageError::InvalidPayload);
 	}
@@ -86,7 +86,7 @@ std::expected<BaselineEnd, BoundMessageError> DecodeBaselineEnd(xr_span<const u8
 std::expected<std::size_t, BoundMessageError> EncodeBaselineBegin(const BaselineBegin& Begin, xr_span<u8> Output) noexcept
 {
 	const auto& Manifest = Begin.Manifest;
-	if (!IsValidManifest(Manifest))
+	if (!IsValidBaselineManifest(Manifest))
 	{
 		return std::unexpected(BoundMessageError::InvalidPayload);
 	}

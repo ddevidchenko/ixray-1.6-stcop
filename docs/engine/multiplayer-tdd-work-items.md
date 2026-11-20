@@ -1,6 +1,6 @@
 # Multiplayer TDD work items
 
-The operator reports that W0 passed on Windows. The exact revision and result bundle are pending attachment. MP-010, MP-011a, MP-011b, MP-012, MP-020a, MP-020b, MP-020c, MP-020d, MP-020e, MP-020f, MP-020g, MP-022a, MP-022b, MP-022c and MP-022d have macOS evidence.
+The operator reports that W0 passed on Windows. The exact revision and result bundle are pending attachment. MP-010, MP-011a, MP-011b, MP-012, MP-020a, MP-020b, MP-020c, MP-020d, MP-020e, MP-020f, MP-020g, MP-022a, MP-022b, MP-022c, MP-022d and MP-037a have macOS evidence.
 
 Implements the [modern multiplayer plan](multiplayer-modernization-plan.md): 32 total human/bot combatants, simple DM, direct IP over GameNetworkingSockets first, human-like bots, authoritative simulation, prediction, lag compensation, and immediate local effects. Windows x64 is the initial runtime target; macOS remains usable for source work and portable tests. Hitscan, ballistics, and hybrid gunplay remain alternatives until the comparison gate.
 
@@ -353,6 +353,12 @@ The [peer runbook](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch
 - **Red:** drop a snapshot; subsequent complete entity state recovers without waiting for it. Deliver spawn/despawn/health/ammo events out of order or twice; identities/events prevent resurrection/double application. Join while entities spawn, die, collect items or the round resets: a staged baseline plus subsequent changes produces coherent current state before readiness. Bounded catch-up overflow requests a fresh baseline rather than partial admission.
 - **Green / seam:** world/owner/NPC snapshots, command ack, initial capture tick/event watermark and bounded lifecycle ledger. Stage initial records, catch up to a declared current-session/round barrier and acknowledge readiness before spawning. Start self-contained; add delta baselines only if MP-083 justifies them, with recovery tests first.
 - [ ] **Complete when:** sequence tests and real peers converge after bounded delivery gaps, packet sizes are measured, and payload splitting does not require an unbounded reassembly buffer.
+
+#### MP-037a — Assemble a bounded baseline in owner storage
+
+- Bind portable staging to the current join identity. Reuse the wire manifest checks and accept only canonical chunk lengths and offsets within the owner-supplied buffer. Expose a completed byte view once on matching end. A trusted round advance invalidates old receipt state. [Staging contract](multiplayer-implementation-contracts.md#client-side-baseline-staging).
+- **Mac checks passed / Windows pending.** The initial two-chunk assembly failed before implementation. Reviewed tests cover decoded frames and datagram reuse, exact storage limits, reordering, duplicates, conflicting updates, early end, reset, and all 4,096 chunk indices. Aggregate buffer reservation, record decoding, and engine integration follow as separate work. [Tests](../../src/test/multiplayer/portable/BaselineStagingTests.cpp).
+- [ ] **Complete when** the [portable and peer batch](multiplayer-checkpoints/w0.md#run-the-portable-and-peer-batch) collects a passing `baseline-staging.xml` on Windows.
 
 ### MP-038 — Make death, score, round flow, and spectator state authoritative
 

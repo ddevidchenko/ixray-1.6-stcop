@@ -3468,6 +3468,11 @@ CSE_Abstract* xrServer::Process_spawn(NET_Packet& P, ClientID sender, bool bSpaw
 		}
 	}
 
+	if (const auto* Stalker = smart_cast<const CSE_ALifeHumanStalker*>(E); Stalker && Stalker->PublishesArenaPose())
+	{
+		E->s_flags.set(M_SPAWN_UPDATE, true);
+	}
+
 	// create packet and broadcast packet to everybody
 	NET_Packet Packet;
 	if (CL)
@@ -3516,18 +3521,36 @@ void xrServer::Process_update(NET_Packet& P, ClientID sender)
 	// while has information
 	while (!P.r_eof())
 	{
-		// find entity
+		if (P.r_elapsed() < sizeof(u16) + sizeof(u8))
+		{
+			return;
+		}
 		u16 ID;
 		u8 size;
-
 		P.r_u16(ID);
 		P.r_u8(size);
-		u32 _pos = P.r_tell();
+		const u32 _pos = P.r_tell();
+		if (size > P.r_elapsed())
+		{
+			return;
+		}
 		CSE_Abstract* E = ID_to_entity(ID);
 
 		if (E)
 		{
 			E->net_Ready = true;
+			if (auto* Stalker = smart_cast<CSE_ALifeHumanStalker*>(E); Stalker && Stalker->PublishesArenaPose())
+			{
+				if (CL->flags.bLocal && E->owner == CL)
+				{
+					Stalker->ImportArenaPose(P, size);
+				}
+				else
+				{
+					P.r_advance(size);
+				}
+				continue;
+			}
 			// Live updates always use the current packet format.
 			if (E->cast_item_weapon())
 			{

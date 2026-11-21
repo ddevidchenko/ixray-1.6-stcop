@@ -29,6 +29,12 @@ void CAI_Stalker::net_Export(NET_Packet& P)
 {
 	if (!IsGameTypeSingle())
 	{
+		const xrSRWLockGuard Guard(ArenaPoseLock, true);
+		if (ArenaPublishedPose.Life)
+		{
+			const auto Bytes = Multiplayer::ArenaStalkerPose::Encode(ArenaPublishedPose);
+			P.w(Bytes.data(), u32(Bytes.size()));
+		}
 		return;
 	}
 
@@ -77,6 +83,24 @@ void CAI_Stalker::net_Import(NET_Packet& P)
 {
 	if (!IsGameTypeSingle())
 	{
+		if (g_pGamePersistent->GameType() == eGameIDDeathmatch &&
+			Multiplayer::ResolveStalkerRole(OnServer(), Local()) == Multiplayer::StalkerRole::Replica)
+		{
+			using namespace Multiplayer::ArenaStalkerPose;
+			if (P.r_elapsed() == WireSize)
+			{
+				Wire Bytes;
+				P.r(Bytes.data(), u32(Bytes.size()));
+				if (const auto State = Decode(Bytes); State && g_Alive() && !getDestroy() && ArenaReplica.Accept(*State))
+				{
+					MakeMeCrow();
+				}
+			}
+			else
+			{
+				P.r_advance(P.r_elapsed());
+			}
+		}
 		return;
 	}
 
@@ -561,6 +585,10 @@ void CAI_Stalker::UpdateScriptAnim(NET_Packet& packet)
 		data.boneID = packet.r_u8();
 		data.AnimationCtrl = packet.r_u8();
 		packet.r_matrix(data.motion_matrix);
+		if (ArenaReplica.Bound())
+		{
+			data.AnimationCtrl = false;
+		}
 
 		 
 		//if (ka->get_animation_valid(data.id))

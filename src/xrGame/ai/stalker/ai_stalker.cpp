@@ -485,6 +485,8 @@ void CAI_Stalker::Die				(CObject* who)
 	SpatialComponent->type |= ESPATIAL_TYPE::STALKER_DEAD;
 
 	movement().CancelArenaLadder(character_physics_support()->movement());
+	ArenaReplica.Clear();
+	ClearArenaClimbPose();
 	movement().on_death				( );
 
 	notify_on_wounded_or_killed		(who);
@@ -564,7 +566,8 @@ void CAI_Stalker::BoneCallback(CBoneInstance* HeadBone)
 
 void CAI_Stalker::LookAtActor(CBoneInstance* HeadBone, float Weight)
 {
-	if (!EngineExternal()[EEngineExternalGame::EnableNPCLookAtActor] || !m_bHeadRotate || !g_Alive() || wounded() || !g_actor)
+	if (ArenaClimbStage != Multiplayer::ArenaStalkerPose::Stage::Ground ||
+		!EngineExternal()[EEngineExternalGame::EnableNPCLookAtActor] || !m_bHeadRotate || !g_Alive() || wounded() || !g_actor)
 	{
 		HeadLookOrientation.set(0.f, 0.f, 0.f);
 		HeadLookTime = u32(-1);
@@ -739,6 +742,20 @@ bool CAI_Stalker::net_Spawn(CSE_Abstract* DC)
 
 	m_pPhysics_support->in_NetSpawn	(e);
 
+	const auto Role = Multiplayer::ResolveStalkerRole(OnServer(), Local());
+	if (g_Alive() && tpHuman->ArenaSpawnPose.Life)
+	{
+		if (Role == Multiplayer::StalkerRole::Authority)
+		{
+			const xrSRWLockGuard Guard(ArenaPoseLock);
+			ArenaPublishedPose = tpHuman->ArenaSpawnPose;
+		}
+		else if (Role == Multiplayer::StalkerRole::Replica && ArenaReplica.Start(tpHuman->ArenaSpawnPose))
+		{
+			UpdateArenaReplica();
+		}
+	}
+
 	SpatialComponent->type |= ESPATIAL_TYPE::STALKER;
 
 	if (GetfHealth()>0.f)
@@ -755,6 +772,12 @@ bool CAI_Stalker::net_Spawn(CSE_Abstract* DC)
 
 void CAI_Stalker::net_Destroy()
 {
+	{
+		const xrSRWLockGuard Guard(ArenaPoseLock);
+		ArenaPublishedPose = {};
+	}
+	ArenaReplica.Clear();
+	ClearArenaClimbPose();
 	inherited::net_Destroy();
 	CInventoryOwner::net_Destroy();
 	m_pPhysics_support->in_NetDestroy();
@@ -837,7 +860,14 @@ void CAI_Stalker::UpdateCL()
 	{
 		if (!SinglePlayer && Role == Multiplayer::StalkerRole::Replica)
 		{
-			make_Interpolation();
+			if (ArenaReplica.Bound())
+			{
+				UpdateArenaReplica();
+			}
+			else
+			{
+				make_Interpolation();
+			}
 		}
 
 		if (UpdateAuthoritativeState)
@@ -868,6 +898,17 @@ void CAI_Stalker::UpdateCL()
 	}
 
 
+	const auto LadderPose = movement().ArenaClimbPose();
+	const bool DrivingLadder = UpdateAuthoritativeState && LadderPose.Action != Multiplayer::ArenaStalkerPose::Stage::Ground;
+	if (UpdateAuthoritativeState && g_Alive())
+	{
+		ApplyArenaClimbPose(LadderPose);
+		if (DrivingLadder)
+		{
+			SetArenaFacing(movement().m_body.current.yaw);
+		}
+	}
+
 	inherited::UpdateCL();
 
 	m_pPhysics_support->in_UpdateCL();
@@ -876,7 +917,7 @@ void CAI_Stalker::UpdateCL()
 	{
 		VERIFY(!m_pPhysicsShell);
 
-		if (UpdateAuthoritativeState)
+		if (UpdateAuthoritativeState && !DrivingLadder)
 		{
 			PROF_EVENT("sight_manager")
 			try
@@ -891,9 +932,14 @@ void CAI_Stalker::UpdateCL()
 
 			Exec_Look(Device.fTimeDelta); //Device.fTimeDelta
 		}
-		else
+		else if (!UpdateAuthoritativeState && !ArenaReplica.Bound())
 		{
 			Exec_Look(client_update_fdelta());
+		}
+
+		if (UpdateAuthoritativeState && g_dedicated_server)
+		{
+			PublishArenaPose();
 		}
 
 		CStepManager::update(false);
@@ -1085,8 +1131,11 @@ void CAI_Stalker::Think()
 
 void CAI_Stalker::SelectAnimation(const Fvector &view, const Fvector &move, float speed)
 {
-	if (!Device.Paused())
+	if (!Device.Paused() && (!g_Alive() ||
+		(!ArenaReplica.Bound() && movement().ArenaClimbPose().Action == Multiplayer::ArenaStalkerPose::Stage::Ground)))
+	{
 		animation().update();
+	}
 }
 
 const SRotation CAI_Stalker::Orientation	() const

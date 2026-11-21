@@ -135,6 +135,11 @@
                 "step": "arena-ladder-bake"
             },
             {
+                "name": "Multiplayer.ArenaStalkerPose",
+                "successMessage": "Arena stalker pose checks passed",
+                "step": "arena-stalker-pose"
+            },
+            {
                 "name": "Multiplayer.ArenaMovement",
                 "successMessage": "Arena movement checks passed",
                 "step": "arena-movement"

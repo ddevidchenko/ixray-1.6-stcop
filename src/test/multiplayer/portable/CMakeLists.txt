@@ -40,6 +40,7 @@ add_executable(TestMultiplayerUnit
     StalkerPrerequisitesTests.cpp
     ArenaLadderTests.cpp
     ArenaLadderBakeTests.cpp
+    ArenaStalkerPoseTests.cpp
     ArenaMovementTests.cpp
     ArenaNavigationPackageTests.cpp
     DedicatedArenaNavigationTests.cpp
@@ -145,3 +146,6 @@ set_tests_properties(Multiplayer.ArenaMovement PROPERTIES LABELS multiplayer)
 
 add_test(NAME Multiplayer.ArenaLadderBake COMMAND TestMultiplayerUnit --arena-ladder-bake)
 set_tests_properties(Multiplayer.ArenaLadderBake PROPERTIES LABELS multiplayer)
+
+add_test(NAME Multiplayer.ArenaStalkerPose COMMAND TestMultiplayerUnit --arena-stalker-pose)
+set_tests_properties(Multiplayer.ArenaStalkerPose PROPERTIES LABELS multiplayer)

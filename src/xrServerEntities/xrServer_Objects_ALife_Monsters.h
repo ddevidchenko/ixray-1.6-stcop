@@ -15,6 +15,9 @@
 #include "alife_movement_manager_holder.h"
 #include "../xrPhysics/net_physics_state.h"
 #include "../xrGame/ai/stalker/ai_stalker_state_net.h"
+#ifdef XRGAME_EXPORTS
+#include "../xrGame/Multiplayer/ArenaStalkerPose.h"
+#endif
 
 class CALifeMonsterBrain;
 class CALifeHumanBrain;
@@ -523,6 +526,9 @@ SERVER_ENTITY_DECLARE_BEGIN2(CSE_ALifeHumanStalker,CSE_ALifeHumanAbstract,CSE_PH
 	shared_str						m_start_dialog;
 #ifdef XRGAME_EXPORTS
 	aistalker_state_net				m_state_mngr;
+	Multiplayer::ArenaStalkerPose::Snapshot ArenaSpawnPose;
+	bool PublishesArenaPose() const;
+	void ImportArenaPose(NET_Packet& Packet, u32 Size);
 #endif
 									CSE_ALifeHumanStalker	(const char* caSection);
 	virtual							~CSE_ALifeHumanStalker	();

@@ -135,6 +135,7 @@ bool Run();
 }
 
 namespace ArenaMovementTests { bool Run(); }
+namespace ArenaStalkerPoseTests { bool Run(); }
 namespace ArenaLadderBakeTests { bool Run(); }
 namespace ArenaLadderTests
 {
@@ -402,6 +403,10 @@ int main(int ArgumentCount, char** Arguments)
 	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--arena-movement") == 0)
 	{
 		return ArenaMovementTests::Run() ? EXIT_SUCCESS : EXIT_FAILURE;
+	}
+	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--arena-stalker-pose") == 0)
+	{
+		return ArenaStalkerPoseTests::Run() ? EXIT_SUCCESS : EXIT_FAILURE;
 	}
 	if (ArgumentCount == 2 && std::strcmp(Arguments[1], "--arena-ladder-bake") == 0)
 	{

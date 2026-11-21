@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include "../../Multiplayer/ArenaStalkerPose.h"
 #include "../../Creature.h"
 #include "../../ObjectHandler.h"
 #include "../../AI_PhraseDialogManager.h"
@@ -346,6 +347,21 @@ public:
 	// State Manager Se7Kills
 	aistalker_state_net state_manager;
 
+private:
+	Multiplayer::ArenaStalkerPose::Replica ArenaReplica;
+	xrSRWLock ArenaPoseLock;
+	Multiplayer::ArenaStalkerPose::Snapshot ArenaPublishedPose;
+	IRenderVisual* ArenaClimbVisual = nullptr;
+	Multiplayer::ArenaStalkerPose::Stage ArenaClimbStage = Multiplayer::ArenaStalkerPose::Stage::Ground;
+	MotionID ArenaClimbMotion{};
+	void UpdateArenaReplica();
+	void SetArenaFacing(float Yaw);
+	void ApplyArenaClimbPose(Multiplayer::ArenaStalkerPose::Pose Pose);
+	void ClearArenaClimbPose();
+
+	void PublishArenaPose();
+
+public:
 	// NET EXPORT-IMPORT APPLY
 	u32 LastUpdateAnims = 0;
 	Fmatrix UpdateMatrix;

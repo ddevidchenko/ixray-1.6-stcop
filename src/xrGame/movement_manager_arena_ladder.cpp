@@ -261,6 +261,7 @@ bool CMovementManager::MoveArenaLadder(CPHMovementControl& Physics, Fvector& Pos
 			ArenaLadder.End.distance_to(ArenaLadder.Exit);
 		ArenaLadder.LadderRevision = Links->BindingRevision(Link);
 		ArenaLadder.Motor.Begin(Now, 2500 + u32(2000.f * Distance / ClimbSpeed));
+		ArenaLadder.PhaseStart = Position;
 		Physics.EnableCharacter();
 		Character->SetVelocity(Stop);
 		clear_path();
@@ -291,6 +292,7 @@ bool CMovementManager::MoveArenaLadder(CPHMovementControl& Physics, Fvector& Pos
 		Elevator->EndDirectedClimb();
 		Links->Release(Link, Owner);
 		ArenaLadder.Motor = {};
+		ArenaLadder.Presentation = {};
 		ArenaLadder.Recovering = Current == Phase::Failed;
 		ArenaLadder.ReleasedOnStep = physics_world()->StepsNum();
 		if (Current == Phase::Complete)
@@ -313,6 +315,7 @@ bool CMovementManager::MoveArenaLadder(CPHMovementControl& Physics, Fvector& Pos
 
 	if (Previous != Current)
 	{
+		ArenaLadder.PhaseStart = Position;
 		if (Current == Phase::Climb)
 		{
 			Msg("Arena ladder: generation=%llu stalker=%u link=%u climb", Generation, u32(Owner), Link);
@@ -328,7 +331,15 @@ bool CMovementManager::MoveArenaLadder(CPHMovementControl& Physics, Fvector& Pos
 			ArenaLadder.ReleasedOnStep = physics_world()->StepsNum();
 		}
 	}
-	m_body.target.yaw = -ArenaLadder.Facing.getH();
+	Fvector PhaseDisplacement;
+	PhaseDisplacement.sub(Target(), ArenaLadder.PhaseStart);
+	const float Length = PhaseDisplacement.magnitude();
+	const float Travel = Length > EPS_L ?
+		Fvector().sub(Position, ArenaLadder.PhaseStart).dotproduct(PhaseDisplacement) / Length : 0.f;
+	ArenaLadder.Presentation = Multiplayer::ArenaStalkerPose::Measure(Current, Edge.Travel, Travel, Length);
+	const float Facing = -ArenaLadder.Facing.getH();
+	m_body.current.yaw = m_body.target.yaw = m_head.current.yaw = m_head.target.yaw = Facing;
+	m_body.current.pitch = m_body.target.pitch = m_head.current.pitch = m_head.target.pitch = 0.f;
 	if (Current == Phase::Settle)
 	{
 		Drive(Stop);

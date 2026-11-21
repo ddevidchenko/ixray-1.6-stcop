@@ -39,6 +39,8 @@
 #	include "movement_manager.h"
 #	include "location_manager.h"
 #	include "../xrGame/Level.h"
+#	include "../xrGame/xrServer.h"
+#	include "../xrGame/game_sv_base.h"
 #include "../xrGame/InventoryOwner.h"
 #endif
 
@@ -2299,9 +2301,59 @@ void CSE_ALifeHumanStalker::STATE_Read		(NET_Packet &tNetPacket, u16 size)
 		tNetPacket.r_u8			();
 }
 
+#ifdef XRGAME_EXPORTS
+bool CSE_ALifeHumanStalker::PublishesArenaPose() const
+{
+	return g_dedicated_server && g_pGameLevel && Level().Server && Level().Server->game &&
+		Level().Server->game->Type() == eGameIDDeathmatch && ai().ArenaNavigationReady();
+}
+
+void CSE_ALifeHumanStalker::ImportArenaPose(NET_Packet& Packet, u32 Size)
+{
+	using namespace Multiplayer::ArenaStalkerPose;
+	if (Size != WireSize)
+	{
+		Packet.r_advance(Size);
+		return;
+	}
+
+	Wire Bytes;
+	Packet.r(Bytes.data(), u32(Bytes.size()));
+	if (const auto State = Decode(Bytes); State && (!ArenaSpawnPose.Life || Follows(*State, ArenaSpawnPose)))
+	{
+		ArenaSpawnPose = *State;
+		o_Position.set(State->X, State->Y, State->Z);
+		o_Angle.y = -State->Yaw;
+		o_torso.yaw = -State->Yaw;
+	}
+}
+#endif
+
 void CSE_ALifeHumanStalker::UPDATE_Write(NET_Packet& tNetPacket)
 {
 #ifdef XRGAME_EXPORTS
+	if (PublishesArenaPose())
+	{
+		if (!ArenaSpawnPose.Life)
+		{
+			// Assign a fresh identity before serializing the initial spawn or any updates.
+			static u32 LastLife = 0;
+			if (++LastLife == 0)
+			{
+				++LastLife;
+			}
+			ArenaSpawnPose = {LastLife, Level().timeServer(), o_Position.x, o_Position.y, o_Position.z,
+				angle_normalize_signed(-o_Angle.y), {}};
+		}
+		auto State = ArenaSpawnPose;
+		if (!g_Alive())
+		{
+			State.Ladder = {};
+		}
+		const auto Bytes = Multiplayer::ArenaStalkerPose::Encode(State);
+		tNetPacket.w(Bytes.data(), u32(Bytes.size()));
+		return;
+	}
 	if (g_pGamePersistent->GameType() != eGameIDSingle)
 	{
 		return;
@@ -2316,8 +2368,16 @@ void CSE_ALifeHumanStalker::UPDATE_Write(NET_Packet& tNetPacket)
 void CSE_ALifeHumanStalker::UPDATE_Read(NET_Packet& tNetPacket)
 {
 #ifdef XRGAME_EXPORTS
-	if (g_pGamePersistent->GameType() != eGameIDSingle)
+	const auto GameType = g_pGamePersistent->GameType();
+	const bool DedicatedPose = PublishesArenaPose();
+	if (GameType != eGameIDSingle || DedicatedPose)
 	{
+		// A standalone M_SPAWN initializes both the local authority and each remote replica.
+		if ((DedicatedPose || (OnClient() && (GameType == eGameIDDeathmatch || GameType == eGameIDNoGame))) &&
+			tNetPacket.r_elapsed() == Multiplayer::ArenaStalkerPose::WireSize)
+		{
+			ImportArenaPose(tNetPacket, tNetPacket.r_elapsed());
+		}
 		return;
 	}
 #endif

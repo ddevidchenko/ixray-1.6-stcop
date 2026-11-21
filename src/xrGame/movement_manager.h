@@ -9,6 +9,7 @@
 #pragma once
 
 #include "Multiplayer/ArenaLadderTraversal.h"
+#include "Multiplayer/ArenaStalkerPose.h"
 #include "Multiplayer/ArenaMovement.h"
 
 #include "ai_monster_space.h"
@@ -174,6 +175,8 @@ private:
 		Fvector End{};
 		Fvector Exit{};
 		Fvector Facing{};
+		Fvector PhaseStart{};
+		Multiplayer::ArenaStalkerPose::Pose Presentation;
 	};
 	ArenaLadderState ArenaLadder;
 
@@ -216,6 +219,7 @@ public:
 	virtual bool	net_Spawn				(CSE_Abstract* data);
 	virtual void	net_Destroy				();
 	void CancelArenaLadder(CPHMovementControl* Physics);
+	Multiplayer::ArenaStalkerPose::Pose ArenaClimbPose() const { return ArenaLadder.Presentation; }
 	virtual	void	on_frame				(CPHMovementControl *movement_control, Fvector &dest_position);
 	IC		bool	actual					() const;
 			bool	actual_all				() const;

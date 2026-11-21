@@ -398,15 +398,28 @@ void CObjectList::net_Import		(NET_Packet* Packet)
 
 	while (!Packet->r_eof())
 	{
+		if (Packet->r_elapsed() < sizeof(u16) + sizeof(u8))
+		{
+			Msg("! Truncated network object header");
+			return;
+		}
 		u16 ID;		Packet->r_u16	(ID);
 		u8  size;	Packet->r_u8	(size);
+		if (size > Packet->r_elapsed())
+		{
+			Msg("! Truncated network object %u", u32(ID));
+			return;
+		}
 
 		CObject* P  = net_Find		(ID);
 		if (P)		
 		{
 
-			u32 rsize = Packet->r_tell();			
-			
+			u32 rsize = Packet->r_tell();
+			const u32 PacketEnd = Packet->B.count;
+			const xr_scope_exit RestorePacketEnd([&] { Packet->B.count = PacketEnd; });
+			Packet->B.count = rsize + size;
+
 			P->net_Import	(*Packet);
 
 			if (g_pGamePersistent->GameType() == eGameIDFreeMP)

@@ -2,6 +2,7 @@
 #include "ClimableObject.h"
 #include "ai_space.h"
 #include "Multiplayer/ArenaLadderNavigation.h"
+#include "Multiplayer/ArenaLadderGeometry.h"
 #include "../xrPhysics/IPHStaticGeomShell.h"
 #include "xrServer_Objects_ALife.h"
 #include "../xrPhysics/PHCharacter.h"
@@ -18,35 +19,20 @@
 static const float down_leader_extension_tolerance=0.2f;
 static const float up_leader_extension_tolerance=0.0f;
 
-IC void OrientToNorm(const Fvector& normal,Fmatrix& form,Fobb& box)
+namespace
 {
-	
-	Fvector * ax_pointer= (Fvector*)&form;
-	float   * s_pointer = (float*) &(box.m_halfsize);
-	float max_dot=abs(ax_pointer[0].dotproduct(normal));
-	float min_size=box.m_halfsize.x;
-	int max_ax_i=0,min_size_i=0;
-	for(int i=1;3>i;++i)
-	{
-		float dot_pr=abs(ax_pointer[i].dotproduct(normal));
-		if(max_dot<dot_pr)
-		{
-			max_ax_i=i;max_dot=dot_pr;
-		}
-		if(min_size>s_pointer[i])
-		{
-			min_size_i=i;min_size=s_pointer[i];
-		}
-	}
-	VERIFY(min_size_i==max_ax_i);
-	if(ax_pointer[max_ax_i].dotproduct(normal)<0.f)
-	{
-		ax_pointer[max_ax_i].invert();
-		ax_pointer[(max_ax_i+1)%3].invert();
-	}
+using Multiplayer::ArenaLadders::Point;
+
+Point LadderPoint(const Fvector& Vector)
+{
+	return {Vector.x, Vector.y, Vector.z};
 }
 
-
+void AssignLadderPoint(Fvector& Vector, Point Value)
+{
+	Vector.set(Value.X, Value.Y, Value.Z);
+}
+}
 
 CClimableObject::CClimableObject		():  m_pStaticShell ( nullptr ), m_radius(0.f), m_material(u16(-1))
 {
@@ -67,49 +53,38 @@ bool CClimableObject::	net_Spawn			( CSE_Abstract* DC)
 	CSE_ALifeObjectClimable	*CLB=smart_cast<CSE_ALifeObjectClimable*>(e);
 	const auto* Box = CLB && !CLB->shapes.empty() && CLB->shapes[0].type == CShapeData::cfBox
 		? &CLB->shapes[0].data.box : nullptr;
-	if (!Box || !std::isfinite(Box->_11) || !std::isfinite(Box->_22) || !std::isfinite(Box->_33) ||
-		Box->_11 < 0.f || Box->_22 < 0.f || Box->_33 < 0.f ||
-		(Box->_11 > 0.f) + (Box->_22 > 0.f) + (Box->_33 > 0.f) < 2)
+	using namespace Multiplayer::ArenaLadders;
+	const auto Half = Box ? HalfSizes{Box->_11, Box->_22, Box->_33} : HalfSizes{};
+	if (!ValidHalfSizes(Half))
 	{
 		// The failed-spawn path calls net_Destroy, which requires base spawn initialization.
 		inherited::net_Spawn(DC);
 		Msg("! Invalid climbable spawn geometry");
 		return false;
 	}
-	m_material = GMLib.GetMaterialIdx( CLB->material.c_str() );
-	const auto& b = *Box;
-	m_box.m_halfsize.set(b._11,b._22,b._33);
-	m_radius= std::max(std::max(m_box.m_halfsize.x,m_box.m_halfsize.y),m_box.m_halfsize.z);
-
-	//m_box.m_halfsize.set(1.f,1.f,1.f);
-	bool ret	= inherited::net_Spawn(DC);
+	m_material = GMLib.GetMaterialIdx(CLB->material.c_str());
+	m_radius = std::max({Half[0], Half[1], Half[2]});
+	const bool ret = inherited::net_Spawn(DC);
+	const auto& Frame = XFORM();
+	const auto Shape = BuildGeometry(LadderPoint(Frame.c),
+		{LadderPoint(Frame.i), LadderPoint(Frame.j), LadderPoint(Frame.k)}, Half);
+	if (!Shape)
+	{
+		Msg("! Invalid climbable spawn transform");
+		return false;
+	}
 
 	SpatialComponent->type &= ~ESPATIAL_TYPE::VISIBLEFORAI;
 	SpatialComponent->type |= ESPATIAL_TYPE::LADDER;
 
-	const float f_min_width=0.2f;
-	Fvector shift;shift.set(0.f,0.f,0.f);
-	SORT(b._11,m_axis.set(XFORM().i);m_axis.mul(m_box.m_halfsize.x),m_side.set(XFORM().i);m_side.mul(m_box.m_halfsize.x),m_norm.set(XFORM().i);if(m_box.m_halfsize.x<f_min_width){m_box.m_halfsize.x=f_min_width;shift.set(1.f,0.f,0.f);};m_norm.mul(m_box.m_halfsize.x),
-		b._22,m_axis.set(XFORM().j);m_axis.mul(m_box.m_halfsize.y),m_side.set(XFORM().j);m_side.mul(m_box.m_halfsize.y),m_norm.set(XFORM().j);if(m_box.m_halfsize.y<f_min_width){m_box.m_halfsize.y=f_min_width;shift.set(0.f,1.f,0.f);};m_norm.mul(m_box.m_halfsize.y),
-		b._33,m_axis.set(XFORM().k);m_axis.mul(m_box.m_halfsize.z),m_side.set(XFORM().k);m_side.mul(m_box.m_halfsize.z),m_norm.set(XFORM().k);if(m_box.m_halfsize.z<f_min_width){m_box.m_halfsize.z=f_min_width;shift.set(0.f,0.f,1.f);};m_norm.mul(m_box.m_halfsize.z)
-		);
-	shift.mul(f_min_width);
-	
-	XFORM().transform_dir(shift);
-	CObject::Position().sub(shift);
+	AssignLadderPoint(CObject::Position(), Shape->Center);
+	AssignLadderPoint(m_axis, Shape->Axis);
+	AssignLadderPoint(m_side, Shape->Side);
+	AssignLadderPoint(m_norm, Shape->Normal);
+	m_box.m_halfsize.set(Shape->Half[0], Shape->Half[1], Shape->Half[2]);
 	m_box.xform_set(Fidentity);
-	
-	m_pStaticShell = P_BuildLeaderGeomShell(this, ObjectContactCallback, m_box );
+	m_pStaticShell = P_BuildLeaderGeomShell(this, ObjectContactCallback, m_box);
 
-
-	
-	
-	if(m_axis.y<0.f)
-	{
-		m_axis.invert();
-		m_side.invert();
-
-	}
 //	shedule_unregister();
 	processing_deactivate();
 	if (ret)
@@ -207,14 +182,12 @@ void	CClimableObject::	POnAxis	(CPHCharacter	*actor,Fvector	&P)const
 }
 void		CClimableObject::	LowerPoint			(Fvector &P)const
 {
-	P.sub(XFORM().c,m_axis);
-	P.add(m_norm);
+	AssignLadderPoint(P, Multiplayer::ArenaLadders::ClimbEndpoint(LadderPoint(XFORM().c), LadderPoint(m_axis), LadderPoint(m_norm), false));
 }
 
 void		CClimableObject::	UpperPoint			(Fvector &P)const
 {
-	P.add(XFORM().c,m_axis);
-	P.add(m_norm);
+	AssignLadderPoint(P, Multiplayer::ArenaLadders::ClimbEndpoint(LadderPoint(XFORM().c), LadderPoint(m_axis), LadderPoint(m_norm), true));
 }
 
 void		CClimableObject::DToAxis(CPHCharacter *actor,Fvector &dir)const

@@ -147,6 +147,63 @@ exit 7
     $Report = Get-Content -Raw -LiteralPath (Join-Path $Target 'w1-fixture.json') | ConvertFrom-Json
     Assert-Result ($Report.mapVersion -ceq '1.0' -and @($Report.files | Where-Object name -ceq 'level.navlinks').Count -eq 1) 'The deployment manifest records the version and package digest.'
     Assert-Result ($Report.materials.sha256 -ceq (Get-FileHash -LiteralPath $Materials -Algorithm SHA256).Hash) 'The deployment manifest records the material digest.'
+
+    Remove-Item -LiteralPath $Target -Recurse
+    $Inputs.AutoLadders = $true
+    Assert-Rejected 'Choose either'
+    $Inputs.Remove('LadderSource')
+    Assert-Rejected 'level.spawn'
+
+    # One editor-style ladder named clmbl#0, with a planar box spanning Y=0 to Y=4.
+    $Packet = [Convert]::FromHexString('0100636c696d61626c655f6f626a65637400636c6d626c23300000000000000000000040000000000000000000000000000000000000ffffffffffff20008700020000000000ffff6000000000000000000000000000000000000000000000000000000000010100000000000000000000000000000000000000400000000000000000000000006666e63e0000000000000000000000006d6174657269616c735c6c616464657200')
+    $CookedSpawn = Join-Path $Source 'level.spawn'
+    [IO.File]::WriteAllBytes($CookedSpawn, (ConvertTo-Chunk 0 $Packet))
+
+    # Four nodes in two XZ columns. The lower pair and upper pair each share one walk edge in both directions.
+    $AutoGrid = [byte[]]::new(56 + 24 * 4)
+    $Grid[0..55].CopyTo($AutoGrid, 0)
+    $AutoGrid[4] = 4
+    [BitConverter]::GetBytes([single] 4).CopyTo($AutoGrid, 12)
+    [BitConverter]::GetBytes([single] 3).CopyTo($AutoGrid, 28)
+    [BitConverter]::GetBytes([single] 4).CopyTo($AutoGrid, 32)
+    for ($Index = 0; $Index -lt 4; ++$Index) {
+        $Offset = 56 + 24 * $Index
+        [byte[]]::new(13).CopyTo($AutoGrid, $Offset)
+        [array]::Fill($AutoGrid, [byte] 255, $Offset + 3, 10)
+        $AutoGrid[$Offset + 3] = 254
+        $AutoGrid[$Offset] = ($Index + 2) % 4
+        $AutoGrid[$Offset + 19] = if ($Index -lt 2) { 1 } else { 2 }
+        if ($Index % 2) { [BitConverter]::GetBytes([uint16] 65535).CopyTo($AutoGrid, $Offset + 22) }
+    }
+    [IO.File]::WriteAllBytes($GridPath, $AutoGrid)
+
+    # Vanilla collision contains a floor triangle beneath each landing.
+    $Stream = [IO.MemoryStream]::new()
+    $Writer = [IO.BinaryWriter]::new($Stream)
+    try {
+        $Writer.Write([uint32] 4)
+        $Writer.Write([uint32] 6)
+        $Writer.Write([uint32] 2)
+        $Writer.Write([byte[]]::new(24))
+        foreach ($Coordinate in -2,0,-3, -2,0,3, 5,0,0, -2,4,-3, -2,4,3, 5,4,0) { $Writer.Write([single] $Coordinate) }
+        foreach ($Index in 0,1,2,0, 3,4,5,0) { $Writer.Write([uint32] $Index) }
+        [IO.File]::WriteAllBytes((Join-Path $Source 'level.cform'), $Stream.ToArray())
+    }
+    finally { $Writer.Dispose() }
+
+    $null = & $Prepare @Inputs
+    $AutoPackage = Get-Content -Raw -LiteralPath (Join-Path $Target 'level.navlinks')
+    Assert-Result ($AutoPackage -match '(?m)^clmbl#0 up 0 1 [0-9.]+' -and $AutoPackage -match '(?m)^clmbl#0 down 1 0 [0-9.]+') 'Automatic staging publishes both validated ladder directions.'
+    Assert-Result ($AutoPackage.Contains((Get-FileHash -LiteralPath $CookedSpawn).Hash.ToLowerInvariant())) 'Automatic links bind the exact spawn bytes that supplied their semantic geometry.'
+    Assert-Result (Select-String -Quiet -LiteralPath (Join-Path $Target 'w1-ladders.txt') -Pattern 'clmbl#0.*validated') 'The staged fixture keeps the automatic ladder diagnostics.'
+
+    Remove-Item -LiteralPath $Target -Recurse
+    $Packet[64] = 1 # This fixture's game type mask now enables single-player only.
+    [IO.File]::WriteAllBytes($CookedSpawn, (ConvertTo-Chunk 0 $Packet))
+    $null = & $Prepare @Inputs
+    $DisabledPackage = Get-Content -Raw -LiteralPath (Join-Path $Target 'level.navlinks')
+    Assert-Result ($DisabledPackage -cnotmatch '(?m)^clmbl#0 ' -and
+        (Select-String -Quiet -LiteralPath (Join-Path $Target 'w1-ladders.txt') -Pattern 'disabled in deathmatch')) 'A mode-disabled ladder is diagnosed and omitted from the navigation package.'
 }
 finally {
     if (Test-Path -LiteralPath $Temp) { Remove-Item -LiteralPath $Temp -Force -Recurse }

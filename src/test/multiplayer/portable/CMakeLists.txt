@@ -39,6 +39,7 @@ add_executable(TestMultiplayerUnit
     ClientCatchUpTests.cpp
     StalkerPrerequisitesTests.cpp
     ArenaLadderTests.cpp
+    ArenaLadderBakeTests.cpp
     ArenaMovementTests.cpp
     ArenaNavigationPackageTests.cpp
     DedicatedArenaNavigationTests.cpp
@@ -123,6 +124,7 @@ set_tests_properties(Multiplayer.ArenaLadders PROPERTIES LABELS multiplayer)
 set(ArenaCryptoRoot "${CMAKE_CURRENT_SOURCE_DIR}/../../../3rd-party/crypto/openssl")
 add_library(ArenaNavigationFormat STATIC
     ../../../xrGame/Multiplayer/ArenaNavigationPackage.cpp
+    ../../../utils/ArenaNavPack/LadderBake.cpp
     ${ArenaCryptoRoot}/src/sha256.c
     ${ArenaCryptoRoot}/src/mem_clr.c
 )
@@ -140,3 +142,6 @@ set_tests_properties(Multiplayer.DedicatedArenaNavigation PROPERTIES LABELS mult
 
 add_test(NAME Multiplayer.ArenaMovement COMMAND TestMultiplayerUnit --arena-movement)
 set_tests_properties(Multiplayer.ArenaMovement PROPERTIES LABELS multiplayer)
+
+add_test(NAME Multiplayer.ArenaLadderBake COMMAND TestMultiplayerUnit --arena-ladder-bake)
+set_tests_properties(Multiplayer.ArenaLadderBake PROPERTIES LABELS multiplayer)

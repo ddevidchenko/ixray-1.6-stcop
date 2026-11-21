@@ -1,5 +1,6 @@
 #include "StdAfx.h"
 #include "ArenaLadderNavigation.h"
+#include "ArenaLadderGeometry.h"
 #include "ArenaLadderRoute.h"
 #include "ArenaNavigationPackage.h"
 #include "../ClimableObject.h"
@@ -12,9 +13,9 @@ using namespace ArenaLadders;
 
 namespace
 {
-bool Suitable(const Fvector& Landing, const Fvector& End)
+Point LadderPoint(const Fvector& Vector)
 {
-	return std::abs(Landing.y - End.y) <= 0.55f && Landing.distance_to_xz_sqr(End) <= _sqr(1.35f);
+	return {Vector.x, Vector.y, Vector.z};
 }
 }
 
@@ -156,10 +157,8 @@ CClimableObject* ArenaLadderNavigation::Resolve(u32 Index, u16 Owner) const
 	Fvector Lower, Upper, Axis, Normal;
 	Ladder->LowerPoint(Lower);
 	Ladder->UpperPoint(Upper);
-	const float Height = Upper.y - Lower.y;
-	if (!_valid(Lower) || !_valid(Upper) || Height < 0.75f || Height > 24.f ||
-		Ladder->DDAxis(Axis) <= EPS_L || Axis.y < 0.9f ||
-		Ladder->DDNorm(Normal) <= EPS_L || std::abs(Normal.y) > 0.25f)
+	if (Ladder->DDAxis(Axis) <= EPS_L || Ladder->DDNorm(Normal) <= EPS_L ||
+		!SupportsClimbing(LadderPoint(Lower), LadderPoint(Upper), LadderPoint(Axis), LadderPoint(Normal)))
 	{
 		return nullptr;
 	}
@@ -167,8 +166,7 @@ CClimableObject* ArenaLadderNavigation::Resolve(u32 Index, u16 Owner) const
 	const auto Entry = Grid.vertex_position(Edge.Entry);
 	const auto Exit = Grid.vertex_position(Edge.Exit);
 	const bool Up = Edge.Travel == Direction::Up;
-	if ((Up ? Exit.y - Entry.y : Entry.y - Exit.y) < 0.6f ||
-		!Suitable(Entry, Up ? Lower : Upper) || !Suitable(Exit, Up ? Upper : Lower))
+	if (!MatchesLandings(LadderPoint(Lower), LadderPoint(Upper), LadderPoint(Up ? Entry : Exit), LadderPoint(Up ? Exit : Entry)))
 	{
 		return nullptr;
 	}

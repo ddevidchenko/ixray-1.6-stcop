@@ -7,7 +7,8 @@ param(
     [ValidatePattern('^[a-z0-9_-]{1,63}$')][string] $Map = 'w1_arena',
     [ValidatePattern('^[a-zA-Z0-9._-]{1,31}$')][string] $MapVersion = '1.0',
     [string] $MaterialFile,
-    [string] $LadderSource
+    [string] $LadderSource,
+    [switch] $AutoLadders
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -93,6 +94,7 @@ $Materials = Get-Item -LiteralPath $MaterialFile -ErrorAction SilentlyContinue
 if ($Materials -isnot [IO.FileInfo] -or !$Materials.Length) {
     throw "Provide the matching gamemtl.xr used by the game and SDK. Missing or empty file at $MaterialFile."
 }
+if ($AutoLadders -and $LadderSource) { throw 'Choose either -AutoLadders or -LadderSource.' }
 if ($LadderSource) {
     $LadderSource = (Get-Item -LiteralPath $LadderSource).FullName
 }
@@ -103,15 +105,21 @@ $null = New-Item -ItemType Directory -Path $Pending
 try {
     Get-ChildItem -LiteralPath $Source -File | Where-Object {
         $_.Name -eq 'level' -or $_.Name -like 'lmap#*.dds' -or $_.Name -match '^level_\d+\.cform$' -or
-        ($_.Name -like 'level.*' -and $_.Name -ne 'level.navlinks' -and ($_.Name -ne 'level.spawn' -or $LadderSource))
+        ($_.Name -like 'level.*' -and $_.Name -ne 'level.navlinks' -and ($_.Name -ne 'level.spawn' -or $LadderSource -or $AutoLadders))
     } | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $Pending }
 
     $SpawnCount = Get-W1RespawnCount (Join-Path $Pending 'level.game')
     $PackArgs = @($Pending, $Materials.FullName, $Map, $MapVersion)
     if ($LadderSource) { $PackArgs += $LadderSource }
+    if ($AutoLadders) { $PackArgs += '--extract-ladders' }
     $PSNativeCommandUseErrorActionPreference = $false
-    $PackOutput = & $Packer @PackArgs 2>&1
-    if ($LASTEXITCODE -ne 0) { throw "Navigation packaging failed for $Map. $PackOutput" }
+    $PackLog = Join-Path $Pending 'w1-ladders.txt'
+    $PackOutput = & $Packer @PackArgs 2>$PackLog
+    if ($LASTEXITCODE -ne 0) {
+        $Details = Get-Content -LiteralPath $PackLog -Tail 12 -ErrorAction SilentlyContinue
+        throw "Navigation packaging failed for $Map. $PackOutput $Details"
+    }
+    if (!$AutoLadders) { Remove-Item -LiteralPath $PackLog }
 
     $MaterialHash = (Get-FileHash -LiteralPath $Materials.FullName -Algorithm SHA256).Hash
     if ($PackOutput -cne $MaterialHash.ToLowerInvariant()) {
